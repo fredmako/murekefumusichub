@@ -1,14 +1,16 @@
-import { useState } from 'react';
-import { Navbar } from '@/app/components/Navbar';
-import { Marketplace } from '@/app/components/Marketplace';
-import { ComposerDashboard } from '@/app/components/ComposerDashboard';
-import { BuyerDashboard } from '@/app/components/BuyerDashboard';
-import { AdminPanel } from '@/app/components/AdminPanel';
-import { Login } from '@/app/components/Login';
-import { Signup } from '@/app/components/Signup';
-import { Toaster } from '@/app/components/ui/sonner';
+import { useState } from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
-export type UserRole = 'buyer' | 'composer' | 'admin';
+import { Navbar } from "@/app/components/Navbar";
+import { Marketplace } from "@/app/components/Marketplace";
+import { ComposerDashboard } from "@/app/components/ComposerDashboard";
+import { BuyerDashboard } from "@/app/components/BuyerDashboard";
+import { AdminPanel } from "@/app/components/AdminPanel";
+import { Login } from "@/app/components/Login";
+import { Signup } from "@/app/components/Signup";
+import { Toaster } from "@/app/components/ui/sonner";
+
+export type UserRole = "buyer" | "composer" | "admin";
 
 export interface User {
   id: string;
@@ -25,20 +27,12 @@ export interface Composition {
   price: number;
   description: string;
   voiceParts: string[];
-  difficulty: 'Easy' | 'Intermediate' | 'Advanced';
+  difficulty: "Easy" | "Intermediate" | "Advanced";
   duration: string;
   language: string;
   accompaniment: string;
   dateAdded: string;
   pdfUrl?: string;
-}
-
-export interface Purchase {
-  id: string;
-  compositionId: string;
-  buyerId: string;
-  purchaseDate: string;
-  price: number;
 }
 
 export interface CartItem {
@@ -48,51 +42,48 @@ export interface CartItem {
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [showSignup, setShowSignup] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentView, setCurrentView] = useState<'marketplace' | 'composer' | 'buyer' | 'admin'>('marketplace');
+  const [currentView, setCurrentView] = useState<
+    "marketplace" | "composer" | "buyer" | "admin"
+  >("marketplace");
   const [cart, setCart] = useState<CartItem[]>([]);
 
-  // Called after successful login
+  // LOGIN
   const handleLogin = (email: string, role: UserRole) => {
-    // Mock user data for demo
-    const userData: Record<UserRole, User> = {
-      buyer: { id: '1', name: 'John Doe', email, role: 'buyer' },
-      composer: { id: '2', name: 'Sarah Johnson', email, role: 'composer' },
-      admin: { id: '5', name: 'Admin User', email, role: 'admin' },
+    const users: Record<UserRole, User> = {
+      buyer: { id: "1", name: "John Doe", email, role: "buyer" },
+      composer: { id: "2", name: "Sarah Johnson", email, role: "composer" },
+      admin: { id: "5", name: "Admin User", email, role: "admin" },
     };
 
-    setCurrentUser(userData[role]);
+    setCurrentUser(users[role]);
     setIsAuthenticated(true);
 
-    // Set initial view based on role
-    if (role === 'composer') setCurrentView('composer');
-    else if (role === 'admin') setCurrentView('admin');
-    else setCurrentView('marketplace');
+    if (role === "composer") setCurrentView("composer");
+    else if (role === "admin") setCurrentView("admin");
+    else setCurrentView("marketplace");
   };
 
-  // Called after successful signup
+  // SIGNUP → AUTO LOGIN
   const handleSignup = (email: string, role: UserRole) => {
-    // After signup, log user in
     handleLogin(email, role);
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
     setCurrentUser(null);
-    setCurrentView('marketplace');
     setCart([]);
-    setShowSignup(false);
+    setCurrentView("marketplace");
   };
 
   const addToCart = (composition: Composition) => {
     setCart(prev => {
-      const existing = prev.find(item => item.composition.id === composition.id);
+      const existing = prev.find(i => i.composition.id === composition.id);
       if (existing) {
-        return prev.map(item =>
-          item.composition.id === composition.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
+        return prev.map(i =>
+          i.composition.id === composition.id
+            ? { ...i, quantity: i.quantity + 1 }
+            : i
         );
       }
       return [...prev, { composition, quantity: 1 }];
@@ -100,66 +91,75 @@ function App() {
   };
 
   const removeFromCart = (compositionId: string) => {
-    setCart(prev => prev.filter(item => item.composition.id !== compositionId));
+    setCart(prev => prev.filter(i => i.composition.id !== compositionId));
   };
 
-  const clearCart = () => {
-    setCart([]);
-  };
+  const clearCart = () => setCart([]);
 
-  const handleViewChange = (view: 'marketplace' | 'composer' | 'buyer' | 'admin') => {
-    setCurrentView(view);
-  };
+  const handleViewChange = (
+    view: "marketplace" | "composer" | "buyer" | "admin"
+  ) => setCurrentView(view);
 
   const handleRoleChange = (role: UserRole) => {
     if (!currentUser) return;
-    setCurrentUser(prev => prev ? { ...prev, role } : null);
-    if (role === 'composer') setCurrentView('composer');
-    else if (role === 'admin') setCurrentView('admin');
-    else setCurrentView('marketplace');
+    setCurrentUser({ ...currentUser, role });
+    if (role === "composer") setCurrentView("composer");
+    else if (role === "admin") setCurrentView("admin");
+    else setCurrentView("marketplace");
   };
 
-  // Show login or signup screen if not authenticated
-  if (!isAuthenticated) {
-    return showSignup ? (
-      <Signup onSignup={handleSignup} />
-    ) : (
-      <Login
-        onLogin={handleLogin}
-      />
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50">
+    <BrowserRouter>
       <Toaster />
-      <Navbar
-        currentUser={currentUser!}
-        currentView={currentView}
-        onViewChange={handleViewChange}
-        onRoleChange={handleRoleChange}
-        onLogout={handleLogout}
-        cart={cart}
-        onRemoveFromCart={removeFromCart}
-        onShowSignup={() => setShowSignup(true)}
-      />
 
-      <main className="container mx-auto px-4 py-8">
-        {currentView === 'marketplace' && currentUser && (
-          <Marketplace currentUser={currentUser} onAddToCart={addToCart} />
-        )}
+      {!isAuthenticated ? (
+        <Routes>
+          <Route path="/" element={<Login onLogin={handleLogin} />} />
+          <Route
+            path="/signup"
+            element={<Signup onSignup={handleSignup} />}
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      ) : (
+        <div className="min-h-screen bg-gray-50">
+          <Navbar
+            currentUser={currentUser!}
+            currentView={currentView}
+            onViewChange={handleViewChange}
+            onRoleChange={handleRoleChange}
+            onLogout={handleLogout}
+            cart={cart}
+            onRemoveFromCart={removeFromCart}
+          />
 
-        {currentView === 'composer' && currentUser?.role === 'composer' && (
-          <ComposerDashboard currentUser={currentUser} />
-        )}
+          <main className="container mx-auto px-4 py-8">
+            {currentView === "marketplace" && currentUser && (
+              <Marketplace
+                currentUser={currentUser}
+                onAddToCart={addToCart}
+              />
+            )}
 
-        {currentView === 'buyer' && currentUser && (
-          <BuyerDashboard currentUser={currentUser} cart={cart} onClearCart={clearCart} />
-        )}
+            {currentView === "composer" &&
+              currentUser?.role === "composer" && (
+                <ComposerDashboard currentUser={currentUser} />
+              )}
 
-        {currentView === 'admin' && currentUser?.role === 'admin' && <AdminPanel />}
-      </main>
-    </div>
+            {currentView === "buyer" && currentUser && (
+              <BuyerDashboard
+                currentUser={currentUser}
+                cart={cart}
+                onClearCart={clearCart}
+              />
+            )}
+
+            {currentView === "admin" &&
+              currentUser?.role === "admin" && <AdminPanel />}
+          </main>
+        </div>
+      )}
+    </BrowserRouter>
   );
 }
 
