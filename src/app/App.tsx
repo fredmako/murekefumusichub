@@ -5,6 +5,7 @@ import { ComposerDashboard } from '@/app/components/ComposerDashboard';
 import { BuyerDashboard } from '@/app/components/BuyerDashboard';
 import { AdminPanel } from '@/app/components/AdminPanel';
 import { Login } from '@/app/components/Login';
+import { Signup } from '@/app/components/Signup';
 import { Toaster } from '@/app/components/ui/sonner';
 
 export type UserRole = 'buyer' | 'composer' | 'admin';
@@ -47,62 +48,41 @@ export interface CartItem {
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentUser, setCurrentUser] = useState<User>({
-    id: '1',
-    name: 'John Doe',
-    email: 'john@example.com',
-    role: 'buyer'
-  });
-
+  const [showSignup, setShowSignup] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentView, setCurrentView] = useState<'marketplace' | 'composer' | 'buyer' | 'admin'>('marketplace');
   const [cart, setCart] = useState<CartItem[]>([]);
 
-  const handleLogin = (email: string, password: string, role: UserRole) => {
-    // Mock user data based on role
+  // Called after successful login
+  const handleLogin = (email: string, role: UserRole) => {
+    // Mock user data for demo
     const userData: Record<UserRole, User> = {
-      buyer: {
-        id: '1',
-        name: 'John Doe',
-        email: 'buyer@primemedia.com',
-        role: 'buyer'
-      },
-      composer: {
-        id: '2',
-        name: 'Sarah Johnson',
-        email: 'composer@primemedia.com',
-        role: 'composer'
-      },
-      admin: {
-        id: '5',
-        name: 'Admin User',
-        email: 'admin@primemedia.com',
-        role: 'admin'
-      }
+      buyer: { id: '1', name: 'John Doe', email, role: 'buyer' },
+      composer: { id: '2', name: 'Sarah Johnson', email, role: 'composer' },
+      admin: { id: '5', name: 'Admin User', email, role: 'admin' },
     };
 
     setCurrentUser(userData[role]);
     setIsAuthenticated(true);
 
     // Set initial view based on role
-    if (role === 'composer') {
-      setCurrentView('composer');
-    } else if (role === 'admin') {
-      setCurrentView('admin');
-    } else {
-      setCurrentView('marketplace');
-    }
+    if (role === 'composer') setCurrentView('composer');
+    else if (role === 'admin') setCurrentView('admin');
+    else setCurrentView('marketplace');
+  };
+
+  // Called after successful signup
+  const handleSignup = (email: string, role: UserRole) => {
+    // After signup, log user in
+    handleLogin(email, role);
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
-    setCurrentUser({
-      id: '1',
-      name: 'John Doe',
-      email: 'john@example.com',
-      role: 'buyer'
-    });
+    setCurrentUser(null);
     setCurrentView('marketplace');
     setCart([]);
+    setShowSignup(false);
   };
 
   const addToCart = (composition: Composition) => {
@@ -132,57 +112,52 @@ function App() {
   };
 
   const handleRoleChange = (role: UserRole) => {
-    setCurrentUser(prev => ({ ...prev, role }));
-    if (role === 'composer') {
-      setCurrentView('composer');
-    } else if (role === 'admin') {
-      setCurrentView('admin');
-    } else {
-      setCurrentView('marketplace');
-    }
+    if (!currentUser) return;
+    setCurrentUser(prev => prev ? { ...prev, role } : null);
+    if (role === 'composer') setCurrentView('composer');
+    else if (role === 'admin') setCurrentView('admin');
+    else setCurrentView('marketplace');
   };
 
-  // Show login screen if not authenticated
+  // Show login or signup screen if not authenticated
   if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} />;
+    return showSignup ? (
+      <Signup onSignup={handleSignup} />
+    ) : (
+      <Login
+        onLogin={handleLogin}
+      />
+    );
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Toaster />
       <Navbar
-        currentUser={currentUser}
+        currentUser={currentUser!}
         currentView={currentView}
         onViewChange={handleViewChange}
         onRoleChange={handleRoleChange}
         onLogout={handleLogout}
         cart={cart}
         onRemoveFromCart={removeFromCart}
+        onShowSignup={() => setShowSignup(true)}
       />
 
       <main className="container mx-auto px-4 py-8">
-        {currentView === 'marketplace' && (
-          <Marketplace
-            currentUser={currentUser}
-            onAddToCart={addToCart}
-          />
+        {currentView === 'marketplace' && currentUser && (
+          <Marketplace currentUser={currentUser} onAddToCart={addToCart} />
         )}
 
-        {currentView === 'composer' && currentUser.role === 'composer' && (
+        {currentView === 'composer' && currentUser?.role === 'composer' && (
           <ComposerDashboard currentUser={currentUser} />
         )}
 
-        {currentView === 'buyer' && (
-          <BuyerDashboard
-            currentUser={currentUser}
-            cart={cart}
-            onClearCart={clearCart}
-          />
+        {currentView === 'buyer' && currentUser && (
+          <BuyerDashboard currentUser={currentUser} cart={cart} onClearCart={clearCart} />
         )}
 
-        {currentView === 'admin' && currentUser.role === 'admin' && (
-          <AdminPanel />
-        )}
+        {currentView === 'admin' && currentUser?.role === 'admin' && <AdminPanel />}
       </main>
     </div>
   );
