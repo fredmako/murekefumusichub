@@ -1,13 +1,10 @@
 import { useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-
 import { Navbar } from "@/app/components/Navbar";
 import { Marketplace } from "@/app/components/Marketplace";
 import { ComposerDashboard } from "@/app/components/ComposerDashboard";
 import { BuyerDashboard } from "@/app/components/BuyerDashboard";
 import { AdminPanel } from "@/app/components/AdminPanel";
 import { Login } from "@/app/components/Login";
-import { Signup } from "@/app/components/Signup";
 import { Toaster } from "@/app/components/ui/sonner";
 
 export type UserRole = "buyer" | "composer" | "admin";
@@ -35,6 +32,14 @@ export interface Composition {
   pdfUrl?: string;
 }
 
+export interface Purchase {
+  id: string;
+  compositionId: string;
+  buyerId: string;
+  purchaseDate: string;
+  price: number;
+}
+
 export interface CartItem {
   composition: Composition;
   quantity: number;
@@ -42,48 +47,80 @@ export interface CartItem {
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<User>({
+    id: "1",
+    name: "John Doe",
+    email: "john@example.com",
+    role: "buyer",
+  });
+
   const [currentView, setCurrentView] = useState<
     "marketplace" | "composer" | "buyer" | "admin"
   >("marketplace");
   const [cart, setCart] = useState<CartItem[]>([]);
 
-  // LOGIN
-  const handleLogin = (email: string, role: UserRole) => {
-    const users: Record<UserRole, User> = {
-      buyer: { id: "1", name: "John Doe", email, role: "buyer" },
-      composer: { id: "2", name: "Sarah Johnson", email, role: "composer" },
-      admin: { id: "5", name: "Admin User", email, role: "admin" },
+  const handleLogin = (
+    email: string,
+    password: string,
+    role: UserRole,
+  ) => {
+    // Mock user data based on role
+    const userData: Record<UserRole, User> = {
+      buyer: {
+        id: "1",
+        name: "John Doe",
+        email: "buyer@primemedia.com",
+        role: "buyer",
+      },
+      composer: {
+        id: "2",
+        name: "Sarah Johnson",
+        email: "composer@primemedia.com",
+        role: "composer",
+      },
+      admin: {
+        id: "5",
+        name: "Admin User",
+        email: "admin@primemedia.com",
+        role: "admin",
+      },
     };
 
-    setCurrentUser(users[role]);
+    setCurrentUser(userData[role]);
     setIsAuthenticated(true);
 
-    if (role === "composer") setCurrentView("composer");
-    else if (role === "admin") setCurrentView("admin");
-    else setCurrentView("marketplace");
-  };
-
-  // SIGNUP → AUTO LOGIN
-  const handleSignup = (email: string, role: UserRole) => {
-    handleLogin(email, role);
+    // Set initial view based on role
+    if (role === "composer") {
+      setCurrentView("composer");
+    } else if (role === "admin") {
+      setCurrentView("admin");
+    } else {
+      setCurrentView("marketplace");
+    }
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
-    setCurrentUser(null);
-    setCart([]);
+    setCurrentUser({
+      id: "1",
+      name: "John Doe",
+      email: "john@example.com",
+      role: "buyer",
+    });
     setCurrentView("marketplace");
+    setCart([]);
   };
 
   const addToCart = (composition: Composition) => {
-    setCart(prev => {
-      const existing = prev.find(i => i.composition.id === composition.id);
+    setCart((prev) => {
+      const existing = prev.find(
+        (item) => item.composition.id === composition.id,
+      );
       if (existing) {
-        return prev.map(i =>
-          i.composition.id === composition.id
-            ? { ...i, quantity: i.quantity + 1 }
-            : i
+        return prev.map((item) =>
+          item.composition.id === composition.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item,
         );
       }
       return [...prev, { composition, quantity: 1 }];
@@ -91,75 +128,77 @@ function App() {
   };
 
   const removeFromCart = (compositionId: string) => {
-    setCart(prev => prev.filter(i => i.composition.id !== compositionId));
+    setCart((prev) =>
+      prev.filter(
+        (item) => item.composition.id !== compositionId,
+      ),
+    );
   };
 
-  const clearCart = () => setCart([]);
+  const clearCart = () => {
+    setCart([]);
+  };
 
   const handleViewChange = (
-    view: "marketplace" | "composer" | "buyer" | "admin"
-  ) => setCurrentView(view);
-
-  const handleRoleChange = (role: UserRole) => {
-    if (!currentUser) return;
-    setCurrentUser({ ...currentUser, role });
-    if (role === "composer") setCurrentView("composer");
-    else if (role === "admin") setCurrentView("admin");
-    else setCurrentView("marketplace");
+    view: "marketplace" | "composer" | "buyer" | "admin",
+  ) => {
+    setCurrentView(view);
   };
 
+  const handleRoleChange = (role: UserRole) => {
+    setCurrentUser((prev) => ({ ...prev, role }));
+    if (role === "composer") {
+      setCurrentView("composer");
+    } else if (role === "admin") {
+      setCurrentView("admin");
+    } else {
+      setCurrentView("marketplace");
+    }
+  };
+
+  // Show login screen if not authenticated
+  if (!isAuthenticated) {
+    return <Login onLogin={handleLogin} />;
+  }
+
   return (
-    <BrowserRouter>
+    <div className="min-h-screen bg-gray-50">
       <Toaster />
+      <Navbar
+        currentUser={currentUser}
+        currentView={currentView}
+        onViewChange={handleViewChange}
+        onRoleChange={handleRoleChange}
+        onLogout={handleLogout}
+        cart={cart}
+        onRemoveFromCart={removeFromCart}
+      />
 
-      {!isAuthenticated ? (
-        <Routes>
-          <Route path="/" element={<Login onLogin={handleLogin} />} />
-          <Route
-            path="/signup"
-            element={<Signup onSignup={handleSignup} />}
+      <main className="container mx-auto px-4 py-8">
+        {currentView === "marketplace" && (
+          <Marketplace
+            currentUser={currentUser}
+            onAddToCart={addToCart}
           />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      ) : (
-        <div className="min-h-screen bg-gray-50">
-          <Navbar
-            currentUser={currentUser!}
-            currentView={currentView}
-            onViewChange={handleViewChange}
-            onRoleChange={handleRoleChange}
-            onLogout={handleLogout}
+        )}
+
+        {currentView === "composer" &&
+          currentUser.role === "composer" && (
+            <ComposerDashboard currentUser={currentUser} />
+          )}
+
+        {currentView === "buyer" && (
+          <BuyerDashboard
+            currentUser={currentUser}
             cart={cart}
-            onRemoveFromCart={removeFromCart}
+            onClearCart={clearCart}
           />
+        )}
 
-          <main className="container mx-auto px-4 py-8">
-            {currentView === "marketplace" && currentUser && (
-              <Marketplace
-                currentUser={currentUser}
-                onAddToCart={addToCart}
-              />
-            )}
-
-            {currentView === "composer" &&
-              currentUser?.role === "composer" && (
-                <ComposerDashboard currentUser={currentUser} />
-              )}
-
-            {currentView === "buyer" && currentUser && (
-              <BuyerDashboard
-                currentUser={currentUser}
-                cart={cart}
-                onClearCart={clearCart}
-              />
-            )}
-
-            {currentView === "admin" &&
-              currentUser?.role === "admin" && <AdminPanel />}
-          </main>
-        </div>
-      )}
-    </BrowserRouter>
+        {currentView === "admin" &&
+          currentUser.role === "admin" && <AdminPanel />}
+      </main>
+    </div>
   );
 }
 
