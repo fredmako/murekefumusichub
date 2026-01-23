@@ -15,6 +15,7 @@ import { UserRole } from '@/app/App';
 import { auth } from '@/lib/firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { toast } from 'sonner';
+import { authService } from '@/services/api';
 
 interface LoginProps {
   onLogin: (email: string, password: string, role: UserRole) => void;
@@ -25,45 +26,112 @@ export function Login({ onLogin }: LoginProps) {
   const [password, setPassword] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole>('buyer');
   const [isLoading, setIsLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!email || !password) {
+      toast.error('Please enter email and password');
+      return;
+    }
+    
+    if (password.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+    
     setIsLoading(true);
 
     try {
-      // Try to sign in with Firebase
-      await signInWithEmailAndPassword(auth, email, password);
-      toast.success('Logged in successfully!');
+      let firebaseUser;
+      
+      if (isSignUp) {
+        // Create new account
+        const result = await createUserWithEmailAndPassword(auth, email, password);
+        firebaseUser = result.user;
+        
+        // Sync with backend
+        await authService.syncUser(firebaseUser, selectedRole);
+        
+        toast.success('Account created successfully!');
+      } else {
+        // Sign in existing user
+        const result = await signInWithEmailAndPassword(auth, email, password);
+        firebaseUser = result.user;
+        
+        // Sync with backend (will use existing user or create if not exists)
+        await authService.syncUser(firebaseUser, selectedRole);
+        
+        toast.success('Logged in successfully!');
+      }
+      
+      // Call parent's onLogin callback
       onLogin(email, password, selectedRole);
     } catch (error: any) {
-      // If sign in fails, try to create a new account
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        try {
-          await createUserWithEmailAndPassword(auth, email, password);
-          toast.success('Account created and logged in successfully!');
-          onLogin(email, password, selectedRole);
-        } catch (createError: any) {
-          toast.error(createError.message || 'Failed to create account');
-          setIsLoading(false);
-        }
+      console.error('Authentication error:', error);
+      
+      // Handle specific Firebase errors
+      if (error.code === 'auth/user-not-found') {
+        toast.error('No account found with this email. Please sign up.');
+        setIsSignUp(true);
+      } else if (error.code === 'auth/wrong-password') {
+        toast.error('Incorrect password. Please try again.');
+      } else if (error.code === 'auth/email-already-in-use') {
+        toast.error('This email is already registered. Please sign in instead.');
+        setIsSignUp(false);
+      } else if (error.code === 'auth/weak-password') {
+        toast.error('Password is too weak. Please use at least 6 characters.');
+      } else if (error.code === 'auth/invalid-email') {
+        toast.error('Invalid email address format.');
       } else {
-        toast.error(error.message || 'Login failed');
-        setIsLoading(false);
+        toast.error(error.message || 'Authentication failed. Please try again.');
       }
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const quickLogin = (role: UserRole) => {
+  const quickLogin = async (role: UserRole) => {
     setIsLoading(true);
-    setTimeout(() => {
-      const demoEmails = {
-        buyer: 'buyer@primemedia.com',
-        composer: 'composer@primemedia.com',
-        admin: 'admin@primemedia.com'
-      };
-      onLogin(demoEmails[role], 'demo123', role);
+    
+    const demoCredentials = {
+      buyer: { email: 'buyer@primemedia.com', password: 'demo123' },
+      composer: { email: 'composer@primemedia.com', password: 'demo123' },
+      admin: { email: 'admin@primemedia.com', password: 'demo123' }
+    };
+    
+    const { email, password } = demoCredentials[role];
+    
+    try {
+      // Try to sign in
+      let firebaseUser;
+      try {
+        const result = await signInWithEmailAndPassword(auth, email, password);
+        firebaseUser = result.user;
+      } catch (signInError: any) {
+        // If user doesn't exist, create account
+        if (signInError.code === 'auth/user-not-found') {
+          const result = await createUserWithEmailAndPassword(auth, email, password);
+          firebaseUser = result.user;
+          toast.success(`Demo ${role} account created!`);
+        } else {
+          throw signInError;
+        }
+      }
+      
+      // Sync with backend
+      await authService.syncUser(firebaseUser, role);
+      
+      // Call parent's onLogin callback
+      onLogin(email, password, role);
+      toast.success(`Logged in as ${role}`);
+    } catch (error: any) {
+      console.error('Quick login error:', error);
+      toast.error(error.message || 'Quick login failed');
+    } finally {
       setIsLoading(false);
-    }, 500);
+    }
   };
 
   return (
@@ -112,14 +180,22 @@ export function Login({ onLogin }: LoginProps) {
         <div className="space-y-6">
           <Card className="shadow-xl">
             <CardHeader>
-              <CardTitle className="text-2xl">Sign In</CardTitle>
-              <CardDescription>Enter your credentials to access your account</CardDescription>
+              <CardTitle className="text-2xl">
+                {isSignUp ? 'Create Account' : 'Sign In'}
+              </CardTitle>
+              <CardDescription>
+                {isSignUp 
+                  ? 'Create a new account to get started' 
+                  : 'Enter your credentials to access your account'}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Role Selection */}
                 <div>
-                  <Label htmlFor="role">Login As</Label>
+                  <Label htmlFor="role">
+                    {isSignUp ? 'Select Your Role' : 'Login As'}
+                  </Label>
                   <Select
                     value={selectedRole}
                     onValueChange={(value) => setSelectedRole(value as UserRole)}
@@ -145,6 +221,7 @@ export function Login({ onLogin }: LoginProps) {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    disabled={isLoading}
                   />
                 </div>
 
@@ -154,19 +231,35 @@ export function Login({ onLogin }: LoginProps) {
                   <Input
                     id="password"
                     type="password"
-                    placeholder="Enter your password"
+                    placeholder={isSignUp ? "At least 6 characters" : "Enter your password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    disabled={isLoading}
+                    minLength={6}
                   />
                 </div>
 
-                {/* Login Button */}
+                {/* Submit Button */}
                 <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
                   <LogIn className="size-5 mr-2" />
-                  {isLoading ? 'Signing in...' : 'Sign In'}
+                  {isLoading ? 'Processing...' : (isSignUp ? 'Create Account' : 'Sign In')}
                 </Button>
               </form>
+
+              {/* Toggle Sign Up / Sign In */}
+              <div className="mt-4 text-center">
+                <button
+                  type="button"
+                  onClick={() => setIsSignUp(!isSignUp)}
+                  className="text-sm text-blue-600 hover:underline"
+                  disabled={isLoading}
+                >
+                  {isSignUp 
+                    ? 'Already have an account? Sign in' 
+                    : "Don't have an account? Sign up"}
+                </button>
+              </div>
 
               <div className="mt-6">
                 <div className="relative">
@@ -210,12 +303,23 @@ export function Login({ onLogin }: LoginProps) {
               </div>
             </CardContent>
           </Card>
-
+          
           <p className="text-center text-sm text-gray-500">
-            Don't have an account?{' '}
-            <a href="#" className="text-blue-600 hover:underline font-medium">
-              Sign up now
-            </a>
+            {isSignUp ? (
+              <>
+                By creating an account, you agree to our{' '}
+                <a href="#" className="text-blue-600 hover:underline font-medium">
+                  Terms of Service
+                </a>
+              </>
+            ) : (
+              <>
+                Need help?{' '}
+                <a href="#" className="text-blue-600 hover:underline font-medium">
+                  Contact Support
+                </a>
+              </>
+            )}
           </p>
         </div>
       </div>
