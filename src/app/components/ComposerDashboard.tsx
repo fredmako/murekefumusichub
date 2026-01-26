@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Plus, DollarSign, Music, TrendingUp, Eye, Edit, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, DollarSign, Music, TrendingUp, Eye, Edit, Trash2, Loader } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import {
@@ -20,28 +20,112 @@ import {
 } from '@/app/components/ui/dialog';
 import { Badge } from '@/app/components/ui/badge';
 import { UploadComposition } from '@/app/components/UploadComposition';
-import { mockCompositions, mockPurchases } from '@/app/data/mockData';
 import { User } from '@/app/App';
+import { auth } from '@/lib/firebase';
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
 
 interface ComposerDashboardProps {
   currentUser: User;
 }
 
+interface CompositionWithStats {
+  id: string;
+  title: string;
+  description: string;
+  price: number;
+  created_at: string;
+  is_published: boolean;
+  composition_stats: {
+    views: number;
+    purchases: number;
+  }[];
+}
+
+interface ComposerStats {
+  composerCompositions: CompositionWithStats[];
+  totalRevenue: number;
+  totalSales: number;
+  loading: boolean;
+}
+
 export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [stats, setStats] = useState<ComposerStats>({
+    composerCompositions: [],
+    totalRevenue: 0,
+    totalSales: 0,
+    loading: true
+  });
 
-  // Get composer's compositions
-  const composerCompositions = mockCompositions.filter(
-    comp => comp.composerId === currentUser.id
-  );
+  useEffect(() => {
+    const fetchComposerData = async () => {
+      try {
+        const firebaseUser = auth.currentUser;
+        if (!firebaseUser) {
+          toast.error('Not authenticated');
+          return;
+        }
 
-  // Calculate sales for composer
-  const composerSales = mockPurchases.filter(purchase =>
-    composerCompositions.some(comp => comp.id === purchase.compositionId)
-  );
+        // Get composer record by firebase UID
+        const { data: composerData, error: composerError } = await supabase
+          .from('composers')
+          .select('id')
+          .eq('user_id', firebaseUser.uid)
+          .single();
 
-  const totalRevenue = composerSales.reduce((sum, sale) => sum + sale.price, 0);
-  const totalSales = composerSales.length;
+        if (composerError || !composerData) {
+          toast.error('Composer profile not found');
+          setStats(prev => ({ ...prev, loading: false }));
+          return;
+        }
+
+        // Get composer's compositions with stats
+        const { data: compositions, error: compError } = await supabase
+          .from('compositions')
+          .select(`
+            id,
+            title,
+            description,
+            price,
+            created_at,
+            is_published,
+            composition_stats(views, purchases)
+          `)
+          .eq('composer_id', composerData.id)
+          .eq('deleted', false);
+
+        if (compError) throw compError;
+
+        // Get total sales and revenue
+        const { data: purchases, error: purchaseError } = await supabase
+          .from('purchases')
+          .select('price_paid')
+          .in('composition_id', compositions?.map(c => c.id) || [])
+          .eq('is_active', true);
+
+        if (purchaseError) throw purchaseError;
+
+        const totalRevenue = purchases?.reduce((sum, p) => sum + (p.price_paid || 0), 0) || 0;
+        const totalSales = purchases?.length || 0;
+
+        setStats({
+          composerCompositions: compositions || [],
+          totalRevenue,
+          totalSales,
+          loading: false
+        });
+      } catch (error) {
+        console.error('Error fetching composer data:', error);
+        toast.error('Failed to load dashboard');
+        setStats(prev => ({ ...prev, loading: false }));
+      }
+    };
+
+    fetchComposerData();
+  }, []);
+
+  const { composerCompositions, totalRevenue, totalSales } = stats;
 
   // Get composition stats
   const compositionStats = composerCompositions.map(comp => {

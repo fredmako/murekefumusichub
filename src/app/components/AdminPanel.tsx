@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Users, Music, DollarSign, TrendingUp, MoreVertical, Ban, CheckCircle, Eye } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Users, Music, DollarSign, TrendingUp, MoreVertical, Ban, CheckCircle, Eye, Loader } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import {
   Table,
@@ -20,47 +20,107 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/app/components/ui/dropdown-menu';
-import { mockCompositions, mockPurchases, mockUsers } from '@/app/data/mockData';
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
 
 export function AdminPanel() {
   const [activeTab, setActiveTab] = useState('overview');
+  const [loading, setLoading] = useState(true);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [totalCompositions, setTotalCompositions] = useState(0);
+  const [totalRevenue, setTotalRevenue] = useState(0);
+  const [totalTransactions, setTotalTransactions] = useState(0);
 
-  // Calculate stats
-  const totalUsers = mockUsers.length;
-  const totalCompositions = mockCompositions.length;
-  const totalRevenue = mockPurchases.reduce((sum, p) => sum + p.price, 0);
-  const totalTransactions = mockPurchases.length;
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        setLoading(true);
 
-  // Calculate composer stats
-  const composerStats = mockUsers
-    .filter(u => u.role === 'composer')
-    .map(composer => {
-      const compositions = mockCompositions.filter(c => c.composerId === composer.id);
-      const sales = mockPurchases.filter(p =>
-        compositions.some(c => c.id === p.compositionId)
-      );
-      const revenue = sales.reduce((sum, s) => sum + s.price, 0);
-      return {
-        ...composer,
-        compositionCount: compositions.length,
-        salesCount: sales.length,
-        revenue
-      };
-    });
+        const { count: usersCount, error: uErr } = await supabase
+          .from('users')
+          .select('id', { count: 'exact', head: true });
+        if (uErr) throw uErr;
+        setTotalUsers(usersCount || 0);
 
-  // Recent transactions
-  const recentTransactions = mockPurchases
-    .sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime())
-    .slice(0, 10)
-    .map(purchase => {
-      const composition = mockCompositions.find(c => c.id === purchase.compositionId);
-      const buyer = mockUsers.find(u => u.id === purchase.buyerId);
-      return {
-        ...purchase,
-        composition,
-        buyer
-      };
-    });
+        const { count: compCount, error: cErr } = await supabase
+          .from('compositions')
+          .select('id', { count: 'exact', head: true });
+        if (cErr) throw cErr;
+        setTotalCompositions(compCount || 0);
+
+        // Sum revenue and transactions
+        const { data: revenueData, error: rErr } = await supabase
+          .from('purchases')
+          .select('price_paid', { count: 'exact' });
+        if (rErr) throw rErr;
+        const revenue = (revenueData || []).reduce((s: number, p: any) => s + (p.price_paid || 0), 0);
+        setTotalRevenue(revenue);
+        setTotalTransactions((revenueData || []).length);
+      } catch (err) {
+        console.error('Failed to load admin stats:', err);
+        toast.error('Failed to load admin stats');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
+
+  const [composerStats, setComposerStats] = useState<any[]>([]);
+  const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchMore = async () => {
+      try {
+        // Composer stats: join composers -> users and count compositions and purchases
+        const { data: composers, error: compErr } = await supabase
+          .from('composers')
+          .select(`id, user_id, users(display_name, email)`);
+        if (compErr) throw compErr;
+
+        const stats = [] as any[];
+        for (const comp of composers || []) {
+          const { data: compositions } = await supabase
+            .from('compositions')
+            .select('id')
+            .eq('composer_id', comp.id)
+            .eq('deleted', false);
+
+          const compIds = (compositions || []).map((c: any) => c.id);
+          const { data: sales } = await supabase
+            .from('purchases')
+            .select('price_paid')
+            .in('composition_id', compIds || [])
+            .eq('is_active', true);
+
+          const revenue = (sales || []).reduce((s: number, p: any) => s + (p.price_paid || 0), 0);
+          stats.push({
+            id: comp.id,
+            display_name: comp.users?.display_name || comp.users?.email || 'Unknown',
+            compositionCount: (compositions || []).length,
+            salesCount: (sales || []).length,
+            revenue,
+          });
+        }
+
+        setComposerStats(stats);
+
+        // Recent transactions
+        const { data: recent, error: recentErr } = await supabase
+          .from('purchases')
+          .select('*, compositions(*), buyers(*)')
+          .order('purchased_at', { ascending: false })
+          .limit(10);
+        if (recentErr) throw recentErr;
+        setRecentTransactions(recent || []);
+      } catch (err) {
+        console.error('Failed to load composer stats or transactions:', err);
+      }
+    };
+
+    fetchMore();
+  }, []);
 
   return (
     <div>

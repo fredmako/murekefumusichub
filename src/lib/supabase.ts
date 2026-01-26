@@ -2,7 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 
 // Supabase configuration
 // These will be replaced with your actual Supabase credentials
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'YOUR_SUPABASE_URL';
+// Default to the provided project id if environment variable is not set
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ffrgvovaaxodqzzojfzs.supabase.co';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -131,6 +132,19 @@ export interface AuditLog {
   action: string;
   payload: any | null;
   created_at: string;
+}
+
+export interface FileUpload {
+  id: string;
+  user_id: string;
+  file_name: string;
+  file_path: string;
+  file_type: string;
+  file_size: number;
+  bucket: 'compositions' | 'thumbnails' | 'avatars';
+  storage_url: string;
+  created_at: string;
+  updated_at: string;
 }
 
 // Database setup SQL (for reference - run this in Supabase SQL editor)
@@ -282,6 +296,25 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   payload JSONB,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- File uploads tracking table (for Supabase Storage)
+CREATE TABLE IF NOT EXISTS file_uploads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  file_name TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  file_type TEXT NOT NULL,
+  file_size INT NOT NULL,
+  bucket TEXT NOT NULL,
+  storage_url TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create indexes for file_uploads
+CREATE INDEX IF NOT EXISTS idx_file_uploads_user_id ON file_uploads(user_id);
+CREATE INDEX IF NOT EXISTS idx_file_uploads_bucket ON file_uploads(bucket);
+CREATE INDEX IF NOT EXISTS idx_file_uploads_file_path ON file_uploads(file_path);
 
 -- Stored procedure: Purchase composition
 CREATE OR REPLACE FUNCTION purchase_composition(

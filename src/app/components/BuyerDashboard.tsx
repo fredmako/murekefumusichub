@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Download, Calendar, DollarSign, Music, CreditCard, ShoppingBag } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Download, Calendar, DollarSign, Music, CreditCard, ShoppingBag, Loader } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import {
@@ -12,9 +12,10 @@ import {
 } from '@/app/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { Separator } from '@/app/components/ui/separator';
-import { mockCompositions, mockPurchases } from '@/app/data/mockData';
 import { User, CartItem } from '@/app/App';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
+import { auth } from '@/lib/firebase';
 
 interface BuyerDashboardProps {
   currentUser: User;
@@ -24,19 +25,63 @@ interface BuyerDashboardProps {
 
 export function BuyerDashboard({ currentUser, cart, onClearCart }: BuyerDashboardProps) {
   const [activeTab, setActiveTab] = useState('library');
+  const [loading, setLoading] = useState(true);
+  const [purchasedCompositions, setPurchasedCompositions] = useState<any[]>([]);
+  const [totalSpent, setTotalSpent] = useState(0);
 
-  // Get user's purchases
-  const userPurchases = mockPurchases.filter(p => p.buyerId === currentUser.id);
+  useEffect(() => {
+    const fetchUserPurchases = async () => {
+      try {
+        setLoading(true);
+        const firebaseUser = auth.currentUser;
+        if (!firebaseUser) {
+          toast.error('You must be signed in to view purchases');
+          setLoading(false);
+          return;
+        }
 
-  const purchasedCompositions = userPurchases.map(purchase => {
-    const composition = mockCompositions.find(c => c.id === purchase.compositionId);
-    return {
-      ...purchase,
-      composition
+        // Resolve supabase users.id from firebase_uid
+        const { data: sbUser } = await supabase
+          .from('users')
+          .select('id')
+          .eq('firebase_uid', firebaseUser.uid)
+          .single();
+
+        if (!sbUser) {
+          setPurchasedCompositions([]);
+          setTotalSpent(0);
+          setLoading(false);
+          return;
+        }
+
+        // Fetch purchases with composition details
+        const { data: purchases, error: purchasesError } = await supabase
+          .from('purchases')
+          .select(`*, compositions(*)`)
+          .eq('buyer_id', sbUser.id)
+          .eq('is_active', true)
+          .order('purchased_at', { ascending: false });
+
+        if (purchasesError) throw purchasesError;
+
+        const enriched = (purchases || []).map((p: any) => ({
+          ...p,
+          composition: p.compositions || p.composition || null,
+        }));
+
+        setPurchasedCompositions(enriched);
+        const spent = (purchases || []).reduce((sum: number, p: any) => sum + (p.price_paid || 0), 0);
+        setTotalSpent(spent);
+      } catch (err) {
+        console.error('Error loading purchases:', err);
+        toast.error('Failed to load purchases');
+      } finally {
+        setLoading(false);
+      }
     };
-  });
 
-  const totalSpent = userPurchases.reduce((sum, p) => sum + p.price, 0);
+    fetchUserPurchases();
+  }, []);
 
   // Cart calculations
   const cartTotal = cart.reduce((sum, item) => sum + item.composition.price * item.quantity, 0);
