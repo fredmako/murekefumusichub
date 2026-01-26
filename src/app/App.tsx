@@ -4,7 +4,7 @@ import { Marketplace } from "@/app/components/Marketplace";
 import { ComposerDashboard } from "@/app/components/ComposerDashboard";
 import { BuyerDashboard } from "@/app/components/BuyerDashboard";
 import { AdminPanel } from "@/app/components/AdminPanel";
-import { LearningPage } from "@/app/components/LearningPage";
+import { LandingPage } from "@/app/components/LearningPage";
 import { Login } from "@/app/components/Login";
 import { Toaster } from "@/app/components/ui/sonner";
 
@@ -183,7 +183,7 @@ function App() {
           />
         )}
 
-        {currentView === "learning" && <LearningPage />}
+        {currentView === "learning" && <LandingPage />}
 
         {currentView === "composer" &&
           currentUser.role === "composer" && (

@@ -1,12 +1,12 @@
 import React, { useState } from "react";
-import { Button } from "@/app/components/ui/button";
-import { Card } from "@/app/components/ui/card";
+import { Button } from './ui/button';
+import { Card } from './ui/card';
 import {
   Music,
   Keyboard,
   Guitar,
   Mic,
-  Trumpet,
+  Wind,
   Users,
   BookOpen,
   Award,
@@ -20,7 +20,7 @@ interface MusicClass {
   level: string;
 }
 
-export const LearningPage: React.FC = () => {
+export const LandingPage: React.FC = () => {
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
 
   const musicClasses: MusicClass[] = [
@@ -53,7 +53,7 @@ export const LearningPage: React.FC = () => {
       name: "Trumpet",
       description:
         "We offer extensive trumpet learning program at our music school.",
-      icon: <Trumpet className="w-12 h-12" />,
+      icon: <Wind className="w-12 h-12" />,
       level: "Beginner to Advanced",
     },
     {
@@ -201,7 +201,7 @@ export const LearningPage: React.FC = () => {
                 <Button
                   variant="outline"
                   className="w-full"
-                  onClick={(e) => {
+                  onClick={(e: React.MouseEvent) => {
                     e.stopPropagation();
                   }}
                 >
