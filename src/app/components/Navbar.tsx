@@ -21,8 +21,8 @@ import { User, UserRole, CartItem } from '@/app/App';
 
 interface NavbarProps {
   currentUser: User;
-  currentView: 'marketplace' | 'composer' | 'buyer' | 'admin';
-  onViewChange: (view: 'marketplace' | 'composer' | 'buyer' | 'admin') => void;
+  currentView: 'marketplace' | 'composer' | 'buyer' | 'admin' | 'learning';
+  onViewChange: (view: 'marketplace' | 'composer' | 'buyer' | 'admin' | 'learning') => void;
   onRoleChange: (role: UserRole) => void;
   onLogout: () => void;
   cart: CartItem[];
@@ -63,6 +63,14 @@ export function Navbar({
               onClick={() => onViewChange('marketplace')}
             >
               Marketplace
+            </Button>
+
+            <Button
+              variant={currentView === 'learning' ? 'default' : 'ghost'}
+              onClick={() => onViewChange('learning')}
+            >
+              <Music className="size-4 mr-2" />
+              Learn Music
             </Button>
 
             {currentUser.role === 'composer' && (

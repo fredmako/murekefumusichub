@@ -4,6 +4,7 @@ import { Marketplace } from "@/app/components/Marketplace";
 import { ComposerDashboard } from "@/app/components/ComposerDashboard";
 import { BuyerDashboard } from "@/app/components/BuyerDashboard";
 import { AdminPanel } from "@/app/components/AdminPanel";
+import { LearningPage } from "@/app/components/LearningPage";
 import { Login } from "@/app/components/Login";
 import { Toaster } from "@/app/components/ui/sonner";
 
@@ -55,7 +56,7 @@ function App() {
   });
 
   const [currentView, setCurrentView] = useState<
-    "marketplace" | "composer" | "buyer" | "admin"
+    "marketplace" | "composer" | "buyer" | "admin" | "learning"
   >("marketplace");
   const [cart, setCart] = useState<CartItem[]>([]);
 
@@ -140,7 +141,7 @@ function App() {
   };
 
   const handleViewChange = (
-    view: "marketplace" | "composer" | "buyer" | "admin",
+    view: "marketplace" | "composer" | "buyer" | "admin" | "learning",
   ) => {
     setCurrentView(view);
   };
@@ -181,6 +182,8 @@ function App() {
             onAddToCart={addToCart}
           />
         )}
+
+        {currentView === "learning" && <LearningPage />}
 
         {currentView === "composer" &&
           currentUser.role === "composer" && (
