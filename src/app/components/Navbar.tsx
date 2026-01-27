@@ -1,7 +1,8 @@
+// src/app/components/Navbar.tsx
 import { useLocation, NavLink, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { CartItem } from "@/app/types";
-import { Music, ShoppingCart, LayoutDashboard, User as UserIcon, LogOut } from "lucide-react";
+import { Music, ShoppingCart, User as UserIcon, LogOut } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
 import {
@@ -22,11 +23,11 @@ import {
 } from "@/app/components/ui/sheet";
 
 interface NavbarProps {
-  cart: CartItem[];
-  onRemoveFromCart: (compositionId: string) => void;
+  cart?: CartItem[]; // optional to prevent errors
+  onRemoveFromCart?: (compositionId: string) => void;
 }
 
-export function Navbar({ cart, onRemoveFromCart }: NavbarProps) {
+export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   const { firebaseUser, appUser, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -38,25 +39,54 @@ export function Navbar({ cart, onRemoveFromCart }: NavbarProps) {
   );
 
   const roles = appUser?.roles ?? [];
-  const uid = appUser?.uid;
 
-  // Navigation config
+  // Navigation items
   const navItems = [
-    { label: "Learn Music", path: "/", showOn: ["/"], roles: [] },
-    { label: "About Us", path: "/about", showOn: ["/"], roles: [] },
-    { label: "Marketplace", path: "/marketplace", showOn: ["any"], roles: [] },
-    { label: "My Library", path: "/buyer", showOn: ["any"], roles: ["buyer"] },
-    { label: "My Compositions", path: "/composer", showOn: ["any"], roles: ["composer"] },
-    { label: "Admin", path: "/admin", showOn: ["any"], roles: ["admin"] },
+    {
+      label: "Learn Music",
+      path: "/",
+      showOn: ["/"], // only landing page
+      roles: [], // all users
+    },
+    {
+      label: "About Us",
+      path: "/about",
+      showOn: ["/"], // landing page
+      roles: [],
+    },
+    {
+      label: "Marketplace",
+      path: "/marketplace",
+      showOn: ["any"], // everywhere
+      roles: [],
+    },
+    {
+      label: "My Library",
+      path: "/buyer",
+      showOn: ["any"],
+      roles: ["buyer"],
+    },
+    {
+      label: "My Compositions",
+      path: "/composer",
+      showOn: ["any"],
+      roles: ["composer"],
+    },
+    {
+      label: "Admin",
+      path: "/admin",
+      showOn: ["any"],
+      roles: ["admin"],
+    },
   ];
 
-  // Generate role-specific dashboard link
-  const getDashboardLink = () => {
-    if (!uid) return "/login";
-    if (roles.includes("buyer")) return `/buyer?uid=${uid}`;
-    if (roles.includes("composer")) return `/composer?uid=${uid}`;
-    if (roles.includes("admin")) return `/admin?uid=${uid}`;
-    return "/login";
+  // Determine dashboard path dynamically based on roles
+  const getDashboardPath = () => {
+    if (!roles || roles.length === 0) return "/";
+    if (roles.includes("admin")) return "/admin";
+    if (roles.includes("composer")) return "/composer";
+    if (roles.includes("buyer")) return "/buyer";
+    return "/";
   };
 
   return (
@@ -88,7 +118,9 @@ export function Navbar({ cart, onRemoveFromCart }: NavbarProps) {
               return (
                 <NavLink key={item.path} to={item.path}>
                   {({ isActive }) => (
-                    <Button variant={isActive ? "default" : "ghost"}>{item.label}</Button>
+                    <Button variant={isActive ? "default" : "ghost"}>
+                      {item.label}
+                    </Button>
                   )}
                 </NavLink>
               );
@@ -97,8 +129,8 @@ export function Navbar({ cart, onRemoveFromCart }: NavbarProps) {
 
           {/* Right Actions */}
           <div className="flex items-center gap-3">
-            {/* Cart (buyers only) */}
-            {roles.includes("buyer") && (
+            {/* Cart for buyers only */}
+            {roles.includes("buyer") && cart.length > 0 && onRemoveFromCart && (
               <Sheet>
                 <SheetTrigger asChild>
                   <Button variant="outline" size="icon" className="relative">
@@ -167,21 +199,19 @@ export function Navbar({ cart, onRemoveFromCart }: NavbarProps) {
 
                     <DropdownMenuSeparator />
 
-                    <DropdownMenuItem onClick={() => navigate(getDashboardLink())}>
+                    {/* Redirect to the correct dashboard */}
+                    <DropdownMenuItem onClick={() => navigate(getDashboardPath())}>
                       Dashboard
                     </DropdownMenuItem>
 
                     <DropdownMenuSeparator />
-
                     <DropdownMenuItem onClick={signOut} className="text-red-600">
                       <LogOut className="size-4 mr-2" />
                       Logout
                     </DropdownMenuItem>
                   </>
                 ) : (
-                  <DropdownMenuItem onClick={() => navigate("/login")}>
-                    Sign In
-                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/login")}>Sign In</DropdownMenuItem>
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
