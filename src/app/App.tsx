@@ -22,7 +22,7 @@ const ComposerDashboard = React.lazy(() =>
   import("./components/ComposerDashboard").then(module => ({ default: module.ComposerDashboard || module.default }))
 );
 const AdminDashboard = React.lazy(() =>
-  import("./components/AdminDashboard").then(module => ({ default: module.AdminDashboard || module.default }))
+  import("./components/AdminPanel").then(module => ({ default: module.AdminDashboard || module.default }))
 );
 
 // Error Boundary (class-based)
