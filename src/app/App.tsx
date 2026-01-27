@@ -1,19 +1,31 @@
 // src/app/App.tsx
-import React, { Suspense, useEffect, useState } from "react";
-import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
+import React, { Suspense, useState } from "react";
+import { Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { CartItem } from "./types";
-import { AuthProvider, useAuth } from "../context/AuthContext";
+import { AuthProvider } from "../context/AuthContext";
 
-// Lazy-load heavy pages (components must default export)
-const LandingPage = React.lazy(() => import("./components/LandingPage"));
-const Login = React.lazy(() => import("./components/Login"));
-const Marketplace = React.lazy(() => import("./components/Marketplace"));
-const BuyerDashboard = React.lazy(() => import("./components/BuyerDashboard"));
-const ComposerDashboard = React.lazy(() => import("./components/ComposerDashboard"));
-const AdminDashboard = React.lazy(() => import("./components/AdminPanel"));
+// Lazy-load heavy pages (ensure default exports exist)
+const LandingPage = React.lazy(() =>
+  import("./components/LandingPage").then(module => ({ default: module.LandingPage || module.default }))
+);
+const Login = React.lazy(() =>
+  import("./components/Login").then(module => ({ default: module.Login || module.default }))
+);
+const Marketplace = React.lazy(() =>
+  import("./components/Marketplace").then(module => ({ default: module.Marketplace || module.default }))
+);
+const BuyerDashboard = React.lazy(() =>
+  import("./components/BuyerDashboard").then(module => ({ default: module.BuyerDashboard || module.default }))
+);
+const ComposerDashboard = React.lazy(() =>
+  import("./components/ComposerDashboard").then(module => ({ default: module.ComposerDashboard || module.default }))
+);
+const AdminDashboard = React.lazy(() =>
+  import("./components/AdminPanel").then(module => ({ default: module.AdminDashboard || module.default }))
+);
 
-// Error Boundary
+// Error Boundary (class-based)
 class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error?: Error }> {
   constructor(props: { children: React.ReactNode }) {
     super(props);
@@ -41,58 +53,28 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
   }
 }
 
-// Dashboard wrapper to pass uid + cart
+// Wrapper to pass uid query and cart to dashboards
 const DashboardWrapper = ({
   Component,
   cart,
-  onRemoveFromCart,
+  onRemoveFromCart
 }: {
   Component: React.FC<any>;
   cart: CartItem[];
   onRemoveFromCart: (id: string) => void;
 }) => {
-  const searchParams = new URLSearchParams(window.location.search);
+  const [searchParams] = useSearchParams();
   const uid = searchParams.get("uid") || undefined;
 
   return <Component uid={uid} cart={cart} onRemoveFromCart={onRemoveFromCart} />;
 };
 
-// Redirect logged-in users to their dashboard
-const ProtectedRoute = ({
-  children,
-  role,
-}: {
-  children: React.ReactNode;
-  role: "buyer" | "composer" | "admin";
-}) => {
-  const { appUser } = useAuth();
-  if (!appUser) return <Navigate to="/login" replace />;
-  if (!appUser.roles.includes(role)) return <Navigate to="/" replace />;
-  return <>{children}</>;
-};
-
 export default function App() {
   const [cart, setCart] = useState<CartItem[]>([]);
-  const { appUser } = useAuth();
-  const location = useLocation();
 
   const handleRemoveFromCart = (compositionId: string) => {
-    setCart((prev) => prev.filter((item) => item.composition.id !== compositionId));
+    setCart(prev => prev.filter(item => item.composition.id !== compositionId));
   };
-
-  // Automatically redirect logged-in users away from landing/login
-  useEffect(() => {
-    if (!appUser) return;
-    const role = appUser.roles.includes("admin")
-      ? "admin"
-      : appUser.roles.includes("composer")
-      ? "composer"
-      : "buyer";
-
-    if (location.pathname === "/" || location.pathname === "/login") {
-      window.history.replaceState({}, "", `/${role}?uid=${appUser.uid}`);
-    }
-  }, [appUser, location.pathname]);
 
   return (
     <AppErrorBoundary>
@@ -108,30 +90,18 @@ export default function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/marketplace" element={<Marketplace />} />
 
-                {/* Dashboards */}
+                {/* Dashboards with uid query */}
                 <Route
                   path="/buyer"
-                  element={
-                    <ProtectedRoute role="buyer">
-                      <DashboardWrapper Component={BuyerDashboard} cart={cart} onRemoveFromCart={handleRemoveFromCart} />
-                    </ProtectedRoute>
-                  }
+                  element={<DashboardWrapper Component={BuyerDashboard} cart={cart} onRemoveFromCart={handleRemoveFromCart} />}
                 />
                 <Route
                   path="/composer"
-                  element={
-                    <ProtectedRoute role="composer">
-                      <DashboardWrapper Component={ComposerDashboard} cart={cart} onRemoveFromCart={handleRemoveFromCart} />
-                    </ProtectedRoute>
-                  }
+                  element={<DashboardWrapper Component={ComposerDashboard} cart={cart} onRemoveFromCart={handleRemoveFromCart} />}
                 />
                 <Route
                   path="/admin"
-                  element={
-                    <ProtectedRoute role="admin">
-                      <DashboardWrapper Component={AdminDashboard} cart={cart} onRemoveFromCart={handleRemoveFromCart} />
-                    </ProtectedRoute>
-                  }
+                  element={<DashboardWrapper Component={AdminDashboard} cart={cart} onRemoveFromCart={handleRemoveFromCart} />}
                 />
 
                 {/* Redirect /home to landing page */}
