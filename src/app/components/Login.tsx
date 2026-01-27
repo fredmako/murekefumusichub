@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Music, LogIn } from 'lucide-react';
+import { Music, LogIn, Google } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Input } from '@/app/components/ui/input';
@@ -13,7 +13,12 @@ import {
 } from '@/app/components/ui/select';
 import { UserRole } from '@/app/App';
 import { auth } from '@/lib/firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup
+} from 'firebase/auth';
 import { toast } from 'sonner';
 import { authService } from '@/services/api';
 
@@ -30,48 +35,40 @@ export function Login({ onLogin }: LoginProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!email || !password) {
       toast.error('Please enter email and password');
       return;
     }
-    
+
     if (password.length < 6) {
       toast.error('Password must be at least 6 characters');
       return;
     }
-    
+
     setIsLoading(true);
 
     try {
       let firebaseUser;
-      
+
       if (isSignUp) {
-        // Create new account
         const result = await createUserWithEmailAndPassword(auth, email, password);
         firebaseUser = result.user;
-        
-        // Sync with backend
+
         await authService.syncUser(firebaseUser, selectedRole);
-        
         toast.success('Account created successfully!');
       } else {
-        // Sign in existing user
         const result = await signInWithEmailAndPassword(auth, email, password);
         firebaseUser = result.user;
-        
-        // Sync with backend (will use existing user or create if not exists)
+
         await authService.syncUser(firebaseUser, selectedRole);
-        
         toast.success('Logged in successfully!');
       }
-      
-      // Call parent's onLogin callback
+
       onLogin(email, password, selectedRole);
     } catch (error: any) {
       console.error('Authentication error:', error);
-      
-      // Handle specific Firebase errors
+
       if (error.code === 'auth/user-not-found') {
         toast.error('No account found with this email. Please sign up.');
         setIsSignUp(true);
@@ -92,43 +89,22 @@ export function Login({ onLogin }: LoginProps) {
     }
   };
 
-  const quickLogin = async (role: UserRole) => {
+  const handleGoogleSignIn = async () => {
     setIsLoading(true);
-    
-    const demoCredentials = {
-      buyer: { email: 'buyer@primemedia.com', password: 'demo123' },
-      composer: { email: 'composer@primemedia.com', password: 'demo123' },
-      admin: { email: 'admin@primemedia.com', password: 'demo123' }
-    };
-    
-    const { email, password } = demoCredentials[role];
-    
+    const provider = new GoogleAuthProvider();
+
     try {
-      // Try to sign in
-      let firebaseUser;
-      try {
-        const result = await signInWithEmailAndPassword(auth, email, password);
-        firebaseUser = result.user;
-      } catch (signInError: any) {
-        // If user doesn't exist, create account
-        if (signInError.code === 'auth/user-not-found') {
-          const result = await createUserWithEmailAndPassword(auth, email, password);
-          firebaseUser = result.user;
-          toast.success(`Demo ${role} account created!`);
-        } else {
-          throw signInError;
-        }
-      }
-      
-      // Sync with backend
-      await authService.syncUser(firebaseUser, role);
-      
-      // Call parent's onLogin callback
-      onLogin(email, password, role);
-      toast.success(`Logged in as ${role}`);
+      const result = await signInWithPopup(auth, provider);
+      const firebaseUser = result.user;
+
+      // Default role could be buyer or ask user to select
+      await authService.syncUser(firebaseUser, selectedRole);
+
+      onLogin(firebaseUser.email || '', '', selectedRole);
+      toast.success('Logged in with Google successfully!');
     } catch (error: any) {
-      console.error('Quick login error:', error);
-      toast.error(error.message || 'Quick login failed');
+      console.error('Google sign-in error:', error);
+      toast.error(error.message || 'Google sign-in failed');
     } finally {
       setIsLoading(false);
     }
@@ -247,6 +223,20 @@ export function Login({ onLogin }: LoginProps) {
                 </Button>
               </form>
 
+              {/* Google Sign-In */}
+              <div className="mt-4">
+                <Button
+                  type="button"
+                  className="w-full flex items-center justify-center gap-2"
+                  variant="outline"
+                  onClick={handleGoogleSignIn}
+                  disabled={isLoading}
+                >
+                  <Google className="size-5" />
+                  Sign in with Google
+                </Button>
+              </div>
+
               {/* Toggle Sign Up / Sign In */}
               <div className="mt-4 text-center">
                 <button
@@ -260,50 +250,9 @@ export function Login({ onLogin }: LoginProps) {
                     : "Don't have an account? Sign up"}
                 </button>
               </div>
-
-              <div className="mt-6">
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t"></div>
-                  </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-white text-gray-500">Demo Quick Access</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 mt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => quickLogin('buyer')}
-                    disabled={isLoading}
-                  >
-                    Buyer
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => quickLogin('composer')}
-                    disabled={isLoading}
-                  >
-                    Composer
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => quickLogin('admin')}
-                    disabled={isLoading}
-                  >
-                    Admin
-                  </Button>
-                </div>
-              </div>
             </CardContent>
           </Card>
-          
+
           <p className="text-center text-sm text-gray-500">
             {isSignUp ? (
               <>
