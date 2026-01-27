@@ -3,9 +3,9 @@ import React, { Suspense, useState } from "react";
 import { Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { CartItem } from "./types";
-import { AuthProvider } from "../context/AuthContext";
+import { AuthProvider, useAuth } from "../context/AuthContext";
 
-// Lazy-load heavy pages (ensure default exports exist)
+// Lazy-load heavy pages
 const LandingPage = React.lazy(() =>
   import("./components/LandingPage").then(module => ({ default: module.LandingPage || module.default }))
 );
@@ -25,7 +25,7 @@ const AdminDashboard = React.lazy(() =>
   import("./components/AdminPanel").then(module => ({ default: module.AdminDashboard || module.default }))
 );
 
-// Error Boundary (class-based)
+// Error Boundary
 class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error?: Error }> {
   constructor(props: { children: React.ReactNode }) {
     super(props);
@@ -53,7 +53,7 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
   }
 }
 
-// Wrapper to pass uid query and cart to dashboards
+// Dashboard wrapper to pass uid and cart
 const DashboardWrapper = ({
   Component,
   cart,
@@ -69,12 +69,40 @@ const DashboardWrapper = ({
   return <Component uid={uid} cart={cart} onRemoveFromCart={onRemoveFromCart} />;
 };
 
+// Component to handle private routes
+const PrivateRoute = ({
+  component: Component,
+  cart,
+  onRemoveFromCart
+}: {
+  component: React.FC<any>;
+  cart: CartItem[];
+  onRemoveFromCart: (id: string) => void;
+}) => {
+  const { appUser } = useAuth();
+
+  if (!appUser) {
+    // Not logged in → redirect to login
+    return <Navigate to="/login" replace />;
+  }
+
+  // Determine dashboard path based on role
+  const uidParam = `?uid=${appUser.uid}`;
+  if (appUser.roles.includes("buyer")) return <Navigate to={`/buyer${uidParam}`} replace />;
+  if (appUser.roles.includes("composer")) return <Navigate to={`/composer${uidParam}`} replace />;
+  if (appUser.roles.includes("admin")) return <Navigate to={`/admin${uidParam}`} replace />;
+
+  return <Navigate to="/login" replace />;
+};
+
 export default function App() {
   const [cart, setCart] = useState<CartItem[]>([]);
 
   const handleRemoveFromCart = (compositionId: string) => {
     setCart(prev => prev.filter(item => item.composition.id !== compositionId));
   };
+
+  const { appUser } = useAuth();
 
   return (
     <AppErrorBoundary>
@@ -85,12 +113,13 @@ export default function App() {
           <main className="mt-4">
             <Suspense fallback={<div className="p-8">Loading...</div>}>
               <Routes>
-                {/* Public Routes */}
-                <Route path="/" element={<LandingPage />} />
-                <Route path="/login" element={<Login />} />
+                {/* Redirect logged-in users from landing page */}
+                <Route path="/" element={appUser ? <PrivateRoute component={LandingPage} cart={cart} onRemoveFromCart={handleRemoveFromCart} /> : <LandingPage />} />
+                <Route path="/login" element={appUser ? <PrivateRoute component={Login} cart={cart} onRemoveFromCart={handleRemoveFromCart} /> : <Login />} />
+
                 <Route path="/marketplace" element={<Marketplace />} />
 
-                {/* Dashboards with uid query */}
+                {/* Dashboards */}
                 <Route
                   path="/buyer"
                   element={<DashboardWrapper Component={BuyerDashboard} cart={cart} onRemoveFromCart={handleRemoveFromCart} />}
