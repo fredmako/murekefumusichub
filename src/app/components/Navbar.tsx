@@ -29,7 +29,7 @@ import {
 } from "@/app/components/ui/sheet";
 
 import { Link, NavLink, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../../context/Authcontext";
 import { CartItem } from "@/app/types";
 interface NavbarProps {
   cart: CartItem[];
