@@ -5,7 +5,7 @@ import { Navbar } from "./components/Navbar";
 import { CartItem } from "./types";
 import { AuthProvider } from "../context/AuthContext";
 
-// Lazy-load heavy pages (ensure default exports exist in these components)
+// Lazy-load heavy pages (ensure default exports exist)
 const LandingPage = React.lazy(() =>
   import("./components/LandingPage").then(module => ({ default: module.LandingPage || module.default }))
 );
@@ -14,6 +14,15 @@ const Login = React.lazy(() =>
 );
 const Marketplace = React.lazy(() =>
   import("./components/Marketplace").then(module => ({ default: module.Marketplace || module.default }))
+);
+const BuyerDashboard = React.lazy(() =>
+  import("./components/BuyerDashboard").then(module => ({ default: module.BuyerDashboard || module.default }))
+);
+const ComposerDashboard = React.lazy(() =>
+  import("./components/ComposerDashboard").then(module => ({ default: module.ComposerDashboard || module.default }))
+);
+const AdminDashboard = React.lazy(() =>
+  import("./components/AdminDashboard").then(module => ({ default: module.AdminDashboard || module.default }))
 );
 
 // Error Boundary (class-based)
@@ -63,7 +72,16 @@ export default function App() {
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/marketplace" element={<Marketplace />} />
+
+                {/* Dashboards */}
+                <Route path="/buyer" element={<BuyerDashboard />} />
+                <Route path="/composer" element={<ComposerDashboard />} />
+                <Route path="/admin" element={<AdminDashboard />} />
+
+                {/* Redirect /home to landing page */}
                 <Route path="/home" element={<Navigate to="/" replace />} />
+
+                {/* 404 Fallback */}
                 <Route
                   path="*"
                   element={
