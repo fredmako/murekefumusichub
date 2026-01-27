@@ -176,7 +176,7 @@ export const LandingPage: React.FC = () => {
             <Button size="lg" variant="secondary">Enroll Now</Button>
           </Link>
           <Link to="/contact">
-            <Button size="lg" variant="outline" className="border-white text-white hover:bg-white hover:text-purple-600">Contact Us</Button>
+            <Button size="lg" variant="outline" >Contact Us</Button>
           </Link>
         </div>
       </section>
