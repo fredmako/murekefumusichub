@@ -1,6 +1,15 @@
-import { Music, ShoppingCart, LayoutDashboard, User as UserIcon, Settings, LogOut } from 'lucide-react';
-import { Button } from '@/app/components/ui/button';
-import { Badge } from '@/app/components/ui/badge';
+import {
+  Music,
+  ShoppingCart,
+  LayoutDashboard,
+  User as UserIcon,
+  Settings,
+  LogOut
+} from "lucide-react";
+
+import { Button } from "@/app/components/ui/button";
+import { Badge } from "@/app/components/ui/badge";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,7 +17,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/app/components/ui/dropdown-menu';
+} from "@/app/components/ui/dropdown-menu";
+
 import {
   Sheet,
   SheetContent,
@@ -16,97 +26,101 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from '@/app/components/ui/sheet';
-import { User, UserRole, CartItem } from '@/app/App';
+} from "@/app/components/ui/sheet";
 
+import { Link, NavLink, useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { CartItem } from "@/app/types";
 interface NavbarProps {
-  currentUser: User;
-  currentView: 'marketplace' | 'composer' | 'buyer' | 'admin' | 'learning';
-  onViewChange: (view: 'marketplace' | 'composer' | 'buyer' | 'admin' | 'learning') => void;
-  onRoleChange: (role: UserRole) => void;
-  onLogout: () => void;
   cart: CartItem[];
   onRemoveFromCart: (compositionId: string) => void;
 }
 
-export function Navbar({
-  currentUser,
-  currentView,
-  onViewChange,
-  onRoleChange,
-  onLogout,
-  cart,
-  onRemoveFromCart
-}: NavbarProps) {
+export function Navbar({ cart, onRemoveFromCart }: NavbarProps) {
+  const { firebaseUser, appUser, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const roles = appUser?.roles ?? [];
+
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
-  const totalPrice = cart.reduce((sum, item) => sum + item.composition.price * item.quantity, 0);
+  const totalPrice = cart.reduce(
+    (sum, item) => sum + item.composition.price * item.quantity,
+    0
+  );
 
   return (
     <nav className="bg-white shadow-md border-b">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
-          {/* Logo and Brand */}
-          <div className="flex items-center gap-2">
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-2">
             <div className="bg-gradient-to-br from-blue-600 to-purple-600 p-2 rounded-lg">
               <Music className="size-6 text-white" />
             </div>
             <div>
-              <h1 className="font-semibold text-lg bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Prime Media</h1>
+              <h1 className="font-semibold text-lg bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                Prime Media
+              </h1>
               <p className="text-xs text-gray-500">Choral Music Marketplace</p>
             </div>
+          </Link>
+
+          {/* Main Navigation */}
+          <div className="hidden md:flex items-center gap-3">
+            <NavLink to="/">
+              {({ isActive }) => (
+                <Button variant={isActive ? "default" : "ghost"}>
+                  <Music className="size-4 mr-2" />
+                  Learn Music
+                </Button>
+              )}
+            </NavLink>
+
+            <NavLink to="/marketplace">
+              {({ isActive }) => (
+                <Button variant={isActive ? "default" : "ghost"}>
+                  Marketplace
+                </Button>
+              )}
+            </NavLink>
+
+            {roles.includes("buyer") && (
+              <NavLink to="/buyer">
+                {({ isActive }) => (
+                  <Button variant={isActive ? "default" : "ghost"}>
+                    <LayoutDashboard className="size-4 mr-2" />
+                    My Library
+                  </Button>
+                )}
+              </NavLink>
+            )}
+
+            {roles.includes("composer") && (
+              <NavLink to="/composer">
+                {({ isActive }) => (
+                  <Button variant={isActive ? "default" : "ghost"}>
+                    <LayoutDashboard className="size-4 mr-2" />
+                    My Compositions
+                  </Button>
+                )}
+              </NavLink>
+            )}
+
+            {roles.includes("admin") && (
+              <NavLink to="/admin">
+                {({ isActive }) => (
+                  <Button variant={isActive ? "default" : "ghost"}>
+                    <Settings className="size-4 mr-2" />
+                    Admin
+                  </Button>
+                )}
+              </NavLink>
+            )}
           </div>
 
-          {/* Navigation Links */}
-          <div className="hidden md:flex items-center gap-4">
-            <Button
-              variant={currentView === 'marketplace' ? 'default' : 'ghost'}
-              onClick={() => onViewChange('marketplace')}
-            >
-              Marketplace
-            </Button>
-
-            <Button
-              variant={currentView === 'learning' ? 'default' : 'ghost'}
-              onClick={() => onViewChange('learning')}
-            >
-              <Music className="size-4 mr-2" />
-              Learn Music
-            </Button>
-
-            {currentUser.role === 'composer' && (
-              <Button
-                variant={currentView === 'composer' ? 'default' : 'ghost'}
-                onClick={() => onViewChange('composer')}
-              >
-                <LayoutDashboard className="size-4 mr-2" />
-                My Compositions
-              </Button>
-            )}
-
-            {currentUser.role === 'buyer' && (
-              <Button
-                variant={currentView === 'buyer' ? 'default' : 'ghost'}
-                onClick={() => onViewChange('buyer')}
-              >
-                <LayoutDashboard className="size-4 mr-2" />
-                My Library
-              </Button>
-            )}
-
-            {currentUser.role === 'admin' && (
-              <Button
-                variant={currentView === 'admin' ? 'default' : 'ghost'}
-                onClick={() => onViewChange('admin')}
-              >
-                <Settings className="size-4 mr-2" />
-                Admin Panel
-              </Button>
-            )}
-          </div>
-
-          {/* Right Side Actions */}
-          <div className="flex items-center gap-4">
-            {/* Shopping Cart */}
+          {/* Right Actions */}
+          <div className="flex items-center gap-3">
+            {/* Cart */}
             <Sheet>
               <SheetTrigger asChild>
                 <Button variant="outline" size="icon" className="relative">
@@ -118,25 +132,40 @@ export function Navbar({
                   )}
                 </Button>
               </SheetTrigger>
+
               <SheetContent>
                 <SheetHeader>
                   <SheetTitle>Shopping Cart</SheetTitle>
                   <SheetDescription>
-                    {totalItems === 0 ? 'Your cart is empty' : `${totalItems} item(s) in cart`}
+                    {totalItems === 0
+                      ? "Your cart is empty"
+                      : `${totalItems} item(s) in cart`}
                   </SheetDescription>
                 </SheetHeader>
+
                 <div className="mt-6 space-y-4">
                   {cart.map(item => (
-                    <div key={item.composition.id} className="flex items-start justify-between border-b pb-4">
-                      <div className="flex-1">
-                        <h4 className="font-medium">{item.composition.title}</h4>
-                        <p className="text-sm text-gray-500">{item.composition.composerName}</p>
-                        <p className="text-sm font-semibold mt-1">${item.composition.price.toFixed(2)}</p>
+                    <div
+                      key={item.composition.id}
+                      className="flex justify-between border-b pb-4"
+                    >
+                      <div>
+                        <h4 className="font-medium">
+                          {item.composition.title}
+                        </h4>
+                        <p className="text-sm text-gray-500">
+                          {item.composition.composerName}
+                        </p>
+                        <p className="font-semibold">
+                          ${item.composition.price.toFixed(2)}
+                        </p>
                       </div>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => onRemoveFromCart(item.composition.id)}
+                        onClick={() =>
+                          onRemoveFromCart(item.composition.id)
+                        }
                       >
                         Remove
                       </Button>
@@ -145,12 +174,17 @@ export function Navbar({
 
                   {cart.length > 0 && (
                     <div className="pt-4 border-t">
-                      <div className="flex justify-between items-center mb-4">
-                        <span className="font-semibold">Total:</span>
-                        <span className="text-xl font-bold">${totalPrice.toFixed(2)}</span>
+                      <div className="flex justify-between mb-4">
+                        <span className="font-semibold">Total</span>
+                        <span className="text-xl font-bold">
+                          ${totalPrice.toFixed(2)}
+                        </span>
                       </div>
-                      <Button className="w-full" onClick={() => onViewChange('buyer')}>
-                        Proceed to Checkout
+                      <Button
+                        className="w-full"
+                        onClick={() => navigate("/checkout")}
+                      >
+                        Checkout
                       </Button>
                     </div>
                   )}
@@ -165,31 +199,41 @@ export function Navbar({
                   <UserIcon className="size-5" />
                 </Button>
               </DropdownMenuTrigger>
+
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>
-                  <div>
-                    <p className="font-medium">{currentUser.name}</p>
-                    <p className="text-xs text-gray-500 capitalize">{currentUser.role}</p>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel className="text-xs text-gray-500">
-                  Switch Role (Demo)
-                </DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => onRoleChange('buyer')}>
-                  Switch to Buyer
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onRoleChange('composer')}>
-                  Switch to Composer
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onRoleChange('admin')}>
-                  Switch to Admin
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={onLogout} className="text-red-600">
-                  <LogOut className="size-4 mr-2" />
-                  Logout
-                </DropdownMenuItem>
+                {firebaseUser ? (
+                  <>
+                    <DropdownMenuLabel>
+                      <p className="font-medium">
+                        {firebaseUser.displayName ??
+                          firebaseUser.email}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {roles.join(", ") || "user"}
+                      </p>
+                    </DropdownMenuLabel>
+
+                    <DropdownMenuSeparator />
+
+                    <DropdownMenuItem onClick={() => navigate("/dashboard")}>
+                      Dashboard
+                    </DropdownMenuItem>
+
+                    <DropdownMenuSeparator />
+
+                    <DropdownMenuItem
+                      onClick={signOut}
+                      className="text-red-600"
+                    >
+                      <LogOut className="size-4 mr-2" />
+                      Logout
+                    </DropdownMenuItem>
+                  </>
+                ) : (
+                  <DropdownMenuItem onClick={() => navigate("/login")}>
+                    Sign in
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
