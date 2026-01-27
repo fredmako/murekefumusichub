@@ -1,90 +1,195 @@
-import React from "react";
-import { Music, Users, Award } from "lucide-react";
+// src/app/App.tsx
+import React, { Suspense, useState } from "react";
+import { Routes, Route, Navigate, useSearchParams } from "react-router-dom";
+import { Navbar } from "./components/Navbar";
+import { CartItem } from "./types";
+import { AuthProvider } from "../context/AuthContext";
 
-export default function AboutPage() {
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Hero */}
-      <section className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-16 px-4">
-        <div className="max-w-5xl mx-auto text-center">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4">
-            About Prime Music Media
-          </h1>
-          <p className="text-purple-100 text-lg">
-            Empowering choirs, composers, and music trainers across Kenya and beyond
-          </p>
-        </div>
-      </section>
+/* -----------------------------
+   Lazy-loaded Pages
+-------------------------------- */
+const LandingPage = React.lazy(() =>
+  import("./components/LandingPage").then(m => ({
+    default: m.LandingPage ?? m.default,
+  }))
+);
 
-      {/* About Content */}
-      <section className="py-16 px-4">
-        <div className="max-w-5xl mx-auto space-y-6 text-gray-700 leading-relaxed">
-          <p>
-            Prime Music Media is a music company formed in <strong>August 2018</strong> during
-            the Kenya Music Festival season finale held in Nyeri.
-          </p>
+const Login = React.lazy(() =>
+  import("./components/Login").then(m => ({
+    default: m.Login ?? m.default,
+  }))
+);
 
-          <p>
-            Through research conducted with choir trainers from different parts of the
-            country, we discovered a common challenge: difficulty accessing quality music
-            scores for both local and international compositions.
-          </p>
+const Marketplace = React.lazy(() =>
+  import("./components/Marketplace").then(m => ({
+    default: m.Marketplace ?? m.default,
+  }))
+);
 
-          <p>
-            Due to this limitation, many choirs are forced to perform easily accessible
-            pieces, limiting their artistic growth and potential.
-          </p>
+const AboutPage = React.lazy(() =>
+  import("./components/AboutPage").then(m => ({
+    default: m.AboutPage ?? m.default,
+  }))
+);
 
-          <p>
-            Prime Music Media was founded to bridge this gap by making music compositions,
-            arrangements, and trainers easily accessible to choirs and learners.
-          </p>
+const BuyerDashboard = React.lazy(() =>
+  import("./components/BuyerDashboard").then(m => ({
+    default: m.BuyerDashboard ?? m.default,
+  }))
+);
 
-          <p>
-            We also connect registered trainers with choirs and groups that require
-            professional guidance, empowering both trainers and performers.
-          </p>
+const ComposerDashboard = React.lazy(() =>
+  import("./components/ComposerDashboard").then(m => ({
+    default: m.ComposerDashboard ?? m.default,
+  }))
+);
 
-          <p>
-            Our training programs include:
-          </p>
+const AdminDashboard = React.lazy(() =>
+  import("./components/AdminPanel").then(m => ({
+    default: m.AdminDashboard ?? m.default,
+  }))
+);
 
-          <ul className="list-disc pl-6">
-            <li>Music Theory</li>
-            <li>Instrument Training</li>
-            <li>Music Composition</li>
-            <li>Music Arrangement</li>
-            <li>Voice Training</li>
-          </ul>
-        </div>
-      </section>
+/* -----------------------------
+   Error Boundary
+-------------------------------- */
+class AppErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error?: Error }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
 
-      {/* Team */}
-      <section className="py-16 px-4 bg-white">
-        <div className="max-w-6xl mx-auto text-center">
-          <h2 className="text-3xl font-bold mb-12">Our Team</h2>
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
 
-          <div className="grid md:grid-cols-3 gap-8">
-            <Card className="p-6">
-              <Music className="mx-auto mb-4 text-purple-600" size={40} />
-              <h3 className="font-bold text-lg">Samuel Murekefu</h3>
-              <p className="text-gray-600">CEO & Founder</p>
-            </Card>
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error("App crashed:", error, info);
+  }
 
-            <Card className="p-6">
-              <Award className="mx-auto mb-4 text-purple-600" size={40} />
-              <h3 className="font-bold text-lg">Eng. Alphonce O.</h3>
-              <p className="text-gray-600">Technical Lead</p>
-            </Card>
-
-            <Card className="p-6">
-              <Users className="mx-auto mb-4 text-purple-600" size={40} />
-              <h3 className="font-bold text-lg">John Thompson</h3>
-              <p className="text-gray-600">DJ Classes Teacher</p>
-            </Card>
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
+          <div className="max-w-md text-center">
+            <h1 className="text-2xl font-bold text-red-600 mb-2">
+              Something went wrong
+            </h1>
+            <p className="text-gray-600 mb-4">
+              Please refresh the page or try again later.
+            </p>
+            <pre className="text-xs text-left bg-red-50 p-4 rounded">
+              {this.state.error?.message}
+            </pre>
           </div>
         </div>
-      </section>
-    </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+/* -----------------------------
+   Dashboard Wrapper
+-------------------------------- */
+const DashboardWrapper = ({
+  Component,
+  cart,
+  onRemoveFromCart,
+}: {
+  Component: React.FC<any>;
+  cart: CartItem[];
+  onRemoveFromCart: (id: string) => void;
+}) => {
+  const [searchParams] = useSearchParams();
+  const uid = searchParams.get("uid") ?? undefined;
+
+  return <Component uid={uid} cart={cart} onRemoveFromCart={onRemoveFromCart} />;
+};
+
+/* -----------------------------
+   App Root
+-------------------------------- */
+export default function App() {
+  const [cart, setCart] = useState<CartItem[]>([]);
+
+  const handleRemoveFromCart = (compositionId: string) => {
+    setCart(prev =>
+      prev.filter(item => item.composition.id !== compositionId)
+    );
+  };
+
+  return (
+    <AppErrorBoundary>
+      <AuthProvider>
+        <div className="min-h-screen bg-gray-50">
+          <Navbar cart={cart} onRemoveFromCart={handleRemoveFromCart} />
+
+          <Suspense fallback={<div className="p-8">Loading...</div>}>
+            <Routes>
+              {/* Public Pages */}
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/marketplace" element={<Marketplace />} />
+              <Route path="/about" element={<AboutPage />} />
+
+              {/* Dashboards */}
+              <Route
+                path="/buyer"
+                element={
+                  <DashboardWrapper
+                    Component={BuyerDashboard}
+                    cart={cart}
+                    onRemoveFromCart={handleRemoveFromCart}
+                  />
+                }
+              />
+
+              <Route
+                path="/composer"
+                element={
+                  <DashboardWrapper
+                    Component={ComposerDashboard}
+                    cart={cart}
+                    onRemoveFromCart={handleRemoveFromCart}
+                  />
+                }
+              />
+
+              <Route
+                path="/admin"
+                element={
+                  <DashboardWrapper
+                    Component={AdminDashboard}
+                    cart={cart}
+                    onRemoveFromCart={handleRemoveFromCart}
+                  />
+                }
+              />
+
+              {/* Redirects */}
+              <Route path="/home" element={<Navigate to="/" replace />} />
+
+              {/* 404 */}
+              <Route
+                path="*"
+                element={
+                  <div className="p-12 text-center text-gray-600">
+                    <h1 className="text-2xl font-bold mb-2">
+                      404 — Page Not Found
+                    </h1>
+                    <p>The page you’re looking for doesn’t exist.</p>
+                  </div>
+                }
+              />
+            </Routes>
+          </Suspense>
+        </div>
+      </AuthProvider>
+    </AppErrorBoundary>
   );
 }
