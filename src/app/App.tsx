@@ -1,7 +1,7 @@
 // src/app/App.tsx
 import React, { Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import Navbar from "./components/Navbar";
+import { Navbar } from "./components/Navbar";
 
 // lazy-load heavy pages optionally
 const LandingPage = React.lazy(() => import("./components/LandingPage"));
