@@ -1,105 +1,102 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from "firebase/auth";
+// src/context/AuthContext.tsx
+import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { initializeApp } from "firebase/app";
-import { AppUser } from "@/app/types";
+import { getAuth, onAuthStateChanged, signOut as firebaseSignOut, User } from "firebase/auth";
+import { getStorage } from "firebase/storage";
 
-/* =======================
-   Firebase Initialization
-      ======================= */
+// --- Hard-coded Firebase config ---
+const firebaseConfig = {
+  apiKey: "AIzaSyCwI4aE5-p-NYm60p97IG0aKijccPI0sxI",
+  authDomain: "prime-media-7216b.firebaseapp.com",
+  projectId: "prime-media-7216b",
+  storageBucket: "prime-media-7216b.appspot.com",
+  messagingSenderId: "497607749297",
+  appId: "1:497607749297:web:d113e9a79fd1799f803c90",
+  measurementId: "G-NFG3EB5Q7F",
+};
 
-      const firebaseConfig = {
-        apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-          authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-            projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-            };
+// --- Initialize Firebase ---
+let app;
+let auth;
+let storage;
 
-            const app = initializeApp(firebaseConfig);
-            const auth = getAuth(app);
-            const provider = new GoogleAuthProvider();
+try {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  storage = getStorage(app);
+} catch (err) {
+  console.error("Firebase initialization failed:", err);
+}
 
-            /* =======================
-               Context Types
-                  ======================= */
+// --- Types ---
+interface AppUser {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  roles: string[]; // e.g., ['buyer', 'composer', 'admin']
+}
 
-                  interface AuthContextType {
-                    firebaseUser: any | null;
-                      appUser: AppUser | null;
-                        loading: boolean;
-                          signInWithGoogle: () => Promise<void>;
-                            signOut: () => Promise<void>;
-                            }
+interface AuthContextType {
+  firebaseUser: User | null;
+  appUser: AppUser | null;
+  signOut: () => Promise<void>;
+}
 
-                            /* =======================
-                               Context
-                                  ======================= */
+// --- Create Context ---
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-                                  const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [appUser, setAppUser] = useState<AppUser | null>(null);
 
-                                  export function useAuth() {
-                                    const ctx = useContext(AuthContext);
-                                      if (!ctx) {
-                                          throw new Error("useAuth must be used inside AuthProvider");
-                                            }
-                                              return ctx;
-                                              }
+  useEffect(() => {
+    if (!auth) return;
 
-                                              /* =======================
-                                                 Provider
-                                                    ======================= */
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setFirebaseUser(user);
 
-                                                    export function AuthProvider({ children }: { children: React.ReactNode }) {
-                                                      const [firebaseUser, setFirebaseUser] = useState<any | null>(null);
-                                                        const [appUser, setAppUser] = useState<AppUser | null>(null);
-                                                          const [loading, setLoading] = useState(true);
+      // Example: map firebase user to app roles
+      if (user) {
+        const roles: string[] = []; // customize roles assignment logic
+        // e.g., if email includes 'composer', push 'composer'
+        if (user.email?.endsWith("@composer.com")) roles.push("composer");
+        else roles.push("buyer"); // default role
 
-                                                            // 🔐 Sign in
-                                                              async function signInWithGoogle() {
-                                                                  await signInWithPopup(auth, provider);
-                                                                    }
+        setAppUser({
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName,
+          roles,
+        });
+      } else {
+        setAppUser(null);
+      }
+    });
 
-                                                                      // 🔓 Sign out
-                                                                        async function handleSignOut() {
-                                                                            await signOut(auth);
-                                                                                setAppUser(null);
-                                                                                  }
+    return () => unsubscribe();
+  }, []);
 
-                                                                                    // 🔁 Listen for auth changes
-                                                                                      useEffect(() => {
-                                                                                          const unsubscribe = onAuthStateChanged(auth, async (user) => {
-                                                                                                setFirebaseUser(user);
+  const signOut = async () => {
+    if (!auth) return;
+    try {
+      await firebaseSignOut(auth);
+      setFirebaseUser(null);
+      setAppUser(null);
+    } catch (err) {
+      console.error("Sign out failed:", err);
+    }
+  };
 
-                                                                                                      if (user) {
-                                                                                                              // 🔗 Normally this comes from Supabase via backend sync
-                                                                                                                      // Temporary default role = buyer
-                                                                                                                              const syncedUser: AppUser = {
-                                                                                                                                        id: user.uid, // replace with Supabase UUID later
-                                                                                                                                                  firebaseUid: user.uid,
-                                                                                                                                                            email: user.email,
-                                                                                                                                                                      displayName: user.displayName,
-                                                                                                                                                                                roles: ["buyer"], // backend will override this
-                                                                                                                                                                                        };
-                                                                                                                                                                                                setAppUser(syncedUser);
-                                                                                                                                                                                                      } else {
-                                                                                                                                                                                                              setAppUser(null);
-                                                                                                                                                                                                                    }
+  return (
+    <AuthContext.Provider value={{ firebaseUser, appUser, signOut }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
 
-                                                                                                                                                                                                                          setLoading(false);
-                                                                                                                                                                                                                              });
-
-                                                                                                                                                                                                                                  return () => unsubscribe();
-                                                                                                                                                                                                                                    }, []);
-
-                                                                                                                                                                                                                                      return (
-                                                                                                                                                                                                                                          <AuthContext.Provider
-                                                                                                                                                                                                                                                value={{
-                                                                                                                                                                                                                                                        firebaseUser,
-                                                                                                                                                                                                                                                                appUser,
-                                                                                                                                                                                                                                                                        loading,
-                                                                                                                                                                                                                                                                                signInWithGoogle,
-                                                                                                                                                                                                                                                                                        signOut: handleSignOut,
-                                                                                                                                                                                                                                                                                              }}
-                                                                                                                                                                                                                                                                                                  >
-                                                                                                                                                                                                                                                                                                        {children}
-                                                                                                                                                                                                                                                                                                            </AuthContext.Provider>
-                                                                                                                                                                                                                                                                                                              );
-                                                                                                                                                                                                                                                                                                              }
+// --- Hook to use AuthContext ---
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) throw new Error("useAuth must be used within an AuthProvider");
+  return context;
+};
