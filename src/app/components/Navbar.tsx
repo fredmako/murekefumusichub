@@ -32,60 +32,31 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
-  const totalPrice = cart.reduce(
-    (sum, item) => sum + item.composition.price * item.quantity,
+  // ⚡ Safe reduce: default cart to [] so it never crashes
+  const safeCart = cart || [];
+  const totalItems = safeCart.reduce((sum, item) => sum + (item.quantity || 0), 0);
+  const totalPrice = safeCart.reduce(
+    (sum, item) => sum + ((item.composition?.price || 0) * (item.quantity || 0)),
     0
   );
 
-  const roles = appUser?.roles ?? [];
+  const roles = appUser?.roles || [];
 
   // Navigation items
   const navItems = [
-    {
-      label: "Learn Music",
-      path: "/",
-      showOn: ["/"], // only landing page
-      roles: [], // all users
-    },
-    {
-      label: "About Us",
-      path: "/about",
-      showOn: ["/"], // landing page
-      roles: [],
-    },
-    {
-      label: "Marketplace",
-      path: "/marketplace",
-      showOn: ["any"], // everywhere
-      roles: [],
-    },
-    {
-      label: "My Library",
-      path: "/buyer",
-      showOn: ["any"],
-      roles: ["buyer"],
-    },
-    {
-      label: "My Compositions",
-      path: "/composer",
-      showOn: ["any"],
-      roles: ["composer"],
-    },
-    {
-      label: "Admin",
-      path: "/admin",
-      showOn: ["any"],
-      roles: ["admin"],
-    },
+    { label: "Learn Music", path: "/", showOn: ["/"], roles: [] },
+    { label: "About Us", path: "/about", showOn: ["/"], roles: [] },
+    { label: "Marketplace", path: "/marketplace", showOn: ["any"], roles: [] },
+    { label: "My Library", path: "/buyer", showOn: ["any"], roles: ["buyer"] },
+    { label: "My Compositions", path: "/composer", showOn: ["any"], roles: ["composer"] },
+    { label: "Admin", path: "/admin", showOn: ["any"], roles: ["admin"] },
   ];
 
-  // Determine dashboard path dynamically based on roles
   const getDashboardPath = () => {
     if (!roles || roles.length === 0) return "/";
-    if (roles.includes("admin")) return "/admin";
-    if (roles.includes("composer")) return "/composer";
-    if (roles.includes("buyer")) return "/buyer";
+    if (roles.includes("admin")) return `/admin?uid=${firebaseUser?.uid || ""}`;
+    if (roles.includes("composer")) return `/composer?uid=${firebaseUser?.uid || ""}`;
+    if (roles.includes("buyer")) return `/buyer?uid=${firebaseUser?.uid || ""}`;
     return "/";
   };
 
@@ -94,7 +65,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2">
+          <Link to={firebaseUser ? getDashboardPath() : "/"} className="flex items-center gap-2">
             <div className="bg-gradient-to-br from-blue-600 to-purple-600 p-2 rounded-lg">
               <Music className="size-6 text-white" />
             </div>
@@ -112,15 +83,12 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
               const isVisible =
                 item.showOn.includes("any") || item.showOn.includes(location.pathname);
               const hasRole = item.roles.length === 0 || item.roles.some((role) => roles.includes(role));
-
               if (!isVisible || !hasRole) return null;
 
               return (
                 <NavLink key={item.path} to={item.path}>
                   {({ isActive }) => (
-                    <Button variant={isActive ? "default" : "ghost"}>
-                      {item.label}
-                    </Button>
+                    <Button variant={isActive ? "default" : "ghost"}>{item.label}</Button>
                   )}
                 </NavLink>
               );
@@ -130,7 +98,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
           {/* Right Actions */}
           <div className="flex items-center gap-3">
             {/* Cart for buyers only */}
-            {roles.includes("buyer") && cart.length > 0 && onRemoveFromCart && (
+            {roles.includes("buyer") && safeCart.length > 0 && onRemoveFromCart && (
               <Sheet>
                 <SheetTrigger asChild>
                   <Button variant="outline" size="icon" className="relative">
@@ -152,20 +120,24 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                   </SheetHeader>
 
                   <div className="mt-6 space-y-4">
-                    {cart.map((item) => (
+                    {safeCart.map((item) => (
                       <div key={item.composition.id} className="flex justify-between border-b pb-4">
                         <div>
                           <h4 className="font-medium">{item.composition.title}</h4>
                           <p className="text-sm text-gray-500">{item.composition.composerName}</p>
                           <p className="font-semibold">${item.composition.price.toFixed(2)}</p>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => onRemoveFromCart(item.composition.id)}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onRemoveFromCart(item.composition.id)}
+                        >
                           Remove
                         </Button>
                       </div>
                     ))}
 
-                    {cart.length > 0 && (
+                    {safeCart.length > 0 && (
                       <div className="pt-4 border-t">
                         <div className="flex justify-between mb-4">
                           <span className="font-semibold">Total</span>
@@ -199,7 +171,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
 
                     <DropdownMenuSeparator />
 
-                    {/* Redirect to the correct dashboard */}
+                    {/* Dashboard redirect */}
                     <DropdownMenuItem onClick={() => navigate(getDashboardPath())}>
                       Dashboard
                     </DropdownMenuItem>
