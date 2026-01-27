@@ -3,8 +3,8 @@ import React, { Suspense, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { CartItem } from "./types";
-import { AuthProvider } from "../context/AuthContext"; // <- import AuthProvider
-
+// ✅ correct
+import { AuthProvider } from "./context/AuthContext";
 // Lazy-load heavy pages
 const LandingPage = React.lazy(() => import("./components/LandingPage"));
 const Login = React.lazy(() => import("./components/Login"));
