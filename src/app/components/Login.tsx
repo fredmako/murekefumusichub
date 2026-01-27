@@ -1,44 +1,42 @@
-import { useState } from 'react';
+// src/app/components/Login.tsx
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Music, LogIn } from 'lucide-react';
 import { FcGoogle } from 'react-icons/fc';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/app/components/ui/select';
-import { useNavigate } from 'react-router-dom';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
+import { UserRole } from '@/app/App';
 import { auth } from '@/lib/firebase';
-import {
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  GoogleAuthProvider,
-  signInWithPopup
-} from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { toast } from 'sonner';
 import { authService } from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
 
-type UserRole = 'buyer' | 'composer' | 'admin';
+interface LoginProps {
+  onLogin?: (email: string, password: string, role: UserRole) => void;
+}
 
-export function Login() {
+export function Login({ onLogin }: LoginProps) {
+  const { appUser } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole>('buyer');
   const [isLoading, setIsLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
-  const navigate = useNavigate();
 
-  const redirectToDashboard = (role: UserRole, uid: string) => {
-    if (role === 'buyer') navigate(`/buyer?uid=${uid}`);
-    else if (role === 'composer') navigate(`/composer?uid=${uid}`);
-    else if (role === 'admin') navigate(`/admin?uid=${uid}`);
-    else navigate('/');
-  };
+  // Auto redirect if already logged in
+  useEffect(() => {
+    if (appUser) {
+      const uidParam = `?uid=${appUser.uid}`;
+      if (appUser.roles.includes('buyer')) navigate(`/buyer${uidParam}`, { replace: true });
+      else if (appUser.roles.includes('composer')) navigate(`/composer${uidParam}`, { replace: true });
+      else if (appUser.roles.includes('admin')) navigate(`/admin${uidParam}`, { replace: true });
+    }
+  }, [appUser, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +46,6 @@ export function Login() {
     setIsLoading(true);
     try {
       let firebaseUser;
-
       if (isSignUp) {
         const result = await createUserWithEmailAndPassword(auth, email, password);
         firebaseUser = result.user;
@@ -61,31 +58,10 @@ export function Login() {
         toast.success('Logged in successfully!');
       }
 
-      // Redirect based on role
-      redirectToDashboard(selectedRole, firebaseUser.uid);
+      onLogin?.(email, password, selectedRole);
     } catch (error: any) {
       console.error('Authentication error:', error);
-      switch (error.code) {
-        case 'auth/user-not-found':
-          toast.error('No account found with this email. Please sign up.');
-          setIsSignUp(true);
-          break;
-        case 'auth/wrong-password':
-          toast.error('Incorrect password. Please try again.');
-          break;
-        case 'auth/email-already-in-use':
-          toast.error('This email is already registered. Please sign in instead.');
-          setIsSignUp(false);
-          break;
-        case 'auth/weak-password':
-          toast.error('Password is too weak. Please use at least 6 characters.');
-          break;
-        case 'auth/invalid-email':
-          toast.error('Invalid email address format.');
-          break;
-        default:
-          toast.error(error.message || 'Authentication failed. Please try again.');
-      }
+      toast.error(error.message || 'Authentication failed');
     } finally {
       setIsLoading(false);
     }
@@ -97,10 +73,9 @@ export function Login() {
     try {
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
-
       await authService.syncUser(firebaseUser, selectedRole);
+      onLogin?.(firebaseUser.email || '', '', selectedRole);
       toast.success('Logged in with Google successfully!');
-      redirectToDashboard(selectedRole, firebaseUser.uid);
     } catch (error: any) {
       console.error('Google sign-in error:', error);
       toast.error(error.message || 'Google sign-in failed');
@@ -111,128 +86,50 @@ export function Login() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-        {/* Branding Section */}
-        <div className="text-center lg:text-left space-y-6">
-          <div className="flex items-center justify-center lg:justify-start gap-3">
-            <div className="bg-gradient-to-br from-blue-600 to-purple-600 p-4 rounded-2xl">
-              <Music className="size-12 text-white" />
-            </div>
+      {/* Login Card */}
+      <Card className="shadow-xl w-full max-w-md">
+        <CardHeader>
+          <CardTitle className="text-2xl">{isSignUp ? 'Create Account' : 'Sign In'}</CardTitle>
+          <CardDescription>{isSignUp ? 'Create a new account' : 'Enter your credentials to access your account'}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <Label htmlFor="role">{isSignUp ? 'Select Your Role' : 'Login As'}</Label>
+            <Select value={selectedRole} onValueChange={v => setSelectedRole(v as UserRole)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="buyer">Buyer</SelectItem>
+                <SelectItem value="composer">Composer</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
+
             <div>
-              <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Prime Media
-              </h1>
-              <p className="text-gray-600 text-lg">Choral Music Marketplace</p>
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} required disabled={isLoading} />
             </div>
+
+            <div>
+              <Label htmlFor="password">Password</Label>
+              <Input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} required disabled={isLoading} minLength={6} />
+            </div>
+
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              <LogIn className="size-5 mr-2" /> {isLoading ? 'Processing...' : (isSignUp ? 'Create Account' : 'Sign In')}
+            </Button>
+          </form>
+
+          <Button type="button" className="w-full mt-4 flex items-center justify-center gap-2" variant="outline" onClick={handleGoogleSignIn} disabled={isLoading}>
+            <FcGoogle className="size-5" /> Sign in with Google
+          </Button>
+
+          <div className="mt-4 text-center">
+            <button type="button" onClick={() => setIsSignUp(!isSignUp)} className="text-sm text-blue-600 hover:underline" disabled={isLoading}>
+              {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
+            </button>
           </div>
-        </div>
-
-        {/* Login Section */}
-        <div className="space-y-6">
-          <Card className="shadow-xl">
-            <CardHeader>
-              <CardTitle className="text-2xl">{isSignUp ? 'Create Account' : 'Sign In'}</CardTitle>
-              <CardDescription>
-                {isSignUp ? 'Create a new account to get started' : 'Enter your credentials to access your account'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <Label htmlFor="role">{isSignUp ? 'Select Your Role' : 'Login As'}</Label>
-                  <Select
-                    value={selectedRole}
-                    onValueChange={(value) => setSelectedRole(value as UserRole)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="buyer">Buyer</SelectItem>
-                      <SelectItem value="composer">Composer</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    disabled={isLoading}
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="password">Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder={isSignUp ? 'At least 6 characters' : 'Enter your password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    disabled={isLoading}
-                    minLength={6}
-                  />
-                </div>
-
-                <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
-                  <LogIn className="size-5 mr-2" />
-                  {isLoading ? 'Processing...' : (isSignUp ? 'Create Account' : 'Sign In')}
-                </Button>
-              </form>
-
-              <div className="mt-4">
-                <Button
-                  type="button"
-                  className="w-full flex items-center justify-center gap-2"
-                  variant="outline"
-                  onClick={handleGoogleSignIn}
-                  disabled={isLoading}
-                >
-                  <FcGoogle className="size-5" />
-                  Sign in with Google
-                </Button>
-              </div>
-
-              <div className="mt-4 text-center">
-                <button
-                  type="button"
-                  onClick={() => setIsSignUp(!isSignUp)}
-                  className="text-sm text-blue-600 hover:underline"
-                  disabled={isLoading}
-                >
-                  {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
-                </button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <p className="text-center text-sm text-gray-500">
-            {isSignUp ? (
-              <>
-                By creating an account, you agree to our{' '}
-                <a href="#" className="text-blue-600 hover:underline font-medium">
-                  Terms of Service
-                </a>
-              </>
-            ) : (
-              <>
-                Need help?{' '}
-                <a href="#" className="text-blue-600 hover:underline font-medium">
-                  Contact Support
-                </a>
-              </>
-            )}
-          </p>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
