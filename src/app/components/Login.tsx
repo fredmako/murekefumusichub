@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Music, LogIn, Google } from 'lucide-react';
+import { Music, LogIn } from 'lucide-react';
+import { FcGoogle } from 'react-icons/fc'; // <-- Updated Google icon
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Input } from '@/app/components/ui/input';
@@ -167,7 +168,6 @@ export function Login({ onLogin }: LoginProps) {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Role Selection */}
                 <div>
                   <Label htmlFor="role">
                     {isSignUp ? 'Select Your Role' : 'Login As'}
@@ -187,7 +187,6 @@ export function Login({ onLogin }: LoginProps) {
                   </Select>
                 </div>
 
-                {/* Email */}
                 <div>
                   <Label htmlFor="email">Email</Label>
                   <Input
@@ -201,7 +200,6 @@ export function Login({ onLogin }: LoginProps) {
                   />
                 </div>
 
-                {/* Password */}
                 <div>
                   <Label htmlFor="password">Password</Label>
                   <Input
@@ -216,7 +214,6 @@ export function Login({ onLogin }: LoginProps) {
                   />
                 </div>
 
-                {/* Submit Button */}
                 <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
                   <LogIn className="size-5 mr-2" />
                   {isLoading ? 'Processing...' : (isSignUp ? 'Create Account' : 'Sign In')}
@@ -232,12 +229,11 @@ export function Login({ onLogin }: LoginProps) {
                   onClick={handleGoogleSignIn}
                   disabled={isLoading}
                 >
-                  <Google className="size-5" />
+                  <FcGoogle className="size-5" />
                   Sign in with Google
                 </Button>
               </div>
 
-              {/* Toggle Sign Up / Sign In */}
               <div className="mt-4 text-center">
                 <button
                   type="button"
