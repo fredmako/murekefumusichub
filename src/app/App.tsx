@@ -3,12 +3,18 @@ import React, { Suspense, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { CartItem } from "./types";
-// ✅ correct
 import { AuthProvider } from "../context/AuthContext";
-// Lazy-load heavy pages
-const LandingPage = React.lazy(() => import("./components/LandingPage"));
-const Login = React.lazy(() => import("./components/Login"));
-const Marketplace = React.lazy(() => import("./components/Marketplace"));
+
+// Lazy-load heavy pages (ensure default exports exist in these components)
+const LandingPage = React.lazy(() =>
+  import("./components/LandingPage").then(module => ({ default: module.LandingPage || module.default }))
+);
+const Login = React.lazy(() =>
+  import("./components/Login").then(module => ({ default: module.Login || module.default }))
+);
+const Marketplace = React.lazy(() =>
+  import("./components/Marketplace").then(module => ({ default: module.Marketplace || module.default }))
+);
 
 // Error Boundary (class-based)
 class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error?: Error }> {
