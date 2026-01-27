@@ -1,7 +1,7 @@
 import { useLocation, NavLink, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { CartItem } from "@/app/types";
-import { Music, ShoppingCart, LayoutDashboard, User as UserIcon, Settings, LogOut } from "lucide-react";
+import { Music, ShoppingCart, LayoutDashboard, User as UserIcon, LogOut } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
 import {
@@ -38,46 +38,26 @@ export function Navbar({ cart, onRemoveFromCart }: NavbarProps) {
   );
 
   const roles = appUser?.roles ?? [];
+  const uid = appUser?.uid;
 
   // Navigation config
   const navItems = [
-    {
-      label: "Learn Music",
-      path: "/",
-      showOn: ["/"], // Only show on landing page
-      roles: [], // visible to all
-    },
-    {
-      label: "About Us",
-      path: "/about",
-      showOn: ["/"], // Landing page only
-      roles: [],
-    },
-    {
-      label: "Marketplace",
-      path: "/marketplace",
-      showOn: ["any"], // Show on all pages
-      roles: [],
-    },
-    {
-      label: "My Library",
-      path: "/buyer",
-      showOn: ["any"], // Show only if role includes 'buyer'
-      roles: ["buyer"],
-    },
-    {
-      label: "My Compositions",
-      path: "/composer",
-      showOn: ["any"],
-      roles: ["composer"],
-    },
-    {
-      label: "Admin",
-      path: "/admin",
-      showOn: ["any"],
-      roles: ["admin"],
-    },
+    { label: "Learn Music", path: "/", showOn: ["/"], roles: [] },
+    { label: "About Us", path: "/about", showOn: ["/"], roles: [] },
+    { label: "Marketplace", path: "/marketplace", showOn: ["any"], roles: [] },
+    { label: "My Library", path: "/buyer", showOn: ["any"], roles: ["buyer"] },
+    { label: "My Compositions", path: "/composer", showOn: ["any"], roles: ["composer"] },
+    { label: "Admin", path: "/admin", showOn: ["any"], roles: ["admin"] },
   ];
+
+  // Generate role-specific dashboard link
+  const getDashboardLink = () => {
+    if (!uid) return "/login";
+    if (roles.includes("buyer")) return `/buyer?uid=${uid}`;
+    if (roles.includes("composer")) return `/composer?uid=${uid}`;
+    if (roles.includes("admin")) return `/admin?uid=${uid}`;
+    return "/login";
+  };
 
   return (
     <nav className="bg-white shadow-md border-b">
@@ -108,9 +88,7 @@ export function Navbar({ cart, onRemoveFromCart }: NavbarProps) {
               return (
                 <NavLink key={item.path} to={item.path}>
                   {({ isActive }) => (
-                    <Button variant={isActive ? "default" : "ghost"}>
-                      {item.label}
-                    </Button>
+                    <Button variant={isActive ? "default" : "ghost"}>{item.label}</Button>
                   )}
                 </NavLink>
               );
@@ -119,7 +97,7 @@ export function Navbar({ cart, onRemoveFromCart }: NavbarProps) {
 
           {/* Right Actions */}
           <div className="flex items-center gap-3">
-            {/* Cart */}
+            {/* Cart (buyers only) */}
             {roles.includes("buyer") && (
               <Sheet>
                 <SheetTrigger asChild>
@@ -189,15 +167,21 @@ export function Navbar({ cart, onRemoveFromCart }: NavbarProps) {
 
                     <DropdownMenuSeparator />
 
-                    <DropdownMenuItem onClick={() => navigate("/dashboard")}>Dashboard</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate(getDashboardLink())}>
+                      Dashboard
+                    </DropdownMenuItem>
+
                     <DropdownMenuSeparator />
+
                     <DropdownMenuItem onClick={signOut} className="text-red-600">
                       <LogOut className="size-4 mr-2" />
                       Logout
                     </DropdownMenuItem>
                   </>
                 ) : (
-                  <DropdownMenuItem onClick={() => navigate("/login")}>Sign In</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/login")}>
+                    Sign In
+                  </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
