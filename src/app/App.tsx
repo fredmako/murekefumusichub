@@ -1,127 +1,91 @@
-// src/app/App.tsx
-import React, { Suspense, useState } from "react";
-import { Routes, Route, Navigate, useSearchParams } from "react-router-dom";
-import { Navbar } from "./components/Navbar";
-import { CartItem } from "./types";
-import { AuthProvider } from "../context/AuthContext";
+import React from "react";
+import { Card } from "./ui/card";
+import { Music, Users, Award } from "lucide-react";
 
-// Lazy-load heavy pages (ensure default exports exist)
-const LandingPage = React.lazy(() =>
-  import("./components/LandingPage").then(module => ({ default: module.LandingPage || module.default }))
-);
-const Login = React.lazy(() =>
-  import("./components/Login").then(module => ({ default: module.Login || module.default }))
-);
-const Marketplace = React.lazy(() =>
-  import("./components/Marketplace").then(module => ({ default: module.Marketplace || module.default }))
-);
-const BuyerDashboard = React.lazy(() =>
-  import("./components/BuyerDashboard").then(module => ({ default: module.BuyerDashboard || module.default }))
-);
-const ComposerDashboard = React.lazy(() =>
-  import("./components/ComposerDashboard").then(module => ({ default: module.ComposerDashboard || module.default }))
-);
-const AdminDashboard = React.lazy(() =>
-  import("./components/AdminPanel").then(module => ({ default: module.AdminDashboard || module.default }))
-);
-
-// Error Boundary (class-based)
-class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error?: Error }> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false, error: undefined };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error("Caught by ErrorBoundary:", error, info);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="p-8 text-red-600">
-          <h2 className="font-bold text-xl mb-2">Something went wrong:</h2>
-          <pre className="whitespace-pre-wrap">{this.state.error?.message}</pre>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-// Wrapper to pass uid query and cart to dashboards
-const DashboardWrapper = ({
-  Component,
-  cart,
-  onRemoveFromCart
-}: {
-  Component: React.FC<any>;
-  cart: CartItem[];
-  onRemoveFromCart: (id: string) => void;
-}) => {
-  const [searchParams] = useSearchParams();
-  const uid = searchParams.get("uid") || undefined;
-
-  return <Component uid={uid} cart={cart} onRemoveFromCart={onRemoveFromCart} />;
-};
-
-export default function App() {
-  const [cart, setCart] = useState<CartItem[]>([]);
-
-  const handleRemoveFromCart = (compositionId: string) => {
-    setCart(prev => prev.filter(item => item.composition.id !== compositionId));
-  };
-
+export default function AboutPage() {
   return (
-    <AppErrorBoundary>
-      <AuthProvider>
-        <div className="min-h-screen bg-gray-50">
-          <Navbar cart={cart} onRemoveFromCart={handleRemoveFromCart} />
-
-          <main className="mt-4">
-            <Suspense fallback={<div className="p-8">Loading...</div>}>
-              <Routes>
-                {/* Public Routes */}
-                <Route path="/" element={<LandingPage />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/marketplace" element={<Marketplace />} />
-
-                {/* Dashboards with uid query */}
-                <Route
-                  path="/buyer"
-                  element={<DashboardWrapper Component={BuyerDashboard} cart={cart} onRemoveFromCart={handleRemoveFromCart} />}
-                />
-                <Route
-                  path="/composer"
-                  element={<DashboardWrapper Component={ComposerDashboard} cart={cart} onRemoveFromCart={handleRemoveFromCart} />}
-                />
-<Route path="/about" element={<AboutPage />} />
-                <Route
-                  path="/admin"
-                  element={<DashboardWrapper Component={AdminDashboard} cart={cart} onRemoveFromCart={handleRemoveFromCart} />}
-                />
-
-                {/* Redirect /home to landing page */}
-                <Route path="/home" element={<Navigate to="/" replace />} />
-
-                {/* 404 Fallback */}
-                <Route
-                  path="*"
-                  element={
-                    <div className="p-8 text-center text-gray-600">
-                      404 — Page not found
-                    </div>
-                  }
-                />
-              </Routes>
-            </Suspense>
-          </main>
+    <div className="min-h-screen bg-gray-50">
+      {/* Hero */}
+      <section className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-16 px-4">
+        <div className="max-w-5xl mx-auto text-center">
+          <h1 className="text-4xl md:text-5xl font-bold mb-4">
+            About Prime Music Media
+          </h1>
+          <p className="text-purple-100 text-lg">
+            Empowering choirs, composers, and music trainers across Kenya and beyond
+          </p>
         </div>
-      </AuthProvider>
-    </AppErrorBoundary>
+      </section>
+
+      {/* About Content */}
+      <section className="py-16 px-4">
+        <div className="max-w-5xl mx-auto space-y-6 text-gray-700 leading-relaxed">
+          <p>
+            Prime Music Media is a music company formed in <strong>August 2018</strong> during
+            the Kenya Music Festival season finale held in Nyeri.
+          </p>
+
+          <p>
+            Through research conducted with choir trainers from different parts of the
+            country, we discovered a common challenge: difficulty accessing quality music
+            scores for both local and international compositions.
+          </p>
+
+          <p>
+            Due to this limitation, many choirs are forced to perform easily accessible
+            pieces, limiting their artistic growth and potential.
+          </p>
+
+          <p>
+            Prime Music Media was founded to bridge this gap by making music compositions,
+            arrangements, and trainers easily accessible to choirs and learners.
+          </p>
+
+          <p>
+            We also connect registered trainers with choirs and groups that require
+            professional guidance, empowering both trainers and performers.
+          </p>
+
+          <p>
+            Our training programs include:
+          </p>
+
+          <ul className="list-disc pl-6">
+            <li>Music Theory</li>
+            <li>Instrument Training</li>
+            <li>Music Composition</li>
+            <li>Music Arrangement</li>
+            <li>Voice Training</li>
+          </ul>
+        </div>
+      </section>
+
+      {/* Team */}
+      <section className="py-16 px-4 bg-white">
+        <div className="max-w-6xl mx-auto text-center">
+          <h2 className="text-3xl font-bold mb-12">Our Team</h2>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            <Card className="p-6">
+              <Music className="mx-auto mb-4 text-purple-600" size={40} />
+              <h3 className="font-bold text-lg">Samuel Murekefu</h3>
+              <p className="text-gray-600">CEO & Founder</p>
+            </Card>
+
+            <Card className="p-6">
+              <Award className="mx-auto mb-4 text-purple-600" size={40} />
+              <h3 className="font-bold text-lg">Eng. Alphonce O.</h3>
+              <p className="text-gray-600">Technical Lead</p>
+            </Card>
+
+            <Card className="p-6">
+              <Users className="mx-auto mb-4 text-purple-600" size={40} />
+              <h3 className="font-bold text-lg">John Thompson</h3>
+              <p className="text-gray-600">DJ Classes Teacher</p>
+            </Card>
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
