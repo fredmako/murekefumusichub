@@ -1,9 +1,9 @@
 // src/app/App.tsx
 import React, { Suspense, useState } from "react";
-import { Routes, Route, Navigate, useSearchParams } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { CartItem } from "./types";
-import { AuthProvider, useAuth } from "../context/AuthContext";
+import { AuthProvider } from "../context/AuthContext";
 
 // Lazy-load heavy pages
 const LandingPage = React.lazy(() =>
@@ -25,7 +25,7 @@ const AdminDashboard = React.lazy(() =>
   import("./components/AdminPanel").then(module => ({ default: module.AdminDashboard || module.default }))
 );
 
-// Error Boundary
+// Error Boundary (class-based)
 class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error?: Error }> {
   constructor(props: { children: React.ReactNode }) {
     super(props);
@@ -53,56 +53,12 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
   }
 }
 
-// Dashboard wrapper to pass uid and cart
-const DashboardWrapper = ({
-  Component,
-  cart,
-  onRemoveFromCart
-}: {
-  Component: React.FC<any>;
-  cart: CartItem[];
-  onRemoveFromCart: (id: string) => void;
-}) => {
-  const [searchParams] = useSearchParams();
-  const uid = searchParams.get("uid") || undefined;
-
-  return <Component uid={uid} cart={cart} onRemoveFromCart={onRemoveFromCart} />;
-};
-
-// Component to handle private routes
-const PrivateRoute = ({
-  component: Component,
-  cart,
-  onRemoveFromCart
-}: {
-  component: React.FC<any>;
-  cart: CartItem[];
-  onRemoveFromCart: (id: string) => void;
-}) => {
-  const { appUser } = useAuth();
-
-  if (!appUser) {
-    // Not logged in → redirect to login
-    return <Navigate to="/login" replace />;
-  }
-
-  // Determine dashboard path based on role
-  const uidParam = `?uid=${appUser.uid}`;
-  if (appUser.roles.includes("buyer")) return <Navigate to={`/buyer${uidParam}`} replace />;
-  if (appUser.roles.includes("composer")) return <Navigate to={`/composer${uidParam}`} replace />;
-  if (appUser.roles.includes("admin")) return <Navigate to={`/admin${uidParam}`} replace />;
-
-  return <Navigate to="/login" replace />;
-};
-
 export default function App() {
   const [cart, setCart] = useState<CartItem[]>([]);
 
   const handleRemoveFromCart = (compositionId: string) => {
     setCart(prev => prev.filter(item => item.composition.id !== compositionId));
   };
-
-  const { appUser } = useAuth();
 
   return (
     <AppErrorBoundary>
@@ -113,25 +69,14 @@ export default function App() {
           <main className="mt-4">
             <Suspense fallback={<div className="p-8">Loading...</div>}>
               <Routes>
-                {/* Redirect logged-in users from landing page */}
-                <Route path="/" element={appUser ? <PrivateRoute component={LandingPage} cart={cart} onRemoveFromCart={handleRemoveFromCart} /> : <LandingPage />} />
-                <Route path="/login" element={appUser ? <PrivateRoute component={Login} cart={cart} onRemoveFromCart={handleRemoveFromCart} /> : <Login />} />
-
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/login" element={<Login />} />
                 <Route path="/marketplace" element={<Marketplace />} />
 
                 {/* Dashboards */}
-                <Route
-                  path="/buyer"
-                  element={<DashboardWrapper Component={BuyerDashboard} cart={cart} onRemoveFromCart={handleRemoveFromCart} />}
-                />
-                <Route
-                  path="/composer"
-                  element={<DashboardWrapper Component={ComposerDashboard} cart={cart} onRemoveFromCart={handleRemoveFromCart} />}
-                />
-                <Route
-                  path="/admin"
-                  element={<DashboardWrapper Component={AdminDashboard} cart={cart} onRemoveFromCart={handleRemoveFromCart} />}
-                />
+                <Route path="/buyer" element={<BuyerDashboard />} />
+                <Route path="/composer" element={<ComposerDashboard />} />
+                <Route path="/admin" element={<AdminDashboard />} />
 
                 {/* Redirect /home to landing page */}
                 <Route path="/home" element={<Navigate to="/" replace />} />
