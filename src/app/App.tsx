@@ -13,7 +13,11 @@ const LandingPage = React.lazy(() =>
     default: m.LandingPage ?? m.default,
   }))
 );
-
+const MusicEnrollmentPage = React.lazy(() =>
+  import("./components/MusicEnrollmentPage").then(m => ({
+    default: m.MusicEnrollmentPage ?? m.default,
+  }))
+);
 const Login = React.lazy(() =>
   import("./components/Login").then(m => ({
     default: m.Login ?? m.default,
@@ -131,6 +135,7 @@ export default function App() {
 
           <Suspense fallback={<div className="p-8">Loading...</div>}>
             <Routes>
+
               {/* Public Pages */}
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<Login />} />
@@ -157,9 +162,10 @@ export default function App() {
                     cart={cart}
                     onRemoveFromCart={handleRemoveFromCart}
                   />
+
                 }
               />
-
+<Route path="/enroll" element={<MusicEnrollmentPage />} />
               <Route
                 path="/admin"
                 element={
