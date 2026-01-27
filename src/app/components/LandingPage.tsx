@@ -50,7 +50,38 @@ export const LandingPage: React.FC = () => {
           </Button>
         </div>
       </section>
+{/* Marketplace Hero Section */}
+<section className="py-20 px-4 bg-white">
+  <div className="container mx-auto max-w-6xl grid md:grid-cols-2 gap-12 items-center">
+    {/* Text */}
+    <div className="space-y-6">
+      <h2 className="text-4xl font-bold text-gray-900">
+        Explore the Marketplace
+      </h2>
+      <p className="text-gray-600 leading-relaxed">
+        Discover a growing library of choral compositions from talented composers.
+        Browse by style, difficulty, voice type, or festival category and find music
+        that perfectly matches your choir’s needs.
+      </p>
+      <p className="text-gray-600 leading-relaxed">
+        Whether you’re a choir director, student, or performer, the marketplace helps
+        you explore compositions tailored to your musical preferences.
+      </p>
 
+      {/* ✅ Marketplace CTA */}
+      <Link to="/marketplace">
+        <Button size="lg">
+          Explore the Marketplace
+        </Button>
+      </Link>
+    </div>
+
+    {/* Visual */}
+    <div className="relative h-72 md:h-96 bg-gradient-to-br from-indigo-200 to-purple-200 rounded-lg overflow-hidden shadow-lg flex items-center justify-center">
+      <Music className="w-32 h-32 text-purple-500 opacity-20" />
+    </div>
+  </div>
+</section>
       {/* About Section */}
       <section className="py-16 px-4 bg-white">
         <div className="container mx-auto max-w-6xl grid md:grid-cols-2 gap-12 items-center">
