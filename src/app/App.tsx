@@ -1,11 +1,11 @@
 // src/app/App.tsx
 import React, { Suspense, useState } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { CartItem } from "./types";
-import { AuthProvider } from "../context/AuthContext";
+import { AuthProvider, useAuth } from "../context/AuthContext";
 
-// Lazy-load heavy pages (ensure default exports exist)
+// Lazy-load heavy pages
 const LandingPage = React.lazy(() =>
   import("./components/LandingPage").then(module => ({ default: module.LandingPage || module.default }))
 );
@@ -25,7 +25,7 @@ const AdminDashboard = React.lazy(() =>
   import("./components/AdminPanel").then(module => ({ default: module.AdminDashboard || module.default }))
 );
 
-// Error Boundary (class-based)
+// Error Boundary
 class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error?: Error }> {
   constructor(props: { children: React.ReactNode }) {
     super(props);
@@ -53,6 +53,14 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
   }
 }
 
+// Wrapper to pass uid query to dashboards
+const DashboardWrapper = ({ Component }: { Component: React.FC }) => {
+  const [searchParams] = useSearchParams();
+  const uid = searchParams.get("uid") || undefined;
+
+  return <Component uid={uid} />;
+};
+
 export default function App() {
   const [cart, setCart] = useState<CartItem[]>([]);
 
@@ -69,16 +77,17 @@ export default function App() {
           <main className="mt-4">
             <Suspense fallback={<div className="p-8">Loading...</div>}>
               <Routes>
+                {/* Public Routes */}
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/marketplace" element={<Marketplace />} />
 
-                {/* Dashboards */}
-                <Route path="/buyer" element={<BuyerDashboard />} />
-                <Route path="/composer" element={<ComposerDashboard />} />
-                <Route path="/admin" element={<AdminDashboard />} />
+                {/* Dashboards (with uid query param) */}
+                <Route path="/buyer" element={<DashboardWrapper Component={BuyerDashboard} />} />
+                <Route path="/composer" element={<DashboardWrapper Component={ComposerDashboard} />} />
+                <Route path="/admin" element={<DashboardWrapper Component={AdminDashboard} />} />
 
-                {/* Redirect /home to landing page */}
+                {/* Redirect /home */}
                 <Route path="/home" element={<Navigate to="/" replace />} />
 
                 {/* 404 Fallback */}
