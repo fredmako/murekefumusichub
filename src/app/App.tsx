@@ -4,7 +4,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { CartItem } from "./types";
 // ✅ correct
-import { AuthProvider } from "../../context/AuthContext";
+import { AuthProvider } from "../../context/Authcontext";
 // Lazy-load heavy pages
 const LandingPage = React.lazy(() => import("./components/LandingPage"));
 const Login = React.lazy(() => import("./components/Login"));
