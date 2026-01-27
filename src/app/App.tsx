@@ -1,7 +1,7 @@
 // src/app/App.tsx
 import React, { Suspense, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import { Navbar } from "./components/Navbar"; // named import
+import { Navbar } from "./components/Navbar"; // make sure Navbar.tsx has named export
 import { CartItem } from "./types"; // adjust path if necessary
 
 // Lazy-load heavy pages
@@ -9,29 +9,33 @@ const LandingPage = React.lazy(() => import("./components/LandingPage"));
 const Login = React.lazy(() => import("./components/Login"));
 const Marketplace = React.lazy(() => import("./components/Marketplace"));
 
-// Error boundary component
-function ErrorBoundary({ children }: { children: React.ReactNode }) {
-  const [error, setError] = useState<Error | null>(null);
-
-  if (error) {
-    return (
-      <div className="p-8 text-red-600">
-        <h2 className="font-bold text-xl mb-2">Something went wrong:</h2>
-        <pre className="whitespace-pre-wrap">{error.message}</pre>
-      </div>
-    );
+// Class-based ErrorBoundary
+class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error?: Error }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: undefined };
   }
 
-  return (
-    <React.ErrorBoundary
-      fallbackRender={({ error }) => {
-        setError(error);
-        return null;
-      }}
-    >
-      {children}
-    </React.ErrorBoundary>
-  );
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error("Caught by ErrorBoundary:", error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-8 text-red-600">
+          <h2 className="font-bold text-xl mb-2">Something went wrong:</h2>
+          <pre className="whitespace-pre-wrap">{this.state.error?.message}</pre>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
 }
 
 export default function App() {
@@ -43,7 +47,7 @@ export default function App() {
   };
 
   return (
-    <ErrorBoundary>
+    <AppErrorBoundary>
       <div className="min-h-screen bg-gray-50">
         <Navbar cart={cart} onRemoveFromCart={handleRemoveFromCart} />
 
@@ -75,6 +79,6 @@ export default function App() {
           </Suspense>
         </main>
       </div>
-    </ErrorBoundary>
+    </AppErrorBoundary>
   );
 }
