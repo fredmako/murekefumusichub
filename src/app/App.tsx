@@ -1,11 +1,11 @@
 // src/app/App.tsx
 import React, { Suspense, useState } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { CartItem } from "./types";
 import { AuthProvider } from "../context/AuthContext";
 
-// Lazy-load heavy pages
+// Lazy-load heavy pages (ensure default exports exist)
 const LandingPage = React.lazy(() =>
   import("./components/LandingPage").then(module => ({ default: module.LandingPage || module.default }))
 );
@@ -53,6 +53,22 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
   }
 }
 
+// Wrapper to pass uid query and cart to dashboards
+const DashboardWrapper = ({
+  Component,
+  cart,
+  onRemoveFromCart
+}: {
+  Component: React.FC<any>;
+  cart: CartItem[];
+  onRemoveFromCart: (id: string) => void;
+}) => {
+  const [searchParams] = useSearchParams();
+  const uid = searchParams.get("uid") || undefined;
+
+  return <Component uid={uid} cart={cart} onRemoveFromCart={onRemoveFromCart} />;
+};
+
 export default function App() {
   const [cart, setCart] = useState<CartItem[]>([]);
 
@@ -69,14 +85,24 @@ export default function App() {
           <main className="mt-4">
             <Suspense fallback={<div className="p-8">Loading...</div>}>
               <Routes>
+                {/* Public Routes */}
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/marketplace" element={<Marketplace />} />
 
-                {/* Dashboards */}
-                <Route path="/buyer" element={<BuyerDashboard />} />
-                <Route path="/composer" element={<ComposerDashboard />} />
-                <Route path="/admin" element={<AdminDashboard />} />
+                {/* Dashboards with uid query */}
+                <Route
+                  path="/buyer"
+                  element={<DashboardWrapper Component={BuyerDashboard} cart={cart} onRemoveFromCart={handleRemoveFromCart} />}
+                />
+                <Route
+                  path="/composer"
+                  element={<DashboardWrapper Component={ComposerDashboard} cart={cart} onRemoveFromCart={handleRemoveFromCart} />}
+                />
+                <Route
+                  path="/admin"
+                  element={<DashboardWrapper Component={AdminDashboard} cart={cart} onRemoveFromCart={handleRemoveFromCart} />}
+                />
 
                 {/* Redirect /home to landing page */}
                 <Route path="/home" element={<Navigate to="/" replace />} />
