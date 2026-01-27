@@ -99,6 +99,7 @@ export default function App() {
                   path="/composer"
                   element={<DashboardWrapper Component={ComposerDashboard} cart={cart} onRemoveFromCart={handleRemoveFromCart} />}
                 />
+<Route path="/about" element={<AboutPage />} />
                 <Route
                   path="/admin"
                   element={<DashboardWrapper Component={AdminDashboard} cart={cart} onRemoveFromCart={handleRemoveFromCart} />}
