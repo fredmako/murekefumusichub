@@ -1,10 +1,11 @@
+
 // src/app/App.tsx
 import React, { Suspense, useState } from "react";
 import { Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { CartItem } from "./types";
 import { AuthProvider } from "../context/AuthContext";
-
+import {ContactUs} from "./components/ContactUs";
 /* -----------------------------
    Lazy-loaded Pages
 -------------------------------- */
@@ -153,7 +154,7 @@ export default function App() {
                   />
                 }
               />
-
+<Route path="/contact" element={<ContactUs />} />
               <Route
                 path="/composer"
                 element={
