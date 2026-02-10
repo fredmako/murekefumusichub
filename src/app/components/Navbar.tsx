@@ -5,6 +5,7 @@ import { CartItem } from "@/app/types";
 import { Music, ShoppingCart, User as UserIcon, LogOut } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
+import logo from "@/app/components/images/logo.jpg";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -35,7 +36,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
   const totalPrice = cart.reduce(
     (sum, item) => sum + item.composition.price * item.quantity,
-    0
+    0,
   );
 
   const roles = appUser?.roles ?? [];
@@ -55,7 +56,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
       roles: [],
     },
     {
-      label: "Marketplace",
+      label: "Music hub ",
       path: "/marketplace",
       showOn: ["any"], // everywhere
       roles: [],
@@ -96,13 +97,13 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
             <div className="bg-gradient-to-br from-blue-600 to-purple-600 p-2 rounded-lg">
-              <Music className="size-6 text-white" />
+              <img src={logo} alt="Murekefu Logo" className="w-8 h-8" />
             </div>
             <div>
               <h1 className="font-semibold text-lg bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Prime Media
+                Murekefu Music Hub
               </h1>
-              <p className="text-xs text-gray-500">Choral Music Marketplace</p>
+              <p className="text-xs text-gray-500">Choral Music Hub</p>
             </div>
           </Link>
 
@@ -110,8 +111,11 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
           <div className="hidden md:flex items-center gap-3">
             {navItems.map((item) => {
               const isVisible =
-                item.showOn.includes("any") || item.showOn.includes(location.pathname);
-              const hasRole = item.roles.length === 0 || item.roles.some((role) => roles.includes(role));
+                item.showOn.includes("any") ||
+                item.showOn.includes(location.pathname);
+              const hasRole =
+                item.roles.length === 0 ||
+                item.roles.some((role) => roles.includes(role));
 
               if (!isVisible || !hasRole) return null;
 
@@ -147,19 +151,34 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                   <SheetHeader>
                     <SheetTitle>Shopping Cart</SheetTitle>
                     <SheetDescription>
-                      {totalItems === 0 ? "Your cart is empty" : `${totalItems} item(s) in cart`}
+                      {totalItems === 0
+                        ? "Your cart is empty"
+                        : `${totalItems} item(s) in cart`}
                     </SheetDescription>
                   </SheetHeader>
 
                   <div className="mt-6 space-y-4">
                     {cart.map((item) => (
-                      <div key={item.composition.id} className="flex justify-between border-b pb-4">
+                      <div
+                        key={item.composition.id}
+                        className="flex justify-between border-b pb-4"
+                      >
                         <div>
-                          <h4 className="font-medium">{item.composition.title}</h4>
-                          <p className="text-sm text-gray-500">{item.composition.composerName}</p>
-                          <p className="font-semibold">${item.composition.price.toFixed(2)}</p>
+                          <h4 className="font-medium">
+                            {item.composition.title}
+                          </h4>
+                          <p className="text-sm text-gray-500">
+                            {item.composition.composerName}
+                          </p>
+                          <p className="font-semibold">
+                            ${item.composition.price.toFixed(2)}
+                          </p>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => onRemoveFromCart(item.composition.id)}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onRemoveFromCart(item.composition.id)}
+                        >
                           Remove
                         </Button>
                       </div>
@@ -169,9 +188,14 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                       <div className="pt-4 border-t">
                         <div className="flex justify-between mb-4">
                           <span className="font-semibold">Total</span>
-                          <span className="text-xl font-bold">${totalPrice.toFixed(2)}</span>
+                          <span className="text-xl font-bold">
+                            ${totalPrice.toFixed(2)}
+                          </span>
                         </div>
-                        <Button className="w-full" onClick={() => navigate("/checkout")}>
+                        <Button
+                          className="w-full"
+                          onClick={() => navigate("/checkout")}
+                        >
                           Checkout
                         </Button>
                       </div>
@@ -193,25 +217,36 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                 {firebaseUser ? (
                   <>
                     <DropdownMenuLabel>
-                      <p className="font-medium">{firebaseUser.displayName || firebaseUser.email}</p>
-                      <p className="text-xs text-gray-500">{roles.join(", ") || "user"}</p>
+                      <p className="font-medium">
+                        {firebaseUser.displayName || firebaseUser.email}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {roles.join(", ") || "user"}
+                      </p>
                     </DropdownMenuLabel>
 
                     <DropdownMenuSeparator />
 
                     {/* Redirect to the correct dashboard */}
-                    <DropdownMenuItem onClick={() => navigate(getDashboardPath())}>
+                    <DropdownMenuItem
+                      onClick={() => navigate(getDashboardPath())}
+                    >
                       Dashboard
                     </DropdownMenuItem>
 
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={signOut} className="text-red-600">
+                    <DropdownMenuItem
+                      onClick={signOut}
+                      className="text-red-600"
+                    >
                       <LogOut className="size-4 mr-2" />
                       Logout
                     </DropdownMenuItem>
                   </>
                 ) : (
-                  <DropdownMenuItem onClick={() => navigate("/login")}>Sign In</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/login")}>
+                    Sign In
+                  </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
