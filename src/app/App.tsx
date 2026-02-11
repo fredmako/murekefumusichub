@@ -1,6 +1,7 @@
 
 // src/app/App.tsx
 import React, { Suspense, useState } from "react";
+import {PrivacyPolicy} from "./components/PrivacyPolicy";
 import { Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { CartItem } from "./types";
@@ -142,7 +143,7 @@ export default function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/marketplace" element={<Marketplace />} />
               <Route path="/about" element={<AboutPage />} />
-
+              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
               {/* Dashboards */}
               <Route
                 path="/buyer"
@@ -152,6 +153,7 @@ export default function App() {
                     cart={cart}
                     onRemoveFromCart={handleRemoveFromCart}
                   />
+
                 }
               />
 <Route path="/contact" element={<ContactUs />} />

@@ -95,10 +95,13 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
+          {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
-            <div className="bg-gradient-to-br from-blue-600 to-purple-600 p-2 rounded-lg">
-              <img src={logo} alt="Murekefu Logo" className="w-8 h-8" />
-            </div>
+            <img
+              src={logo}
+              alt="Murekefu Logo"
+              className="w-10 h-10 object-contain"
+            />
             <div>
               <h1 className="font-semibold text-lg bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                 Murekefu Music Hub

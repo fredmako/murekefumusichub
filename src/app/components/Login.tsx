@@ -154,18 +154,12 @@ export function Login() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
       <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
         {/* Branding */}
-        <div className="text-center lg:text-left space-y-6">
-          <div className="flex items-center justify-center lg:justify-start gap-3">
-            <div className="bg-gradient-to-br from-blue-600 to-purple-600 p-4 rounded-2xl">
-              <img src={logo} alt="Murekefu Logo" className="w-16 h-16" />
-            </div>
-            <div>
-              <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Murekefu Music Hub
-              </h1>
-              <p className="text-gray-600 text-lg">Choral Music Hub</p>
-            </div>
-          </div>
+        <div className="flex items-center justify-center h-full">
+          <img
+            src={logo}
+            alt="Murekefu Logo"
+            className="w-56 h-56 md:w-72 md:h-72 object-contain"
+          />
         </div>
 
         {/* Login Form */}

@@ -11,7 +11,15 @@ import {
   BookOpen,
   Award,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "./ui/dialog";
 
 interface MusicClass {
   id: string;
@@ -22,7 +30,19 @@ interface MusicClass {
 }
 
 export const LandingPage: React.FC = () => {
+  const navigate = useNavigate();
+
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
+
+  // ✅ Privacy Modal (Shows only once)
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(
+    !localStorage.getItem("privacyAccepted"),
+  );
+
+  const handleAcceptPrivacy = () => {
+    localStorage.setItem("privacyAccepted", "true");
+    setIsPrivacyOpen(false);
+  };
 
   const musicClasses: MusicClass[] = [
     {
@@ -87,34 +107,32 @@ export const LandingPage: React.FC = () => {
     },
   ];
 
-  const testimonials = [
-    {
-      quote:
-        "We came together as Parents in Kianda school to sing together in support of our daughters. Most of us were passionate about singing without experience or training On the first day, I could read Sams mind wondering what he had gotten himself into! He started from identifying who fit into which voice group and patiently training us as individuals and groups. With his determination and great teaching/coaching skills, we were able to perform during Easter and Christmas cantatas.The joy in our girls faces said it all. They were really proud of our beautiful singing. Memories were created that will last a life time. Thank Sam!!",
-      author: "Ann, Kianda School Parents Choir",
-    },
-    {
-      quote:
-        "My passion for choral music was ignited when I had the privilege of being trained by the incredible Murekefu Sam. It all began at The Nairobi School, where I discovered a singer within me I never knew existed. With him at the helm, participation at the national level wasn't just a possibility – it was a guarantee. Murekefu is someone I truly look up to in the world of music, crafting melodies that leave you wanting more. Five years under his tutelage was a transformative experience I'd highly recommend to any aspiring choral artist.",
-      author: "~Oduor Benedict, Nairobi school 2020 - 2023 & Jkuat Choir 2025",
-    },
-    {
-      quote:
-        "Working with Sam Murekefu has been one of the best pleasures I have enjoyed in my adult life. He has been such an amazing music trainer, director, composer and friend. Before I met Sam, I was singing in the shower kinda girl because I didnt know how to balance, warm, and sing from the stomach and he helped me with that. The negative for me was that I never really got the chance to work with him longer but I get to call him a friend and that's good enough. Also, if you don't learn him well you might think he's always angry when he isn't, he's just concentrating on the music.",
-      author: "Naserian, MKU Choir",
-    },
-    {
-      quote: "Murekefu Sam, thank you for your incredible dedication to Maziwa Methodist Choir in the year 2018 all through covid season. You took a group of passionate but untrained singers and, through individual voice coaching, discipline, and strict time keeping, turned us into a confident and effective choir.You helped Maziwa Methodist Choir grow from raw passion into a structured and confident choir through individual coaching and strong emphasis on time keeping. All the best! ", author: "Miriam Seka, JKUAT Choir",
-    },
-    {
-      quote:
-        "Murekefu Sam, thank you for your incredible dedication to Maziwa Methodist Choir in the year 2018 all through covid season. You took a group of passionate but untrained singers and, through individual voice coaching, discipline, and strict time keeping, turned us into a confident and effective choir. You helped Maziwa Methodist Choir grow from raw passion into a structured and confident choir through individual coaching and strong emphasis on time keeping. All the best", author: "Lilian, Maziwa Methodist Choir",
-    },
-  ];
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      {/* Hero Section */}
+      {/* ================= Privacy Modal ================= */}
+      <Dialog open={isPrivacyOpen} onOpenChange={setIsPrivacyOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Privacy Policy Notice</DialogTitle>
+            <DialogDescription>
+              We value your privacy. Please review our Privacy Policy to
+              understand how we collect and use your information.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="flex flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => navigate("/privacy-policy")}
+            >
+              View Privacy Policy
+            </Button>
+            <Button onClick={handleAcceptPrivacy}>Accept & Continue</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ================= Hero Section ================= */}
       <section className="relative bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-20 px-4">
         <div className="container mx-auto max-w-6xl text-center space-y-6">
           <h1 className="text-5xl md:text-6xl font-bold">
@@ -130,66 +148,8 @@ export const LandingPage: React.FC = () => {
           </Link>
         </div>
       </section>
-      {/* Marketplace Hero Section */}
-      <section className="py-20 px-4 bg-white">
-        <div className="container mx-auto max-w-6xl grid md:grid-cols-2 gap-12 items-center">
-          {/* Text */}
-          <div className="space-y-6">
-            <h2 className="text-4xl font-bold text-gray-900">
-              Explore the Marketplace
-            </h2>
-            <p className="text-gray-600 leading-relaxed">
-              Discover a growing library of choral compositions from talented
-              composers. Browse by style, difficulty, voice type, or festival
-              category and find music that perfectly matches your choir’s needs.
-            </p>
-            <p className="text-gray-600 leading-relaxed">
-              Whether you’re a choir director, student, or performer, the
-              marketplace helps you explore compositions tailored to your
-              musical preferences.
-            </p>
 
-            {/* ✅ Marketplace CTA */}
-            <Link to="/marketplace">
-              <Button size="lg">Explore the Marketplace</Button>
-            </Link>
-          </div>
-
-          {/* Visual */}
-          <div className="relative h-72 md:h-96 bg-gradient-to-br from-indigo-200 to-purple-200 rounded-lg overflow-hidden shadow-lg flex items-center justify-center">
-            <Music className="w-32 h-32 text-purple-500 opacity-20" />
-          </div>
-        </div>
-      </section>
-      {/* About Section */}
-      <section className="py-16 px-4 bg-white">
-        <div className="container mx-auto max-w-6xl grid md:grid-cols-2 gap-12 items-center">
-          <div className="space-y-6">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
-              Welcome to  m      Music Media!
-            </h2>
-            <p className="text-gray-600 leading-relaxed">
-              We make music accessible to anyone, anywhere. We connect
-              composers, arrangers, and music trainers with learners and choirs
-              worldwide.
-            </p>
-            <p className="text-gray-600 leading-relaxed">
-              Classical pieces and popular compositions that were previously
-              hard to find are now available through our platform.
-            </p>
-            <Link to="/about">
-              <Button variant="default" size="lg">
-                Read More
-              </Button>
-            </Link>
-          </div>
-          <div className="relative h-72 md:h-96 bg-gradient-to-br from-purple-200 to-indigo-200 rounded-lg overflow-hidden shadow-lg flex items-center justify-center">
-            <Music className="w-32 h-32 text-purple-400 opacity-20" />
-          </div>
-        </div>
-      </section>
-
-      {/* Features Section */}
+      {/* ================= Features Section ================= */}
       <section className="py-16 px-4 bg-gray-50">
         <div className="container mx-auto max-w-6xl text-center">
           <h2 className="text-3xl font-bold mb-12 text-gray-900">
@@ -211,7 +171,7 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* Music Classes Section */}
+      {/* ================= Music Classes ================= */}
       <section className="py-16 px-4 bg-white">
         <div className="container mx-auto max-w-6xl text-center">
           <h2 className="text-3xl md:text-4xl font-bold mb-12 text-gray-900">
@@ -248,50 +208,6 @@ export const LandingPage: React.FC = () => {
               </Card>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* Testimonials */}
-      <section className="py-16 px-4 bg-gray-50">
-        <div className="container mx-auto max-w-6xl text-center">
-          <h2 className="text-3xl font-bold mb-12 text-gray-900">
-            Testimonials
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {testimonials.map((t, idx) => (
-              <Card key={idx} className="p-6 hover:shadow-lg transition-shadow">
-                <p className="text-gray-600 mb-4">"{t.quote}"</p>
-                <p className="font-semibold text-gray-900">~ {t.author}</p>
-              </Card>
-            ))}
-          </div>
-          <div className="mt-8">
-            <Link to="/testimonials">
-              <Button size="lg">Read More</Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-16 px-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-center">
-        <h2 className="text-3xl md:text-4xl font-bold mb-4">
-          Ready to Start Your Musical Journey?
-        </h2>
-        <p className="text-lg text-purple-100 mb-6">
-          Join thousands of students learning music with Murekefu Music Hub
-        </p>
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Link to="/enroll">
-            <Button size="lg" variant="secondary">
-              Enroll Now
-            </Button>
-          </Link>
-          <Link to="/contact">
-            <Button size="lg" variant="outline">
-              Contact Us
-            </Button>
-          </Link>
         </div>
       </section>
     </div>
