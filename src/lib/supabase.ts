@@ -3,14 +3,53 @@ import { createClient } from '@supabase/supabase-js';
 // Supabase configuration
 // These will be replaced with your actual Supabase credentials
 // Default to the provided project id if environment variable is not set
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL!;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY!;
+// `import.meta.env` is provided by Vite; TypeScript may not know custom keys
+// so cast `import.meta` to `any` to access them safely here.
+const supabaseUrl =
+  (import.meta as any).murekefu_music_hub_SUPABASE_URL ||
+  (import.meta as any).VITE_SUPABASE_URL ||
+  "";
+const supabaseAnonKey =
+  (import.meta as any).murekefu_music_hub_SUPABASE_ANON_KEY ||
+  (import.meta as any).VITE_SUPABASE_ANON_KEY ||
+  "";
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error("Supabase environment variables are missing");
+const missing = !supabaseUrl || !supabaseAnonKey;
+
+if (missing) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    "Supabase environment variables are missing — client will be a safe stub. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable Supabase.",
+  );
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+function createMissingClientStub() {
+  const message =
+    "Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable Supabase features.";
+  const err = new Error(message);
+
+  // Return a proxy that converts any function access into a rejected Promise
+  // so async callers get a clear failure instead of crashing on import.
+  const fn = () => Promise.reject(err);
+
+  const proxy = new Proxy(
+    {},
+    {
+      get() {
+        return fn;
+      },
+      apply() {
+        return Promise.reject(err);
+      },
+    },
+  );
+
+  return proxy as any;
+}
+
+export const supabase = !missing
+  ? createClient(supabaseUrl, supabaseAnonKey)
+  : createMissingClientStub();
 
 
 

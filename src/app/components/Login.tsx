@@ -135,10 +135,39 @@ export function Login() {
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
 
-      // Default role could be buyer or fetched from Firestore
-      const role =
-        (await authService.getUserRole(firebaseUser.uid)) || selectedRole;
-      await authService.syncUser(firebaseUser, role);
+      let role: UserRole = selectedRole;
+
+      // If the user explicitly chose to sign up, respect their selected role
+      if (isSignUp) {
+        role = selectedRole;
+        await authService.syncUser(firebaseUser, role);
+      } else {
+        // For sign-in, prefer the role from the backend if available.
+        // If no role exists (first-time social login), create the user with selectedRole.
+        try {
+          const fetchRole =
+            typeof authService.getUserRole === "function"
+              ? await authService.getUserRole(firebaseUser.uid)
+              : null;
+
+          if (fetchRole) {
+            role = fetchRole as UserRole;
+          } else {
+            // No role in DB — create/sync using selectedRole
+            role = selectedRole;
+            await authService.syncUser(firebaseUser, role);
+          }
+        } catch (err) {
+          // If fetching role fails, fall back to selectedRole and attempt to sync
+          console.warn("Failed to fetch role, defaulting to selected role:", err);
+          role = selectedRole;
+          try {
+            await authService.syncUser(firebaseUser, role);
+          } catch (syncErr) {
+            console.error("Failed to sync user after Google sign-in:", syncErr);
+          }
+        }
+      }
 
       toast.success("Logged in with Google successfully!");
       redirectToDashboard(role as UserRole, firebaseUser.uid);

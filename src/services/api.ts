@@ -140,6 +140,36 @@ export const authService = {
       throw error;
     }
   },
+
+  /**
+   * Get primary role for a Firebase user by their firebase UID.
+   * Returns the first role name found or null when none exists.
+   */
+  async getUserRole(firebaseUid: string): Promise<string | null> {
+    try {
+      if (!firebaseUid) return null;
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('user_roles(roles(name))')
+        .eq('firebase_uid', firebaseUid)
+        .single();
+
+      if (error) {
+        // Fail gracefully and return null if the user isn't found or on other errors
+        console.warn('getUserRole supabase error:', error);
+        return null;
+      }
+
+      if (!data || !data.user_roles) return null;
+
+      const roles = (data.user_roles as any[]).map((ur) => ur.roles?.name).filter(Boolean);
+      return roles.length > 0 ? (roles[0] as string) : null;
+    } catch (err) {
+      console.warn('getUserRole failed:', err);
+      return null;
+    }
+  },
   
   /**
    * Log audit action

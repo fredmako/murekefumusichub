@@ -13,47 +13,47 @@ import { ContactUs } from "./components/ContactUs";
 -------------------------------- */
 const LandingPage = React.lazy(() =>
   import("./components/LandingPage").then((m) => ({
-    default: m.LandingPage ?? m.default,
+    default: (m as any).LandingPage ?? (m as any).default,
   })),
 );
 const MusicEnrollmentPage = React.lazy(() =>
   import("./components/MusicEnrollmentPage").then((m) => ({
-    default: m.MusicEnrollmentPage ?? m.default,
+    default: (m as any).MusicEnrollmentPage ?? (m as any).default,
   })),
 );
 const Login = React.lazy(() =>
   import("./components/Login").then((m) => ({
-    default: m.Login ?? m.default,
+    default: (m as any).Login ?? (m as any).default,
   })),
 );
 
 const Marketplace = React.lazy(() =>
   import("./components/Marketplace").then((m) => ({
-    default: m.Marketplace ?? m.default,
+    default: (m as any).Marketplace ?? (m as any).default,
   })),
 );
 
 const AboutPage = React.lazy(() =>
   import("./components/AboutPage").then((m) => ({
-    default: m.AboutPage ?? m.default,
+    default: (m as any).AboutPage ?? (m as any).default,
   })),
 );
 
 const BuyerDashboard = React.lazy(() =>
   import("./components/BuyerDashboard").then((m) => ({
-    default: m.BuyerDashboard ?? m.default,
+    default: (m as any).BuyerDashboard ?? (m as any).default,
   })),
 );
 
 const ComposerDashboard = React.lazy(() =>
   import("./components/ComposerDashboard").then((m) => ({
-    default: m.ComposerDashboard ?? m.default,
+    default: (m as any).ComposerDashboard ?? (m as any).default,
   })),
 );
 
 const AdminDashboard = React.lazy(() =>
   import("./components/AdminPanel").then((m) => ({
-    default: m.AdminDashboard ?? m.default,
+    default: (m as any).AdminPanel ?? (m as any).default,
   })),
 );
 
