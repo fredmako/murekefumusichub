@@ -1,59 +1,60 @@
-
 // src/app/App.tsx
 import React, { Suspense, useState } from "react";
-import {PrivacyPolicy} from "./components/PrivacyPolicy";
+import { PrivacyPolicy } from "./components/PrivacyPolicy";
 import { Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { CartItem } from "./types";
 import { AuthProvider } from "../context/AuthContext";
-import {ContactUs} from "./components/ContactUs";
+import { ManageAccount } from "./components/ManageAccount";
+
+import { ContactUs } from "./components/ContactUs";
 /* -----------------------------
    Lazy-loaded Pages
 -------------------------------- */
 const LandingPage = React.lazy(() =>
-  import("./components/LandingPage").then(m => ({
+  import("./components/LandingPage").then((m) => ({
     default: m.LandingPage ?? m.default,
-  }))
+  })),
 );
 const MusicEnrollmentPage = React.lazy(() =>
-  import("./components/MusicEnrollmentPage").then(m => ({
+  import("./components/MusicEnrollmentPage").then((m) => ({
     default: m.MusicEnrollmentPage ?? m.default,
-  }))
+  })),
 );
 const Login = React.lazy(() =>
-  import("./components/Login").then(m => ({
+  import("./components/Login").then((m) => ({
     default: m.Login ?? m.default,
-  }))
+  })),
 );
 
 const Marketplace = React.lazy(() =>
-  import("./components/Marketplace").then(m => ({
+  import("./components/Marketplace").then((m) => ({
     default: m.Marketplace ?? m.default,
-  }))
+  })),
 );
 
 const AboutPage = React.lazy(() =>
-  import("./components/AboutPage").then(m => ({
+  import("./components/AboutPage").then((m) => ({
     default: m.AboutPage ?? m.default,
-  }))
+  })),
 );
 
 const BuyerDashboard = React.lazy(() =>
-  import("./components/BuyerDashboard").then(m => ({
+  import("./components/BuyerDashboard").then((m) => ({
     default: m.BuyerDashboard ?? m.default,
-  }))
+  })),
 );
 
 const ComposerDashboard = React.lazy(() =>
-  import("./components/ComposerDashboard").then(m => ({
+  import("./components/ComposerDashboard").then((m) => ({
     default: m.ComposerDashboard ?? m.default,
-  }))
+  })),
 );
 
 const AdminDashboard = React.lazy(() =>
-  import("./components/AdminPanel").then(m => ({
+  import("./components/AdminPanel").then((m) => ({
     default: m.AdminDashboard ?? m.default,
-  }))
+  })),
 );
 
 /* -----------------------------
@@ -114,7 +115,9 @@ const DashboardWrapper = ({
   const [searchParams] = useSearchParams();
   const uid = searchParams.get("uid") ?? undefined;
 
-  return <Component uid={uid} cart={cart} onRemoveFromCart={onRemoveFromCart} />;
+  return (
+    <Component uid={uid} cart={cart} onRemoveFromCart={onRemoveFromCart} />
+  );
 };
 
 /* -----------------------------
@@ -124,8 +127,8 @@ export default function App() {
   const [cart, setCart] = useState<CartItem[]>([]);
 
   const handleRemoveFromCart = (compositionId: string) => {
-    setCart(prev =>
-      prev.filter(item => item.composition.id !== compositionId)
+    setCart((prev) =>
+      prev.filter((item) => item.composition.id !== compositionId),
     );
   };
 
@@ -137,13 +140,14 @@ export default function App() {
 
           <Suspense fallback={<div className="p-8">Loading...</div>}>
             <Routes>
-
               {/* Public Pages */}
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<Login />} />
               <Route path="/marketplace" element={<Marketplace />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+              <Route path="/manage-account" element={<ManageAccount />} />
+
               {/* Dashboards */}
               <Route
                 path="/buyer"
@@ -153,10 +157,9 @@ export default function App() {
                     cart={cart}
                     onRemoveFromCart={handleRemoveFromCart}
                   />
-
                 }
               />
-<Route path="/contact" element={<ContactUs />} />
+              <Route path="/contact" element={<ContactUs />} />
               <Route
                 path="/composer"
                 element={
@@ -165,10 +168,9 @@ export default function App() {
                     cart={cart}
                     onRemoveFromCart={handleRemoveFromCart}
                   />
-
                 }
               />
-<Route path="/enroll" element={<MusicEnrollmentPage />} />
+              <Route path="/enroll" element={<MusicEnrollmentPage />} />
               <Route
                 path="/admin"
                 element={

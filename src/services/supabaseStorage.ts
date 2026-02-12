@@ -1,7 +1,7 @@
-import { supabase } from '@/lib/supabase';
-import { auth } from '@/lib/firebase';
+import { supabase } from "@/lib/supabase";
+import { auth } from "@/lib/firebase";
 
-export type StorageBucket = 'compositions' | 'thumbnails' | 'avatars';
+export type StorageBucket = "compositions" | "thumbnails" | "avatars";
 
 export interface UploadOptions {
   bucket: StorageBucket;
@@ -20,24 +20,24 @@ export interface UploadResult {
  */
 export async function uploadFile(
   file: File,
-  options: UploadOptions
+  options: UploadOptions,
 ): Promise<UploadResult> {
   const user = auth.currentUser;
   if (!user) {
-    throw new Error('User must be authenticated to upload files');
+    throw new Error("User must be authenticated to upload files");
   }
 
   try {
     // Create a unique file path: bucket/firebase-uid/timestamp-filename
     const timestamp = Date.now();
-    const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '-');
+    const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, "-");
     const filePath = `${user.uid}/${timestamp}-${sanitizedFileName}`;
 
     // Upload file to Supabase Storage
     const { data, error } = await supabase.storage
       .from(options.bucket)
       .upload(filePath, file, {
-        cacheControl: '3600',
+        cacheControl: "3600",
         upsert: false,
       });
 
@@ -54,13 +54,15 @@ export async function uploadFile(
 
     // Record file upload in database for tracking
     const { data: fileRecord, error: dbError } = await supabase
-      .from('file_uploads')
+      .from("file_uploads")
       .insert({
-        user_id: (await supabase
-          .from('users')
-          .select('id')
-          .eq('firebase_uid', user.uid)
-          .single()).data?.id,
+        user_id: (
+          await supabase
+            .from("users")
+            .select("id")
+            .eq("firebase_uid", user.uid)
+            .single()
+        ).data?.id,
         file_name: file.name,
         file_path: filePath,
         file_type: file.type,
@@ -72,7 +74,7 @@ export async function uploadFile(
       .single();
 
     if (dbError) {
-      console.warn('Failed to record file upload in database:', dbError);
+      console.warn("Failed to record file upload in database:", dbError);
       // Continue anyway - file is uploaded, just not tracked
     }
 
@@ -82,7 +84,7 @@ export async function uploadFile(
       path: filePath,
     };
   } catch (error) {
-    console.error('File upload error:', error);
+    console.error("File upload error:", error);
     throw error;
   }
 }
@@ -92,14 +94,16 @@ export async function uploadFile(
  */
 export async function uploadComposition(
   file: File,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
 ): Promise<UploadResult> {
-  if (!file.type.includes('pdf') && !file.type.includes('audio')) {
-    throw new Error('Invalid file type. Only PDFs and audio files are allowed.');
+  if (!file.type.includes("pdf") && !file.type.includes("audio")) {
+    throw new Error(
+      "Invalid file type. Only PDFs and audio files are allowed.",
+    );
   }
 
   return uploadFile(file, {
-    bucket: 'compositions',
+    bucket: "compositions",
     onProgress,
   });
 }
@@ -109,14 +113,14 @@ export async function uploadComposition(
  */
 export async function uploadThumbnail(
   file: File,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
 ): Promise<UploadResult> {
-  if (!file.type.startsWith('image/')) {
-    throw new Error('Invalid file type. Only images are allowed.');
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Invalid file type. Only images are allowed.");
   }
 
   return uploadFile(file, {
-    bucket: 'thumbnails',
+    bucket: "thumbnails",
     onProgress,
   });
 }
@@ -126,14 +130,14 @@ export async function uploadThumbnail(
  */
 export async function uploadAvatar(
   file: File,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
 ): Promise<UploadResult> {
-  if (!file.type.startsWith('image/')) {
-    throw new Error('Invalid file type. Only images are allowed.');
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Invalid file type. Only images are allowed.");
   }
 
   return uploadFile(file, {
-    bucket: 'avatars',
+    bucket: "avatars",
     onProgress,
   });
 }
@@ -143,17 +147,17 @@ export async function uploadAvatar(
  */
 export async function deleteFile(
   bucket: StorageBucket,
-  filePath: string
+  filePath: string,
 ): Promise<void> {
   const user = auth.currentUser;
   if (!user) {
-    throw new Error('User must be authenticated to delete files');
+    throw new Error("User must be authenticated to delete files");
   }
 
   try {
     // Only allow users to delete their own files
     if (!filePath.startsWith(user.uid)) {
-      throw new Error('You do not have permission to delete this file');
+      throw new Error("You do not have permission to delete this file");
     }
 
     const { error: deleteError } = await supabase.storage
@@ -166,16 +170,16 @@ export async function deleteFile(
 
     // Remove file record from database
     const { error: dbError } = await supabase
-      .from('file_uploads')
+      .from("file_uploads")
       .delete()
-      .eq('file_path', filePath)
-      .eq('bucket', bucket);
+      .eq("file_path", filePath)
+      .eq("bucket", bucket);
 
     if (dbError) {
-      console.warn('Failed to delete file record from database:', dbError);
+      console.warn("Failed to delete file record from database:", dbError);
     }
   } catch (error) {
-    console.error('File deletion error:', error);
+    console.error("File deletion error:", error);
     throw error;
   }
 }
@@ -183,32 +187,30 @@ export async function deleteFile(
 /**
  * Get user's uploaded files
  */
-export async function getUserFiles(
-  bucket?: StorageBucket
-): Promise<any[]> {
+export async function getUserFiles(bucket?: StorageBucket): Promise<any[]> {
   const user = auth.currentUser;
   if (!user) {
-    throw new Error('User must be authenticated');
+    throw new Error("User must be authenticated");
   }
 
   try {
     let query = supabase
-      .from('file_uploads')
-      .select('*')
-      .eq('user_id', user.uid);
+      .from("file_uploads")
+      .select("*")
+      .eq("user_id", user.uid);
 
     if (bucket) {
-      query = query.eq('bucket', bucket);
+      query = query.eq("bucket", bucket);
     }
 
-    const { data, error } = await query.order('created_at', {
+    const { data, error } = await query.order("created_at", {
       ascending: false,
     });
 
     if (error) throw error;
     return data || [];
   } catch (error) {
-    console.error('Error fetching user files:', error);
+    console.error("Error fetching user files:", error);
     throw error;
   }
 }
@@ -219,11 +221,11 @@ export async function getUserFiles(
 export async function getSignedUrl(
   bucket: StorageBucket,
   filePath: string,
-  expiresIn: number = 3600
+  expiresIn: number = 3600,
 ): Promise<string> {
   const user = auth.currentUser;
   if (!user) {
-    throw new Error('User must be authenticated');
+    throw new Error("User must be authenticated");
   }
 
   try {
@@ -237,7 +239,7 @@ export async function getSignedUrl(
 
     return data.signedUrl;
   } catch (error) {
-    console.error('Error getting signed URL:', error);
+    console.error("Error getting signed URL:", error);
     throw error;
   }
 }

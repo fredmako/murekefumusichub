@@ -1,8 +1,9 @@
 // src/app/components/Navbar.tsx
+
 import { useLocation, NavLink, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { CartItem } from "@/app/types";
-import { Music, ShoppingCart, User as UserIcon, LogOut } from "lucide-react";
+import { ShoppingCart, User as UserIcon, LogOut, Settings } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
 import logo from "@/app/components/images/logo.jpg";
@@ -24,7 +25,7 @@ import {
 } from "@/app/components/ui/sheet";
 
 interface NavbarProps {
-  cart?: CartItem[]; // optional to prevent errors
+  cart?: CartItem[];
   onRemoveFromCart?: (compositionId: string) => void;
 }
 
@@ -41,24 +42,23 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
 
   const roles = appUser?.roles ?? [];
 
-  // Navigation items
   const navItems = [
     {
       label: "Learn Music",
       path: "/",
-      showOn: ["/"], // only landing page
-      roles: [], // all users
+      showOn: ["/"],
+      roles: [],
     },
     {
       label: "About Us",
       path: "/about",
-      showOn: ["/"], // landing page
+      showOn: ["/"],
       roles: [],
     },
     {
-      label: "Music hub ",
+      label: "Music Hub",
       path: "/marketplace",
-      showOn: ["any"], // everywhere
+      showOn: ["any"],
       roles: [],
     },
     {
@@ -81,7 +81,6 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     },
   ];
 
-  // Determine dashboard path dynamically based on roles
   const getDashboardPath = () => {
     if (!roles || roles.length === 0) return "/";
     if (roles.includes("admin")) return "/admin";
@@ -94,8 +93,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     <nav className="bg-white shadow-md border-b">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          {/* Logo */}
+          {/* ================= Logo ================= */}
           <Link to="/" className="flex items-center gap-2">
             <img
               src={logo}
@@ -110,12 +108,13 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
             </div>
           </Link>
 
-          {/* Main Navigation */}
+          {/* ================= Main Navigation ================= */}
           <div className="hidden md:flex items-center gap-3">
             {navItems.map((item) => {
               const isVisible =
                 item.showOn.includes("any") ||
                 item.showOn.includes(location.pathname);
+
               const hasRole =
                 item.roles.length === 0 ||
                 item.roles.some((role) => roles.includes(role));
@@ -134,9 +133,9 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
             })}
           </div>
 
-          {/* Right Actions */}
+          {/* ================= Right Actions ================= */}
           <div className="flex items-center gap-3">
-            {/* Cart for buyers only */}
+            {/* ===== Cart (Buyer Only) ===== */}
             {roles.includes("buyer") && cart.length > 0 && onRemoveFromCart && (
               <Sheet>
                 <SheetTrigger asChild>
@@ -208,7 +207,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
               </Sheet>
             )}
 
-            {/* User Menu */}
+            {/* ===== User Menu ===== */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="icon">
@@ -230,14 +229,24 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
 
                     <DropdownMenuSeparator />
 
-                    {/* Redirect to the correct dashboard */}
+                    {/* Dashboard */}
                     <DropdownMenuItem
                       onClick={() => navigate(getDashboardPath())}
                     >
                       Dashboard
                     </DropdownMenuItem>
 
+                    {/* Manage Account */}
+                    <DropdownMenuItem
+                      onClick={() => navigate("/manage-account")}
+                    >
+                      <Settings className="size-4 mr-2" />
+                      Manage Account
+                    </DropdownMenuItem>
+
                     <DropdownMenuSeparator />
+
+                    {/* Logout */}
                     <DropdownMenuItem
                       onClick={signOut}
                       className="text-red-600"

@@ -3,10 +3,16 @@ import { createClient } from '@supabase/supabase-js';
 // Supabase configuration
 // These will be replaced with your actual Supabase credentials
 // Default to the provided project id if environment variable is not set
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ffrgvovaaxodqzzojfzs.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL!;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY!;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error("Supabase environment variables are missing");
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+
 
 // Types for database tables
 export interface User {
@@ -163,6 +169,7 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   is_active BOOLEAN DEFAULT TRUE
 );
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 
 -- Roles table
 CREATE TABLE IF NOT EXISTS roles (
@@ -198,6 +205,7 @@ CREATE TABLE IF NOT EXISTS composers (
   payout_info JSONB,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE compositions ENABLE ROW LEVEL SECURITY;
 
 -- Categories table
 CREATE TABLE IF NOT EXISTS categories (
@@ -223,6 +231,7 @@ CREATE TABLE IF NOT EXISTS compositions (
   deleted BOOLEAN DEFAULT FALSE
 );
 
+
 -- Composition stats
 CREATE TABLE IF NOT EXISTS composition_stats (
   composition_id UUID PRIMARY KEY REFERENCES compositions(id) ON DELETE CASCADE,
@@ -242,6 +251,8 @@ CREATE TABLE IF NOT EXISTS purchases (
   is_active BOOLEAN DEFAULT TRUE,
   metadata JSONB
 );
+ALTER TABLE purchases ENABLE ROW LEVEL SECURITY;
+
 
 -- Buyer preferences
 CREATE TABLE IF NOT EXISTS buyer_preferences (
@@ -310,6 +321,7 @@ CREATE TABLE IF NOT EXISTS file_uploads (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE file_uploads ENABLE ROW LEVEL SECURITY;
 
 -- Create indexes for file_uploads
 CREATE INDEX IF NOT EXISTS idx_file_uploads_user_id ON file_uploads(user_id);
@@ -415,6 +427,7 @@ BEGIN
   LIMIT p_limit;
 END;
 $$ LANGUAGE plpgsql;
+
 `;
 
 export default supabase;
