@@ -11,13 +11,6 @@ import {
 } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/app/components/ui/select";
 import { useNavigate } from "react-router-dom";
 import { auth } from "@/lib/firebase";
 import {
@@ -27,153 +20,201 @@ import {
   signInWithPopup,
   onAuthStateChanged,
 } from "firebase/auth";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { toast } from "sonner";
 import { authService } from "@/services/api";
 import logo from "../components/images/logo.jpg";
+
 type UserRole = "buyer" | "composer" | "admin";
+
+/* 🔥 HARD CODED SUPER ADMIN */
+const SUPER_ADMIN_EMAIL = "fredrickmakori102@gmail.com";
+
+const normalizeEmail = (email: string) =>
+  email.toLowerCase().trim();
 
 export function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [selectedRole, setSelectedRole] = useState<UserRole>("buyer");
   const [isLoading, setIsLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const navigate = useNavigate();
 
-  // Redirect based on role and uid
-  const redirectToDashboard = (role: UserRole, uid: string) => {
-    if (role === "buyer") navigate(`/buyer?uid=${uid}`);
-    else if (role === "composer") navigate(`/composer?uid=${uid}`);
-    else if (role === "admin") navigate(`/admin?uid=${uid}`);
-    else navigate("/");
+  /* 🔥 CLEAN REDIRECT (NO UID IN URL) */
+  const redirectToDashboard = (role: UserRole) => {
+    switch (role) {
+      case "admin":
+        navigate("/admin", { replace: true });
+        break;
+      case "composer":
+        navigate("/composer", { replace: true });
+        break;
+      case "buyer":
+        navigate("/buyer", { replace: true });
+        break;
+      default:
+        navigate("/", { replace: true });
+    }
   };
 
-  // Auto-redirect if already logged in
+  /* 🔥 AUTO REDIRECT IF LOGGED IN */
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        try {
-          const role = await authService.getUserRole(user.uid); // fetch user role from Firestore
-          redirectToDashboard(role, user.uid);
-        } catch (error) {
-          console.error("Failed to fetch user role:", error);
-        }
+      if (!user) return;
+
+      const normalizedEmail = normalizeEmail(user.email || "");
+
+      if (normalizedEmail === SUPER_ADMIN_EMAIL) {
+        redirectToDashboard("admin");
+        return;
       }
+
+      const role = await authService.getUserRole(user.uid);
+      if (role) redirectToDashboard(role as UserRole);
     });
+
     return () => unsubscribe();
   }, []);
 
+  /* 🔥 EMAIL/PASSWORD LOGIN + SIGNUP */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!email || !password)
       return toast.error("Please enter email and password");
+
     if (password.length < 6)
       return toast.error("Password must be at least 6 characters");
 
     setIsLoading(true);
-    try {
-      let firebaseUser;
 
+    try {
       if (isSignUp) {
+        /* 🔥 SIGN UP LOGIC */
         const result = await createUserWithEmailAndPassword(
           auth,
           email,
-          password,
+          password
         );
-        firebaseUser = result.user;
-        await authService.syncUser(firebaseUser, selectedRole);
-        toast.success("Account created successfully!");
-      } else {
-        const result = await signInWithEmailAndPassword(auth, email, password);
-        firebaseUser = result.user;
-        const roleFromDB = await authService.getUserRole(firebaseUser.uid);
-        toast.success("Logged in successfully!");
-        // Use the role from DB if not signing up
-        setSelectedRole(roleFromDB as UserRole);
-      }
 
-      // Redirect to dashboard
-      redirectToDashboard(selectedRole, firebaseUser.uid);
+        const firebaseUser = result.user;
+        const normalizedEmail = normalizeEmail(
+          firebaseUser.email || ""
+        );
+
+        let role: UserRole = "buyer";
+
+        // 🔐 Hardcoded admin
+        if (normalizedEmail === SUPER_ADMIN_EMAIL) {
+          role = "admin";
+        } else {
+          // 🔎 Check composer invite
+          const inviteRef = doc(db, "composerInvites", normalizedEmail);
+          const inviteSnap = await getDoc(inviteRef);
+
+          if (inviteSnap.exists() && !inviteSnap.data().used) {
+            role = "composer";
+            await updateDoc(inviteRef, { used: true });
+          }
+        }
+
+        await authService.syncUser(firebaseUser, role);
+
+        toast.success("Account created successfully!");
+        redirectToDashboard(role);
+
+      } else {
+        /* 🔥 LOGIN LOGIC */
+        const result = await signInWithEmailAndPassword(
+          auth,
+          email,
+          password
+        );
+
+        const firebaseUser = result.user;
+        const normalizedEmail = normalizeEmail(
+          firebaseUser.email || ""
+        );
+
+        let role: UserRole;
+
+        // 🔐 Hardcoded admin override
+        if (normalizedEmail === SUPER_ADMIN_EMAIL) {
+          role = "admin";
+          await authService.syncUser(firebaseUser, "admin");
+        } else {
+          const roleFromDB = await authService.getUserRole(
+            firebaseUser.uid
+          );
+
+          if (!roleFromDB) {
+            throw new Error("User role not found");
+          }
+
+          role = roleFromDB as UserRole;
+        }
+
+        toast.success("Logged in successfully!");
+        redirectToDashboard(role);
+      }
     } catch (error: any) {
       console.error("Authentication error:", error);
+
       switch (error.code) {
         case "auth/user-not-found":
-          toast.error("No account found with this email. Please sign up.");
-          setIsSignUp(true);
+          toast.error("No account found. Please sign up.");
           break;
         case "auth/wrong-password":
-          toast.error("Incorrect password. Please try again.");
+          toast.error("Incorrect password.");
           break;
         case "auth/email-already-in-use":
-          toast.error(
-            "This email is already registered. Please sign in instead.",
-          );
-          setIsSignUp(false);
+          toast.error("Email already registered.");
           break;
         case "auth/weak-password":
-          toast.error(
-            "Password is too weak. Please use at least 6 characters.",
-          );
-          break;
-        case "auth/invalid-email":
-          toast.error("Invalid email address format.");
+          toast.error("Password too weak.");
           break;
         default:
-          toast.error(
-            error.message || "Authentication failed. Please try again.",
-          );
+          toast.error("Authentication failed.");
       }
     } finally {
       setIsLoading(false);
     }
   };
 
+  /* 🔥 GOOGLE LOGIN */
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
-    const provider = new GoogleAuthProvider();
+
     try {
+      const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
+
       const firebaseUser = result.user;
+      const normalizedEmail = normalizeEmail(
+        firebaseUser.email || ""
+      );
 
-      let role: UserRole = selectedRole;
+      let role: UserRole = "buyer";
 
-      // If the user explicitly chose to sign up, respect their selected role
-      if (isSignUp) {
-        role = selectedRole;
-        await authService.syncUser(firebaseUser, role);
+      if (normalizedEmail === SUPER_ADMIN_EMAIL) {
+        role = "admin";
       } else {
-        // For sign-in, prefer the role from the backend if available.
-        // If no role exists (first-time social login), create the user with selectedRole.
-        try {
-          const fetchRole =
-            typeof authService.getUserRole === "function"
-              ? await authService.getUserRole(firebaseUser.uid)
-              : null;
+        const inviteRef = doc(db, "composerInvites", normalizedEmail);
+        const inviteSnap = await getDoc(inviteRef);
 
-          if (fetchRole) {
-            role = fetchRole as UserRole;
-          } else {
-            // No role in DB — create/sync using selectedRole
-            role = selectedRole;
-            await authService.syncUser(firebaseUser, role);
-          }
-        } catch (err) {
-          // If fetching role fails, fall back to selectedRole and attempt to sync
-          console.warn("Failed to fetch role, defaulting to selected role:", err);
-          role = selectedRole;
-          try {
-            await authService.syncUser(firebaseUser, role);
-          } catch (syncErr) {
-            console.error("Failed to sync user after Google sign-in:", syncErr);
-          }
+        if (inviteSnap.exists() && !inviteSnap.data().used) {
+          role = "composer";
+          await updateDoc(inviteRef, { used: true });
         }
       }
 
-      toast.success("Logged in with Google successfully!");
-      redirectToDashboard(role as UserRole, firebaseUser.uid);
+      await authService.syncUser(firebaseUser, role);
+
+      toast.success("Google sign-in successful!");
+      redirectToDashboard(role);
     } catch (error: any) {
-      console.error("Google sign-in error:", error);
-      toast.error(error.message || "Google sign-in failed");
+      toast.error("Google sign-in failed");
     } finally {
       setIsLoading(false);
     }
@@ -201,36 +242,24 @@ export function Login() {
               <CardDescription>
                 {isSignUp
                   ? "Create a new account to get started"
-                  : "Enter your credentials to access your account"}
+                  : "Enter your credentials"}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <Label htmlFor="role">
-                    {isSignUp ? "Select Your Role" : "Login As"}
-                  </Label>
-                  <Select
-                    value={selectedRole}
-                    onValueChange={(value) =>
-                      setSelectedRole(value as UserRole)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="buyer">Buyer</SelectItem>
-                      <SelectItem value="composer">Composer</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                {isSignUp && (
+                  <div>
+                    <Label>Account Type</Label>
+                    <Input value="Buyer Account" disabled />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Composer accounts are granted by admin invitation.
+                    </p>
+                  </div>
+                )}
 
                 <div>
-                  <Label htmlFor="email">Email</Label>
+                  <Label>Email</Label>
                   <Input
-                    id="email"
                     type="email"
                     placeholder="you@example.com"
                     value={email}
@@ -241,13 +270,10 @@ export function Login() {
                 </div>
 
                 <div>
-                  <Label htmlFor="password">Password</Label>
+                  <Label>Password</Label>
                   <Input
-                    id="password"
                     type="password"
-                    placeholder={
-                      isSignUp ? "At least 6 characters" : "Enter your password"
-                    }
+                    placeholder="Enter your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
@@ -266,8 +292,8 @@ export function Login() {
                   {isLoading
                     ? "Processing..."
                     : isSignUp
-                      ? "Create Account"
-                      : "Sign In"}
+                    ? "Create Account"
+                    : "Sign In"}
                 </Button>
               </form>
 
@@ -298,30 +324,6 @@ export function Login() {
               </div>
             </CardContent>
           </Card>
-
-          <p className="text-center text-sm text-gray-500">
-            {isSignUp ? (
-              <>
-                By creating an account, you agree to our{" "}
-                <a
-                  href="#"
-                  className="text-blue-600 hover:underline font-medium"
-                >
-                  Terms of Service
-                </a>
-              </>
-            ) : (
-              <>
-                Need help?{" "}
-                <a
-                  href="#"
-                  className="text-blue-600 hover:underline font-medium"
-                >
-                  Contact Support
-                </a>
-              </>
-            )}
-          </p>
         </div>
       </div>
     </div>
