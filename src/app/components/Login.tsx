@@ -21,7 +21,7 @@ import {
   onAuthStateChanged,
 } from "firebase/auth";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabase as db} from "../../lib/supabase";
 import { toast } from "sonner";
 import { authService } from "@/services/api";
 import logo from "../components/images/logo.jpg";
@@ -31,8 +31,7 @@ type UserRole = "buyer" | "composer" | "admin";
 /* 🔥 HARD CODED SUPER ADMIN */
 const SUPER_ADMIN_EMAIL = "fredrickmakori102@gmail.com";
 
-const normalizeEmail = (email: string) =>
-  email.toLowerCase().trim();
+const normalizeEmail = (email: string) => email.toLowerCase().trim();
 
 export function Login() {
   const [email, setEmail] = useState("");
@@ -90,26 +89,92 @@ export function Login() {
     setIsLoading(true);
 
     try {
-      if (isSignUp) {
-        /* 🔥 SIGN UP LOGIC */
-        const result = await createUserWithEmailAndPassword(
-          auth,
-          email,
-          password
-        );
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+
+      const firebaseUser = result.user;
+      const normalizedEmail = normalizeEmail(firebaseUser.email || "");
+
+      let roleName: UserRole = "buyer";
+
+      if (normalizedEmail === SUPER_ADMIN_EMAIL) {
+        roleName = "admin";
+      } else {
+        const { data: invite, error } = await db
+          .from("composerInvites")
+          .select("*")
+          .eq("email", normalizedEmail)
+          .single();
+
+        if (!error && invite && !invite.used) {
+          roleName = "composer";
+          await db.from("composerInvites").update({ used: true }).eq("email", normalizedEmail);
+        }
+      }
+
+      // Step 1: Upsert user record
+      const { data: userData, error: userError } = await db.from("users").upsert({
+        firebase_uid: firebaseUser.uid,
+        email: normalizedEmail,
+        display_name: firebaseUser.displayName,
+        avatar_url: firebaseUser.photoURL,
+        is_active: true,
+        created_at: new Date().toISOString(),
+      }).select().single();
+
+      if (userError) {
+        console.error("Error syncing user:", userError);
+      }
+
+      // Step 2: Get role ID from roles table
+      const { data: roleData, error: roleLookupError } = await db
+        .from("roles")
+        .select("id")
+        .eq("name", roleName)
+        .single();
+
+      if (roleLookupError) {
+        console.error("Error fetching role:", roleLookupError);
+      }
+
+      // Step 3: Link user to role in user_roles
+      if (userData && roleData) {
+        const { error: userRoleError } = await db.from("user_roles").upsert({
+          user_id: userData.id,
+          role_id: roleData.id,
+          assigned_at: new Date().toISOString(),
+        });
+
+        if (userRoleError) {
+          console.error("Error assigning role:", userRoleError);
+        }
+      }
+
+      toast.success("Google sign-in successful!");
+      redirectToDashboard(roleName);
+    } catch (error: any) {
+      console.error(error);
+      toast.error("Google sign-in failed");
+    } finally {
+      setIsLoading(false);
+    }
+
+    /* 🔥 GOOGLE LOGIN */
+    const handleGoogleSignIn = async () => {
+      setIsLoading(true);
+
+      try {
+        const provider = new GoogleAuthProvider();
+        const result = await signInWithPopup(auth, provider);
 
         const firebaseUser = result.user;
-        const normalizedEmail = normalizeEmail(
-          firebaseUser.email || ""
-        );
+        const normalizedEmail = normalizeEmail(firebaseUser.email || "");
 
         let role: UserRole = "buyer";
 
-        // 🔐 Hardcoded admin
         if (normalizedEmail === SUPER_ADMIN_EMAIL) {
           role = "admin";
         } else {
-          // 🔎 Check composer invite
           const inviteRef = doc(db, "composerInvites", normalizedEmail);
           const inviteSnap = await getDoc(inviteRef);
 
@@ -121,211 +186,122 @@ export function Login() {
 
         await authService.syncUser(firebaseUser, role);
 
-        toast.success("Account created successfully!");
+        toast.success("Google sign-in successful!");
         redirectToDashboard(role);
-
-      } else {
-        /* 🔥 LOGIN LOGIC */
-        const result = await signInWithEmailAndPassword(
-          auth,
-          email,
-          password
-        );
-
-        const firebaseUser = result.user;
-        const normalizedEmail = normalizeEmail(
-          firebaseUser.email || ""
-        );
-
-        let role: UserRole;
-
-        // 🔐 Hardcoded admin override
-        if (normalizedEmail === SUPER_ADMIN_EMAIL) {
-          role = "admin";
-          await authService.syncUser(firebaseUser, "admin");
-        } else {
-          const roleFromDB = await authService.getUserRole(
-            firebaseUser.uid
-          );
-
-          if (!roleFromDB) {
-            throw new Error("User role not found");
-          }
-
-          role = roleFromDB as UserRole;
-        }
-
-        toast.success("Logged in successfully!");
-        redirectToDashboard(role);
+      } catch (error: any) {
+        toast.error("Google sign-in failed");
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error: any) {
-      console.error("Authentication error:", error);
+    };
 
-      switch (error.code) {
-        case "auth/user-not-found":
-          toast.error("No account found. Please sign up.");
-          break;
-        case "auth/wrong-password":
-          toast.error("Incorrect password.");
-          break;
-        case "auth/email-already-in-use":
-          toast.error("Email already registered.");
-          break;
-        case "auth/weak-password":
-          toast.error("Password too weak.");
-          break;
-        default:
-          toast.error("Authentication failed.");
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+          {/* Branding */}
+          <div className="flex items-center justify-center h-full">
+            <img
+              src={logo}
+              alt="Murekefu Logo"
+              className="w-56 h-56 md:w-72 md:h-72 object-contain"
+            />
+          </div>
 
-  /* 🔥 GOOGLE LOGIN */
-  const handleGoogleSignIn = async () => {
-    setIsLoading(true);
-
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-
-      const firebaseUser = result.user;
-      const normalizedEmail = normalizeEmail(
-        firebaseUser.email || ""
-      );
-
-      let role: UserRole = "buyer";
-
-      if (normalizedEmail === SUPER_ADMIN_EMAIL) {
-        role = "admin";
-      } else {
-        const inviteRef = doc(db, "composerInvites", normalizedEmail);
-        const inviteSnap = await getDoc(inviteRef);
-
-        if (inviteSnap.exists() && !inviteSnap.data().used) {
-          role = "composer";
-          await updateDoc(inviteRef, { used: true });
-        }
-      }
-
-      await authService.syncUser(firebaseUser, role);
-
-      toast.success("Google sign-in successful!");
-      redirectToDashboard(role);
-    } catch (error: any) {
-      toast.error("Google sign-in failed");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-        {/* Branding */}
-        <div className="flex items-center justify-center h-full">
-          <img
-            src={logo}
-            alt="Murekefu Logo"
-            className="w-56 h-56 md:w-72 md:h-72 object-contain"
-          />
-        </div>
-
-        {/* Login Form */}
-        <div className="space-y-6">
-          <Card className="shadow-xl">
-            <CardHeader>
-              <CardTitle className="text-2xl">
-                {isSignUp ? "Create Account" : "Sign In"}
-              </CardTitle>
-              <CardDescription>
-                {isSignUp
-                  ? "Create a new account to get started"
-                  : "Enter your credentials"}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {isSignUp && (
-                  <div>
-                    <Label>Account Type</Label>
-                    <Input value="Buyer Account" disabled />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Composer accounts are granted by admin invitation.
-                    </p>
-                  </div>
-                )}
-
-                <div>
-                  <Label>Email</Label>
-                  <Input
-                    type="email"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    disabled={isLoading}
-                  />
-                </div>
-
-                <div>
-                  <Label>Password</Label>
-                  <Input
-                    type="password"
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    disabled={isLoading}
-                    minLength={6}
-                  />
-                </div>
-
-                <Button
-                  type="submit"
-                  className="w-full"
-                  size="lg"
-                  disabled={isLoading}
-                >
-                  <LogIn className="size-5 mr-2" />
-                  {isLoading
-                    ? "Processing..."
-                    : isSignUp
-                    ? "Create Account"
-                    : "Sign In"}
-                </Button>
-              </form>
-
-              <div className="mt-4">
-                <Button
-                  type="button"
-                  className="w-full flex items-center justify-center gap-2"
-                  variant="outline"
-                  onClick={handleGoogleSignIn}
-                  disabled={isLoading}
-                >
-                  <FcGoogle className="size-5" />
-                  Sign in with Google
-                </Button>
-              </div>
-
-              <div className="mt-4 text-center">
-                <button
-                  type="button"
-                  onClick={() => setIsSignUp(!isSignUp)}
-                  className="text-sm text-blue-600 hover:underline"
-                  disabled={isLoading}
-                >
+          {/* Login Form */}
+          <div className="space-y-6">
+            <Card className="shadow-xl">
+              <CardHeader>
+                <CardTitle className="text-2xl">
+                  {isSignUp ? "Create Account" : "Sign In"}
+                </CardTitle>
+                <CardDescription>
                   {isSignUp
-                    ? "Already have an account? Sign in"
-                    : "Don't have an account? Sign up"}
-                </button>
-              </div>
-            </CardContent>
-          </Card>
+                    ? "Create a new account to get started"
+                    : "Enter your credentials"}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  {isSignUp && (
+                    <div>
+                      <Label>Account Type</Label>
+                      <Input value="Buyer Account" disabled />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Composer accounts are granted by admin invitation.
+                      </p>
+                    </div>
+                  )}
+
+                  <div>
+                    <Label>Email</Label>
+                    <Input
+                      type="email"
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      disabled={isLoading}
+                    />
+                  </div>
+
+                  <div>
+                    <Label>Password</Label>
+                    <Input
+                      type="password"
+                      placeholder="Enter your password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      disabled={isLoading}
+                      minLength={6}
+                    />
+                  </div>
+
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    size="lg"
+                    disabled={isLoading}
+                  >
+                    <LogIn className="size-5 mr-2" />
+                    {isLoading
+                      ? "Processing..."
+                      : isSignUp
+                        ? "Create Account"
+                        : "Sign In"}
+                  </Button>
+                </form>
+
+                <div className="mt-4">
+                  <Button
+                    type="button"
+                    className="w-full flex items-center justify-center gap-2"
+                    variant="outline"
+                    onClick={handleGoogleSignIn}
+                    disabled={isLoading}
+                  >
+                    <FcGoogle className="size-5" />
+                    Sign in with Google
+                  </Button>
+                </div>
+
+                <div className="mt-4 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setIsSignUp(!isSignUp)}
+                    className="text-sm text-blue-600 hover:underline"
+                    disabled={isLoading}
+                  >
+                    {isSignUp
+                      ? "Already have an account? Sign in"
+                      : "Don't have an account? Sign up"}
+                  </button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 }
