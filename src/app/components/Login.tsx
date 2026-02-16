@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Music, LogIn } from "lucide-react";
+import { LogIn } from "lucide-react";
 import { FcGoogle } from "react-icons/fc";
 import { Button } from "@/app/components/ui/button";
 import {
@@ -20,17 +20,13 @@ import {
   signInWithPopup,
   onAuthStateChanged,
 } from "firebase/auth";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { supabase as db} from "../../lib/supabase";
+import { supabase as db } from "../../lib/supabase";
 import { toast } from "sonner";
-import { authService } from "@/services/api";
 import logo from "../components/images/logo.jpg";
 
 type UserRole = "buyer" | "composer" | "admin";
 
-/* 🔥 HARD CODED SUPER ADMIN */
 const SUPER_ADMIN_EMAIL = "fredrickmakori102@gmail.com";
-
 const normalizeEmail = (email: string) => email.toLowerCase().trim();
 
 export function Login() {
@@ -40,7 +36,9 @@ export function Login() {
   const [isSignUp, setIsSignUp] = useState(false);
   const navigate = useNavigate();
 
-  /* 🔥 CLEAN REDIRECT (NO UID IN URL) */
+  /* ============================= */
+  /* REDIRECT BASED ON ROLE */
+  /* ============================= */
   const redirectToDashboard = (role: UserRole) => {
     switch (role) {
       case "admin":
@@ -49,43 +47,85 @@ export function Login() {
       case "composer":
         navigate("/composer", { replace: true });
         break;
-      case "buyer":
-        navigate("/buyer", { replace: true });
-        break;
       default:
-        navigate("/", { replace: true });
+        navigate("/buyer", { replace: true });
     }
   };
 
-  /* 🔥 AUTO REDIRECT IF LOGGED IN */
+  /* ============================= */
+  /* AUTO REDIRECT IF LOGGED IN */
+  /* ============================= */
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) return;
 
       const normalizedEmail = normalizeEmail(user.email || "");
 
+      let role: UserRole = "buyer";
+
       if (normalizedEmail === SUPER_ADMIN_EMAIL) {
-        redirectToDashboard("admin");
-        return;
+        role = "admin";
       }
 
-      const role = await authService.getUserRole(user.uid);
-      if (role) redirectToDashboard(role as UserRole);
+      redirectToDashboard(role);
     });
 
     return () => unsubscribe();
   }, []);
 
-  /* 🔥 EMAIL/PASSWORD LOGIN + SIGNUP */
+  /* ============================= */
+  /* EMAIL / PASSWORD LOGIN */
+  /* ============================= */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!email || !password)
-      return toast.error("Please enter email and password");
+    if (!email || !password) {
+      toast.error("Please enter email and password");
+      return;
+    }
 
-    if (password.length < 6)
-      return toast.error("Password must be at least 6 characters");
+    setIsLoading(true);
 
+    try {
+      let userCredential;
+
+      if (isSignUp) {
+        userCredential = await createUserWithEmailAndPassword(
+          auth,
+          email,
+          password
+        );
+        toast.success("Account created successfully!");
+      } else {
+        userCredential = await signInWithEmailAndPassword(
+          auth,
+          email,
+          password
+        );
+        toast.success("Login successful!");
+      }
+
+      const firebaseUser = userCredential.user;
+      const normalizedEmail = normalizeEmail(firebaseUser.email || "");
+
+      const role =
+        normalizedEmail === SUPER_ADMIN_EMAIL ? "admin" : "buyer";
+
+      await syncUserToDatabase(firebaseUser.uid, normalizedEmail, role);
+
+      redirectToDashboard(role);
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || "Authentication failed");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /* ============================= */
+  /* GOOGLE LOGIN */
+  /* ============================= */
+  const handleGoogleSignIn = async () => {
     setIsLoading(true);
 
     try {
@@ -95,213 +135,157 @@ export function Login() {
       const firebaseUser = result.user;
       const normalizedEmail = normalizeEmail(firebaseUser.email || "");
 
-      let roleName: UserRole = "buyer";
+      const role =
+        normalizedEmail === SUPER_ADMIN_EMAIL ? "admin" : "buyer";
 
-      if (normalizedEmail === SUPER_ADMIN_EMAIL) {
-        roleName = "admin";
-      } else {
-        const { data: invite, error } = await db
-          .from("composerInvites")
-          .select("*")
-          .eq("email", normalizedEmail)
-          .single();
-
-        if (!error && invite && !invite.used) {
-          roleName = "composer";
-          await db.from("composerInvites").update({ used: true }).eq("email", normalizedEmail);
-        }
-      }
-
-      // Step 1: Upsert user record
-      const { data: userData, error: userError } = await db.from("users").upsert({
-        firebase_uid: firebaseUser.uid,
-        email: normalizedEmail,
-        display_name: firebaseUser.displayName,
-        avatar_url: firebaseUser.photoURL,
-        is_active: true,
-        created_at: new Date().toISOString(),
-      }).select().single();
-
-      if (userError) {
-        console.error("Error syncing user:", userError);
-      }
-
-      // Step 2: Get role ID from roles table
-      const { data: roleData, error: roleLookupError } = await db
-        .from("roles")
-        .select("id")
-        .eq("name", roleName)
-        .single();
-
-      if (roleLookupError) {
-        console.error("Error fetching role:", roleLookupError);
-      }
-
-      // Step 3: Link user to role in user_roles
-      if (userData && roleData) {
-        const { error: userRoleError } = await db.from("user_roles").upsert({
-          user_id: userData.id,
-          role_id: roleData.id,
-          assigned_at: new Date().toISOString(),
-        });
-
-        if (userRoleError) {
-          console.error("Error assigning role:", userRoleError);
-        }
-      }
+      await syncUserToDatabase(firebaseUser.uid, normalizedEmail, role);
 
       toast.success("Google sign-in successful!");
-      redirectToDashboard(roleName);
+      redirectToDashboard(role);
     } catch (error: any) {
       console.error(error);
       toast.error("Google sign-in failed");
     } finally {
       setIsLoading(false);
     }
+  };
 
-    /* 🔥 GOOGLE LOGIN */
-    const handleGoogleSignIn = async () => {
-      setIsLoading(true);
+  /* ============================= */
+  /* SYNC USER TO SUPABASE */
+  /* ============================= */
+  const syncUserToDatabase = async (
+    uid: string,
+    email: string,
+    role: UserRole
+  ) => {
+    // Upsert user
+    const { data: userData, error: userError } = await db
+      .from("users")
+      .upsert({
+        firebase_uid: uid,
+        email,
+        is_active: true,
+        created_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
 
-      try {
-        const provider = new GoogleAuthProvider();
-        const result = await signInWithPopup(auth, provider);
+    if (userError) {
+      console.error("User sync error:", userError);
+      return;
+    }
 
-        const firebaseUser = result.user;
-        const normalizedEmail = normalizeEmail(firebaseUser.email || "");
+    // Get role ID
+    const { data: roleData } = await db
+      .from("roles")
+      .select("id")
+      .eq("name", role)
+      .single();
 
-        let role: UserRole = "buyer";
+    if (roleData && userData) {
+      await db.from("user_roles").upsert({
+        user_id: userData.id,
+        role_id: roleData.id,
+      });
+    }
+  };
 
-        if (normalizedEmail === SUPER_ADMIN_EMAIL) {
-          role = "admin";
-        } else {
-          const inviteRef = doc(db, "composerInvites", normalizedEmail);
-          const inviteSnap = await getDoc(inviteRef);
+  /* ============================= */
+  /* COMPONENT UI */
+  /* ============================= */
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+        <div className="flex items-center justify-center h-full">
+          <img
+            src={logo}
+            alt="Murekefu Logo"
+            className="w-56 h-56 md:w-72 md:h-72 object-contain"
+          />
+        </div>
 
-          if (inviteSnap.exists() && !inviteSnap.data().used) {
-            role = "composer";
-            await updateDoc(inviteRef, { used: true });
-          }
-        }
+        <div className="space-y-6">
+          <Card className="shadow-xl">
+            <CardHeader>
+              <CardTitle className="text-2xl">
+                {isSignUp ? "Create Account" : "Sign In"}
+              </CardTitle>
+              <CardDescription>
+                {isSignUp
+                  ? "Create a new account to get started"
+                  : "Enter your credentials"}
+              </CardDescription>
+            </CardHeader>
 
-        await authService.syncUser(firebaseUser, role);
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <Label>Email</Label>
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    disabled={isLoading}
+                  />
+                </div>
 
-        toast.success("Google sign-in successful!");
-        redirectToDashboard(role);
-      } catch (error: any) {
-        toast.error("Google sign-in failed");
-      } finally {
-        setIsLoading(false);
-      }
-    };
+                <div>
+                  <Label>Password</Label>
+                  <Input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    disabled={isLoading}
+                  />
+                </div>
 
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-          {/* Branding */}
-          <div className="flex items-center justify-center h-full">
-            <img
-              src={logo}
-              alt="Murekefu Logo"
-              className="w-56 h-56 md:w-72 md:h-72 object-contain"
-            />
-          </div>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  size="lg"
+                  disabled={isLoading}
+                >
+                  <LogIn className="size-5 mr-2" />
+                  {isLoading
+                    ? "Processing..."
+                    : isSignUp
+                    ? "Create Account"
+                    : "Sign In"}
+                </Button>
+              </form>
 
-          {/* Login Form */}
-          <div className="space-y-6">
-            <Card className="shadow-xl">
-              <CardHeader>
-                <CardTitle className="text-2xl">
-                  {isSignUp ? "Create Account" : "Sign In"}
-                </CardTitle>
-                <CardDescription>
+              <div className="mt-4">
+                <Button
+                  type="button"
+                  className="w-full flex items-center justify-center gap-2"
+                  variant="outline"
+                  onClick={handleGoogleSignIn}
+                  disabled={isLoading}
+                >
+                  <FcGoogle className="size-5" />
+                  Sign in with Google
+                </Button>
+              </div>
+
+              <div className="mt-4 text-center">
+                <button
+                  type="button"
+                  onClick={() => setIsSignUp(!isSignUp)}
+                  className="text-sm text-blue-600 hover:underline"
+                  disabled={isLoading}
+                >
                   {isSignUp
-                    ? "Create a new account to get started"
-                    : "Enter your credentials"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  {isSignUp && (
-                    <div>
-                      <Label>Account Type</Label>
-                      <Input value="Buyer Account" disabled />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Composer accounts are granted by admin invitation.
-                      </p>
-                    </div>
-                  )}
-
-                  <div>
-                    <Label>Email</Label>
-                    <Input
-                      type="email"
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                      disabled={isLoading}
-                    />
-                  </div>
-
-                  <div>
-                    <Label>Password</Label>
-                    <Input
-                      type="password"
-                      placeholder="Enter your password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      disabled={isLoading}
-                      minLength={6}
-                    />
-                  </div>
-
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    size="lg"
-                    disabled={isLoading}
-                  >
-                    <LogIn className="size-5 mr-2" />
-                    {isLoading
-                      ? "Processing..."
-                      : isSignUp
-                        ? "Create Account"
-                        : "Sign In"}
-                  </Button>
-                </form>
-
-                <div className="mt-4">
-                  <Button
-                    type="button"
-                    className="w-full flex items-center justify-center gap-2"
-                    variant="outline"
-                    onClick={handleGoogleSignIn}
-                    disabled={isLoading}
-                  >
-                    <FcGoogle className="size-5" />
-                    Sign in with Google
-                  </Button>
-                </div>
-
-                <div className="mt-4 text-center">
-                  <button
-                    type="button"
-                    onClick={() => setIsSignUp(!isSignUp)}
-                    className="text-sm text-blue-600 hover:underline"
-                    disabled={isLoading}
-                  >
-                    {isSignUp
-                      ? "Already have an account? Sign in"
-                      : "Don't have an account? Sign up"}
-                  </button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                    ? "Already have an account? Sign in"
+                    : "Don't have an account? Sign up"}
+                </button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
 }
