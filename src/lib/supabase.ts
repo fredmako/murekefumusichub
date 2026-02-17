@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
 
 // Supabase configuration
 // These will be replaced with your actual Supabase credentials
@@ -8,11 +8,11 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl =
   (import.meta as any).murekefu_music_hub_SUPABASE_URL ||
   (import.meta as any).VITE_SUPABASE_URL ||
-  "";
+  "https://zombaemkymdaxfxbxeci.supabase.co";
 const supabaseAnonKey =
   (import.meta as any).murekefu_music_hub_SUPABASE_ANON_KEY ||
   (import.meta as any).VITE_SUPABASE_ANON_KEY ||
-  "";
+  "sb_publishable_sUVPfXJo9B_EWUcWoC4tbQ_JVAYy_yJ";
 
 const missing = !supabaseUrl || !supabaseAnonKey;
 
@@ -51,8 +51,6 @@ export const supabase = !missing
   ? createClient(supabaseUrl, supabaseAnonKey)
   : createMissingClientStub();
 
-
-
 // Types for database tables
 export interface User {
   id: string;
@@ -67,7 +65,7 @@ export interface User {
 
 export interface Role {
   id: number;
-  name: 'buyer' | 'composer' | 'admin';
+  name: "buyer" | "composer" | "admin";
 }
 
 export interface UserRole {
@@ -143,7 +141,7 @@ export interface Report {
   composition_id: string;
   reason: string;
   details: string | null;
-  status: 'pending' | 'resolved' | 'rejected';
+  status: "pending" | "resolved" | "rejected";
   admin_notes: string | null;
   created_at: string;
   resolved_at: string | null;
@@ -186,7 +184,7 @@ export interface FileUpload {
   file_path: string;
   file_type: string;
   file_size: number;
-  bucket: 'compositions' | 'thumbnails' | 'avatars';
+  bucket: "compositions" | "thumbnails" | "avatars";
   storage_url: string;
   created_at: string;
   updated_at: string;
