@@ -171,7 +171,7 @@ export function Login() {
       .single();
 
     if (userError) {
-      console.error("User sync error:", userError);
+console.error("User sync error:", error?.message || error);
       return;
     }
 

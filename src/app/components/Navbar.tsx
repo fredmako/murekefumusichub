@@ -1,5 +1,6 @@
 // src/app/components/Navbar.tsx
-
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import { useLocation, NavLink, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { CartItem } from "@/app/types";
@@ -40,7 +41,37 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     0,
   );
 
-  const roles = appUser?.roles ?? [];
+  const [roles, setRoles] = useState<string[]>([]);
+
+useEffect(() => {
+  async function fetchRoles() {
+    if (!firebaseUser?.uid) {
+      setRoles([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("user_roles")
+      .select(`
+        roles (
+          name
+        )
+      `)
+      .eq("user_id", firebaseUser.uid);
+
+    if (error) {
+      console.error("Navbar role fetch error:", error.message);
+      return;
+    }
+
+    const roleNames =
+      data?.map((r: any) => r.roles?.name).filter(Boolean) ?? [];
+
+    setRoles(roleNames);
+  }
+
+  fetchRoles();
+}, [firebaseUser]);
 
   const navItems = [
     {

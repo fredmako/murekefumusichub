@@ -8,45 +8,109 @@ import {
   CardTitle,
 } from "@/app/components/ui/card";
 import { Trash2 } from "lucide-react";
-import { doc, deleteDoc } from "firebase/firestore";
-import db from "../../lib/firebase";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 export function ManageAccount() {
-  const { firebaseUser, signOut } = useAuth();
+  const { firebaseUser, signOut, appUser } = useAuth();
   const navigate = useNavigate();
+
+  const [loading, setLoading] = useState(true);
+  const [composerRequest, setComposerRequest] = useState(false);
+  const [roles, setRoles] = useState<string[]>([]);
+  const [success, setSuccess] = useState("");
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      if (!appUser?.id) return;
+
+      const { data } = await supabase
+        .from("users")
+        .select("roles, composer_request")
+        .eq("id", appUser.id)
+        .single();
+
+      if (data) {
+        setRoles(data.roles || []);
+        setComposerRequest(data.composer_request);
+      }
+
+      setLoading(false);
+    };
+
+    fetchUser();
+  }, [appUser]);
+
+  const handleRequestComposer = async () => {
+    if (!appUser?.id) return;
+
+    const { error } = await supabase
+      .from("users")
+      .update({ composer_request: true })
+      .eq("id", appUser.id);
+
+    if (!error) {
+      setComposerRequest(true);
+      setSuccess(
+        "Composer request submitted successfully. Await admin approval.",
+      );
+    }
+  };
+  const requestComposer = async () => {
+    if (!appUser?.id) return;
+
+    // First check if request already exists
+    const { data: existing } = await supabase
+      .from("role_requests")
+      .select("*")
+      .eq("user_id", appUser.id)
+      .eq("requested_role", "composer")
+      .in("status", ["pending", "approved"])
+      .maybeSingle();
+
+    if (existing) {
+      alert("You already have a pending or approved request.");
+      return;
+    }
+
+    const { error } = await supabase.from("role_requests").insert([
+      {
+        user_id: appUser.id,
+        requested_role: "composer",
+      },
+    ]);
+
+    if (error) {
+      alert("Failed to submit request.");
+      return;
+    }
+
+    alert("Composer request submitted successfully!");
+  };
 
   const handleDeleteAccount = async () => {
     if (!firebaseUser) return;
 
     const confirmDelete = window.confirm(
-      "Are you sure you want to permanently delete your account? This action cannot be undone.",
+      "Are you sure you want to permanently delete your account?",
     );
 
     if (!confirmDelete) return;
 
     try {
-      // 1️⃣ Delete Firestore user document
-      await deleteDoc(doc(db, "users", firebaseUser.uid));
-
-      // 2️⃣ Delete Firebase Auth account
       await firebaseUser.delete();
-
-      // 3️⃣ Sign out locally
       await signOut();
-
       navigate("/");
     } catch (error: any) {
-      console.error("Delete account error:", error);
-
       if (error.code === "auth/requires-recent-login") {
-        alert(
-          "For security reasons, please log in again before deleting your account.",
-        );
-      } else {
-        alert("Failed to delete account. Please try again.");
+        alert("Please log in again before deleting your account.");
       }
     }
   };
+
+  if (loading) return <div>Loading...</div>;
+
+  const isComposer = roles.includes("composer");
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -56,17 +120,38 @@ export function ManageAccount() {
         </CardHeader>
 
         <CardContent className="space-y-6">
+          {/* ================= ROLE STATUS ================= */}
           <div>
+            <p className="font-medium">Current Roles:</p>
             <p className="text-gray-600">
-              Deleting your account will permanently remove:
+              {roles.length > 0 ? roles.join(", ") : "User"}
             </p>
-            <ul className="list-disc pl-6 mt-2 text-gray-600 space-y-1">
-              <li>Your profile information</li>
-              <li>Your authentication details</li>
-              <li>Your saved data and purchases</li>
-            </ul>
           </div>
 
+          {/* ================= COMPOSER REQUEST ================= */}
+          {!isComposer && (
+            <div className="space-y-2">
+              {composerRequest ? (
+                <p className="text-yellow-600 font-medium">
+                  Composer Request Pending Approval
+                </p>
+              ) : (
+                <Button onClick={handleRequestComposer} className="w-full">
+                  Request Composer Access
+                </Button>
+              )}
+
+              {success && <p className="text-green-600 text-sm">{success}</p>}
+            </div>
+          )}
+
+          {isComposer && (
+            <p className="text-green-600 font-medium">
+              You are approved as a Composer 🎵
+            </p>
+          )}
+
+          {/* ================= DELETE ACCOUNT ================= */}
           <Button
             variant="destructive"
             className="w-full"

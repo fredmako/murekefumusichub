@@ -13,8 +13,16 @@ import {
   Eye,
   Loader,
   Plus,
+  Check,
+  X,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/app/components/ui/card";
 import {
   Table,
   TableBody,
@@ -23,7 +31,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/app/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/app/components/ui/tabs";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import {
@@ -45,7 +58,7 @@ const normalizeEmail = (e: string) => e?.toLowerCase().trim() ?? "";
 
 /* --------- TYPES --------- */
 type RoleMap = Record<number, string>;
-type UserRoleMap = Record<string, string>; // user_id -> roleName
+type UserRoleMap = Record<string, string>; // user_id -> primaryRoleString
 
 export function AdminPanel() {
   const navigate = useNavigate();
@@ -53,6 +66,9 @@ export function AdminPanel() {
   // auth user (firebase)
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [currentUserUid, setCurrentUserUid] = useState<string | null>(null);
+
+  // requests
+  const [requests, setRequests] = useState<any[]>([]);
 
   // data
   const [users, setUsers] = useState<any[]>([]);
@@ -120,7 +136,14 @@ export function AdminPanel() {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      await Promise.all([fetchRoles(), fetchUsers(), fetchCompositions(), fetchTransactions(), fetchInvites()]);
+      await Promise.all([
+        fetchRoles(),
+        fetchUsers(),
+        fetchCompositions(),
+        fetchTransactions(),
+        fetchInvites(),
+        fetchRequests(),
+      ]);
       await computeStats();
     } catch (err: any) {
       console.error("AdminPanel fetchAll error:", err);
@@ -143,9 +166,7 @@ export function AdminPanel() {
   const fetchUsers = async () => {
     if (!supabase) return;
     // fetch users
-    const { data: usersData, error } = await supabase
-      .from("users")
-      .select("*");
+    const { data: usersData, error } = await supabase.from("users").select("*");
     if (error) {
       console.warn("users fetch error:", error);
       return;
@@ -153,7 +174,9 @@ export function AdminPanel() {
     setUsers(usersData || []);
 
     // fetch user_roles mapping as well (if your schema uses it)
-    const { data: urData, error: urErr } = await supabase.from("user_roles").select("*");
+    const { data: urData, error: urErr } = await supabase
+      .from("user_roles")
+      .select("*");
     if (!urErr) setUserRoles(urData || []);
   };
 
@@ -161,14 +184,16 @@ export function AdminPanel() {
     if (!supabase) return;
     const { data, error } = await supabase
       .from("compositions")
-      .select(`
+      .select(
+        `
         *,
         composers (
           id,
           user_id,
           users ( display_name, email )
         )
-      `)
+      `,
+      )
       .eq("deleted", false)
       .order("created_at", { ascending: false });
     if (error) {
@@ -182,7 +207,8 @@ export function AdminPanel() {
     if (!supabase) return;
     const { data, error } = await supabase
       .from("purchases")
-      .select(`
+      .select(
+        `
         *,
         compositions ( title, composer_id ),
         buyers (
@@ -190,7 +216,8 @@ export function AdminPanel() {
           user_id,
           users ( display_name, email )
         )
-      `)
+      `,
+      )
       .order("purchased_at", { ascending: false })
       .limit(200);
     if (error) {
@@ -203,20 +230,35 @@ export function AdminPanel() {
   const fetchInvites = async () => {
     if (!supabase) return;
     const { data, error } = await supabase
-      .from("composerInvites")
+      .from("role_requests")
       .select("*")
       .order("createdAt", { ascending: false });
     if (error) {
       // try alternate table name if different casing
-      const alt = await supabase.from("composerinvites").select("*");
+      const alt = await supabase.from("role_requests").select("*");
       if (!alt.error) {
         setInvites(alt.data || []);
         return;
       }
-      console.warn("composerInvites fetch error:", error);
+      console.warn("role_requests fetch error:", error);
       return;
     }
     setInvites(data || []);
+  };
+
+  const fetchRequests = async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase
+      .from("users")
+      .select("id, email, roles, composer_request, created_at")
+      .eq("composer_request", true)
+      .order("created_at", { ascending: true });
+    if (error) {
+      console.warn("composer requests fetch error:", error);
+      setRequests([]);
+      return;
+    }
+    setRequests(data || []);
   };
 
   /* ---------------- compute summary stats ---------------- */
@@ -224,12 +266,21 @@ export function AdminPanel() {
     try {
       if (!supabase) return;
       // counts using head queries
-      const { count: uCount } = await supabase.from("users").select("id", { count: "exact", head: true });
-      const { count: cCount } = await supabase.from("compositions").select("id", { count: "exact", head: true });
+      const { count: uCount } = await supabase
+        .from("users")
+        .select("id", { count: "exact", head: true });
+      const { count: cCount } = await supabase
+        .from("compositions")
+        .select("id", { count: "exact", head: true });
 
       // purchases details
-      const { data: purchases } = await supabase.from("purchases").select("price_paid");
-      const revenue = (purchases || []).reduce((s: number, p: any) => s + (p.price_paid || 0), 0);
+      const { data: purchases } = await supabase
+        .from("purchases")
+        .select("price_paid");
+      const revenue = (purchases || []).reduce(
+        (s: number, p: any) => s + (p.price_paid || 0),
+        0,
+      );
 
       setTotalUsers(uCount || 0);
       setTotalCompositions(cCount || 0);
@@ -253,11 +304,17 @@ export function AdminPanel() {
     const map: UserRoleMap = {};
     // prefer users.role column if present
     users.forEach((u: any) => {
-      // if there's a role field on user table, use it
+      // if there's a role field on user table, use it (string)
       if (u.role) map[u.id] = u.role;
+      // if roles array exists, choose priority: admin > composer > buyer
+      if (Array.isArray(u.roles) && u.roles.length > 0) {
+        if (u.roles.includes("admin")) map[u.id] = "admin";
+        else if (u.roles.includes("composer")) map[u.id] = "composer";
+        else if (u.roles.includes("buyer")) map[u.id] = "buyer";
+      }
     });
 
-    // then override / supplement with user_roles mapping
+    // then override / supplement with user_roles mapping (if exists)
     userRoles.forEach((ur: any) => {
       const roleName = roleIdToName[ur.role_id];
       if (roleName) {
@@ -287,7 +344,6 @@ export function AdminPanel() {
 
     setProcessing(true);
     try {
-      // upsert by email (use email as primary key doc id if desired)
       const payload = {
         email: normalized,
         invitedBy: currentUserUid,
@@ -295,8 +351,9 @@ export function AdminPanel() {
         used: false,
       };
 
-      // try to upsert as array so it works with older/newer clients
-      const { error } = await supabase.from("composerInvites").upsert([payload], { onConflict: "email" });
+      const { error } = await supabase
+        .from("role_requests")
+        .upsert([payload], { onConflict: "email" });
       if (error) throw error;
 
       toast.success("Composer invite added");
@@ -315,7 +372,10 @@ export function AdminPanel() {
     setProcessing(true);
     try {
       const normalized = normalizeEmail(email);
-      const { error } = await supabase.from("composerInvites").delete().eq("email", normalized);
+      const { error } = await supabase
+        .from("role_requests")
+        .delete()
+        .eq("email", normalized);
       if (error) throw error;
       toast.success("Invite revoked");
       await fetchInvites();
@@ -331,26 +391,64 @@ export function AdminPanel() {
     if (!supabase) return;
     setProcessing(true);
     try {
-      // Try to use users.role column if present
-      const hasRoleColumn = users.length > 0 && Object.prototype.hasOwnProperty.call(users[0], "role");
+      const hasRoleColumn =
+        users.length > 0 &&
+        Object.prototype.hasOwnProperty.call(users[0], "role");
+      const hasRolesArray = users.length > 0 && Array.isArray(users[0].roles);
+
       if (hasRoleColumn) {
-        const { error } = await supabase.from("users").update({ role: "composer" }).eq("id", userId);
+        const { error } = await supabase
+          .from("users")
+          .update({ role: "composer", composer_request: false })
+          .eq("id", userId);
+        if (error) throw error;
+        toast.success("User promoted to composer");
+      } else if (hasRolesArray) {
+        // fetch current roles for user
+        const u = users.find((x) => x.id === userId);
+        const curRoles = Array.isArray(u?.roles) ? u.roles : ["buyer"];
+        const updated = Array.from(new Set([...curRoles, "composer"]));
+        const { error } = await supabase
+          .from("users")
+          .update({ roles: updated, composer_request: false })
+          .eq("id", userId);
         if (error) throw error;
         toast.success("User promoted to composer");
       } else {
-        // Find composer role id
+        // fallback to user_roles table approach
         const composerRole = roles.find((r: any) => r.name === "composer");
         if (!composerRole) {
           toast.error("Composer role not found in roles table");
           return;
         }
         const payload = { user_id: userId, role_id: composerRole.id };
-        // upsert into user_roles
-        const { error } = await supabase.from("user_roles").upsert([payload], { onConflict: "user_id, role_id" });
+        const { error } = await supabase
+          .from("user_roles")
+          .upsert([payload], { onConflict: "user_id, role_id" });
         if (error) throw error;
-        toast.success("User promoted to composer");
+        // clear composer_request flag on users table if exists by id
+        await supabase
+          .from("users")
+          .update({ composer_request: false })
+          .eq("id", userId);
+        toast.success("User promoted to composer (user_roles)");
       }
+
+      // ensure composers table has a row for this user (avoid duplicates)
+      const { data: existing } = await supabase
+        .from("composers")
+        .select("id")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (!existing) {
+        const { error: compErr } = await supabase
+          .from("composers")
+          .insert([{ user_id: userId }]);
+        if (compErr) console.warn("composer insert warning:", compErr);
+      }
+
       await fetchUsers();
+      await fetchRequests();
     } catch (err: any) {
       console.error("promoteUserToComposer error:", err);
       toast.error("Failed to promote user");
@@ -363,9 +461,26 @@ export function AdminPanel() {
     if (!supabase) return;
     setProcessing(true);
     try {
-      const hasRoleColumn = users.length > 0 && Object.prototype.hasOwnProperty.call(users[0], "role");
+      const hasRoleColumn =
+        users.length > 0 &&
+        Object.prototype.hasOwnProperty.call(users[0], "role");
+      const hasRolesArray = users.length > 0 && Array.isArray(users[0].roles);
+
       if (hasRoleColumn) {
-        const { error } = await supabase.from("users").update({ role: "admin" }).eq("id", userId);
+        const { error } = await supabase
+          .from("users")
+          .update({ role: "admin" })
+          .eq("id", userId);
+        if (error) throw error;
+        toast.success("User promoted to admin");
+      } else if (hasRolesArray) {
+        const u = users.find((x) => x.id === userId);
+        const curRoles = Array.isArray(u?.roles) ? u.roles : ["buyer"];
+        const updated = Array.from(new Set([...curRoles, "admin"]));
+        const { error } = await supabase
+          .from("users")
+          .update({ roles: updated })
+          .eq("id", userId);
         if (error) throw error;
         toast.success("User promoted to admin");
       } else {
@@ -375,9 +490,11 @@ export function AdminPanel() {
           return;
         }
         const payload = { user_id: userId, role_id: adminRole.id };
-        const { error } = await supabase.from("user_roles").upsert([payload], { onConflict: "user_id, role_id" });
+        const { error } = await supabase
+          .from("user_roles")
+          .upsert([payload], { onConflict: "user_id, role_id" });
         if (error) throw error;
-        toast.success("User promoted to admin");
+        toast.success("User promoted to admin (user_roles)");
       }
       await fetchUsers();
     } catch (err: any) {
@@ -392,7 +509,10 @@ export function AdminPanel() {
     if (!supabase) return;
     setProcessing(true);
     try {
-      const { error } = await supabase.from("users").update({ is_active: false }).eq("id", userId);
+      const { error } = await supabase
+        .from("users")
+        .update({ is_active: false })
+        .eq("id", userId);
       if (error) throw error;
       toast.success("User suspended");
       await fetchUsers();
@@ -404,10 +524,53 @@ export function AdminPanel() {
     }
   }
 
+  async function approveRequest(user: any) {
+    if (!supabase) return;
+    setProcessing(true);
+    try {
+      await promoteUserToComposer(user.id);
+      toast.success(`Approved composer request for ${user.email}`);
+      await fetchRequests();
+    } catch (err: any) {
+      console.error("approveRequest error:", err);
+      toast.error("Failed to approve request");
+    } finally {
+      setProcessing(false);
+    }
+  }
+
+  async function rejectRequest(userId: string) {
+    if (!supabase) return;
+    setProcessing(true);
+    try {
+      const { error } = await supabase
+        .from("users")
+        .update({ composer_request: false })
+        .eq("id", userId);
+      if (error) throw error;
+      toast.success("Request rejected");
+      await fetchRequests();
+    } catch (err: any) {
+      console.error("rejectRequest error:", err);
+      toast.error("Failed to reject request");
+    } finally {
+      setProcessing(false);
+    }
+  }
+
   /* ---------------- composer stats derived from compositions/purchases ---------------- */
   const composerStats = useMemo(() => {
     // build map composerId -> stats
-    const map = new Map<string, { id: string; display_name: string; compositionCount: number; salesCount: number; revenue: number }>();
+    const map = new Map<
+      string,
+      {
+        id: string;
+        display_name: string;
+        compositionCount: number;
+        salesCount: number;
+        revenue: number;
+      }
+    >();
 
     // initialize composers from compositions list
     compositions.forEach((c: any) => {
@@ -415,7 +578,13 @@ export function AdminPanel() {
       const display = c.composers?.users?.display_name || "Unknown";
       if (!compId) return;
       if (!map.has(compId)) {
-        map.set(compId, { id: compId, display_name: display, compositionCount: 0, salesCount: 0, revenue: 0 });
+        map.set(compId, {
+          id: compId,
+          display_name: display,
+          compositionCount: 0,
+          salesCount: 0,
+          revenue: 0,
+        });
       }
       const st = map.get(compId)!;
       st.compositionCount += 1;
@@ -423,11 +592,18 @@ export function AdminPanel() {
 
     // aggregate purchases
     transactions.forEach((p: any) => {
-      const compId = p.composition_id || p.compositions?.id || p.compositions?.composer_id;
+      const compId =
+        p.composition_id || p.compositions?.id || p.compositions?.composer_id;
       const price = Number(p.price_paid || 0);
       if (!compId) return;
       if (!map.has(compId)) {
-        map.set(compId, { id: compId, display_name: "Unknown", compositionCount: 0, salesCount: 0, revenue: 0 });
+        map.set(compId, {
+          id: compId,
+          display_name: "Unknown",
+          compositionCount: 0,
+          salesCount: 0,
+          revenue: 0,
+        });
       }
       const st = map.get(compId)!;
       st.salesCount += 1;
@@ -464,7 +640,9 @@ export function AdminPanel() {
     <div className="p-6 space-y-8">
       <div className="mb-4">
         <h1 className="text-3xl font-bold">Admin Panel</h1>
-        <p className="text-gray-600">Manage platform operations and monitor activity</p>
+        <p className="text-gray-600">
+          Manage platform operations and monitor activity
+        </p>
       </div>
 
       {/* STATS */}
@@ -484,7 +662,9 @@ export function AdminPanel() {
 
         <Card>
           <CardHeader className="flex items-center justify-between">
-            <CardTitle className="text-sm text-gray-600">Total Compositions</CardTitle>
+            <CardTitle className="text-sm text-gray-600">
+              Total Compositions
+            </CardTitle>
             <Music className="size-5 text-purple-600" />
           </CardHeader>
           <CardContent>
@@ -495,18 +675,24 @@ export function AdminPanel() {
 
         <Card>
           <CardHeader className="flex items-center justify-between">
-            <CardTitle className="text-sm text-gray-600">Total Revenue</CardTitle>
+            <CardTitle className="text-sm text-gray-600">
+              Total Revenue
+            </CardTitle>
             <DollarSign className="size-5 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">${Number(totalRevenue || 0).toFixed(2)}</div>
+            <div className="text-3xl font-bold">
+              ${Number(totalRevenue || 0).toFixed(2)}
+            </div>
             <p className="text-xs text-gray-500 mt-1">Platform earnings</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex items-center justify-between">
-            <CardTitle className="text-sm text-gray-600">Transactions</CardTitle>
+            <CardTitle className="text-sm text-gray-600">
+              Transactions
+            </CardTitle>
             <TrendingUp className="size-5 text-orange-600" />
           </CardHeader>
           <CardContent>
@@ -520,7 +706,9 @@ export function AdminPanel() {
       <Card>
         <CardHeader>
           <CardTitle>Add Composer Invite</CardTitle>
-          <CardDescription>Enter an email to allow that user to register as composer</CardDescription>
+          <CardDescription>
+            Enter an email to allow that user to register as composer
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex gap-2 items-center">
           <input
@@ -530,7 +718,10 @@ export function AdminPanel() {
             onChange={(e) => setNewInviteEmail(e.target.value)}
             disabled={processing}
           />
-          <Button onClick={() => addComposerInvite(newInviteEmail)} disabled={processing}>
+          <Button
+            onClick={() => addComposerInvite(newInviteEmail)}
+            disabled={processing}
+          >
             <Plus className="mr-2" /> Add Invite
           </Button>
         </CardContent>
@@ -551,9 +742,18 @@ export function AdminPanel() {
                   <TableRow key={inv.email || inv.id}>
                     <TableCell>{inv.email}</TableCell>
                     <TableCell>{inv.invitedBy || "admin"}</TableCell>
-                    <TableCell>{new Date(inv.createdAt || inv.created_at || "").toLocaleString()}</TableCell>
+                    <TableCell>
+                      {new Date(
+                        inv.createdAt || inv.created_at || "",
+                      ).toLocaleString()}
+                    </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => revokeInvite(inv.email || inv.id)} disabled={processing}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => revokeInvite(inv.email || inv.id)}
+                        disabled={processing}
+                      >
                         Revoke
                       </Button>
                     </TableCell>
@@ -567,9 +767,10 @@ export function AdminPanel() {
 
       {/* TABS */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v)}>
-        <TabsList className="grid grid-cols-4 gap-2">
+        <TabsList className="grid grid-cols-5 gap-2">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="requests">Requests</TabsTrigger>
           <TabsTrigger value="compositions">Compositions</TabsTrigger>
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
         </TabsList>
@@ -594,10 +795,18 @@ export function AdminPanel() {
                 <TableBody>
                   {composerStats.slice(0, 10).map((c) => (
                     <TableRow key={c.id}>
-                      <TableCell className="font-medium">{c.display_name}</TableCell>
-                      <TableCell className="text-right">{c.compositionCount}</TableCell>
-                      <TableCell className="text-right">{c.salesCount}</TableCell>
-                      <TableCell className="text-right font-semibold">${Number(c.revenue || 0).toFixed(2)}</TableCell>
+                      <TableCell className="font-medium">
+                        {c.display_name}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {c.compositionCount}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {c.salesCount}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        ${Number(c.revenue || 0).toFixed(2)}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -608,7 +817,9 @@ export function AdminPanel() {
           <Card>
             <CardHeader>
               <CardTitle>Recent Transactions</CardTitle>
-              <CardDescription>Latest purchases on the platform</CardDescription>
+              <CardDescription>
+                Latest purchases on the platform
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
@@ -623,10 +834,22 @@ export function AdminPanel() {
                 <TableBody>
                   {transactions.slice(0, 10).map((t) => (
                     <TableRow key={t.id}>
-                      <TableCell>{new Date(t.purchased_at || t.purchasedAt || "").toLocaleString()}</TableCell>
-                      <TableCell>{t.buyers?.users?.display_name || t.buyers?.users?.email || "Unknown"}</TableCell>
-                      <TableCell>{t.compositions?.title || "Unknown"}</TableCell>
-                      <TableCell className="text-right font-semibold">${Number(t.price_paid || 0).toFixed(2)}</TableCell>
+                      <TableCell>
+                        {new Date(
+                          t.purchased_at || t.purchasedAt || "",
+                        ).toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        {t.buyers?.users?.display_name ||
+                          t.buyers?.users?.email ||
+                          "Unknown"}
+                      </TableCell>
+                      <TableCell>
+                        {t.compositions?.title || "Unknown"}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        ${Number(t.price_paid || 0).toFixed(2)}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -656,7 +879,9 @@ export function AdminPanel() {
                 <TableBody>
                   {users.map((u) => (
                     <TableRow key={u.id}>
-                      <TableCell className="font-medium">{u.display_name || "N/A"}</TableCell>
+                      <TableCell className="font-medium">
+                        {u.display_name || "N/A"}
+                      </TableCell>
                       <TableCell>{u.email}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="capitalize">
@@ -665,9 +890,13 @@ export function AdminPanel() {
                       </TableCell>
                       <TableCell>
                         {u.is_active !== false ? (
-                          <Badge className="bg-green-100 text-green-800"><CheckCircle className="size-3 mr-1" /> Active</Badge>
+                          <Badge className="bg-green-100 text-green-800">
+                            <CheckCircle className="size-3 mr-1" /> Active
+                          </Badge>
                         ) : (
-                          <Badge className="bg-red-100 text-red-800">Suspended</Badge>
+                          <Badge className="bg-red-100 text-red-800">
+                            Suspended
+                          </Badge>
                         )}
                       </TableCell>
                       <TableCell className="text-right">
@@ -680,17 +909,24 @@ export function AdminPanel() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
 
-                            <DropdownMenuItem onClick={() => promoteUserToComposer(u.id)}>
+                            <DropdownMenuItem
+                              onClick={() => promoteUserToComposer(u.id)}
+                            >
                               Promote to Composer
                             </DropdownMenuItem>
 
-                            <DropdownMenuItem onClick={() => promoteUserToAdmin(u.id)}>
+                            <DropdownMenuItem
+                              onClick={() => promoteUserToAdmin(u.id)}
+                            >
                               Promote to Admin
                             </DropdownMenuItem>
 
                             <DropdownMenuSeparator />
 
-                            <DropdownMenuItem className="text-red-600" onClick={() => suspendUser(u.id)}>
+                            <DropdownMenuItem
+                              className="text-red-600"
+                              onClick={() => suspendUser(u.id)}
+                            >
                               <Ban className="size-4 mr-2" /> Suspend User
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -704,12 +940,78 @@ export function AdminPanel() {
           </Card>
         </TabsContent>
 
+        {/* Requests */}
+        <TabsContent value="requests" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Composer Requests</CardTitle>
+              <CardDescription>
+                Pending composer access requests
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {requests.length === 0 ? (
+                <p className="text-sm text-gray-600">No pending requests.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Requested At</TableHead>
+                      <TableHead>Current Roles</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {requests.map((r) => (
+                      <TableRow key={r.id}>
+                        <TableCell>{r.email}</TableCell>
+                        <TableCell>
+                          {new Date(
+                            r.created_at || r.createdAt || "",
+                          ).toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          {Array.isArray(r.roles)
+                            ? r.roles.join(", ")
+                            : r.roles || "buyer"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => approveRequest(r)}
+                              disabled={processing}
+                            >
+                              <Check className="mr-2" /> Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => rejectRequest(r.id)}
+                              disabled={processing}
+                            >
+                              <X className="mr-2" /> Reject
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* Compositions */}
         <TabsContent value="compositions" className="mt-6">
           <Card>
             <CardHeader>
               <CardTitle>All Compositions</CardTitle>
-              <CardDescription>Manage and moderate published compositions</CardDescription>
+              <CardDescription>
+                Manage and moderate published compositions
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
@@ -728,16 +1030,26 @@ export function AdminPanel() {
                       <TableCell>
                         <div>
                           <p className="font-medium">{c.title}</p>
-                          <p className="text-sm text-gray-500">{c.description || ""}</p>
+                          <p className="text-sm text-gray-500">
+                            {c.description || ""}
+                          </p>
                         </div>
                       </TableCell>
-                      <TableCell>{c.composers?.users?.display_name || "Unknown"}</TableCell>
+                      <TableCell>
+                        {c.composers?.users?.display_name || "Unknown"}
+                      </TableCell>
                       <TableCell>${Number(c.price || 0).toFixed(2)}</TableCell>
-                      <TableCell>{new Date(c.created_at || c.createdAt || "").toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        {new Date(
+                          c.created_at || c.createdAt || "",
+                        ).toLocaleDateString()}
+                      </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon"><MoreVertical className="size-4" /></Button>
+                            <Button variant="ghost" size="icon">
+                              <MoreVertical className="size-4" />
+                            </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
@@ -780,11 +1092,25 @@ export function AdminPanel() {
                 <TableBody>
                   {transactions.map((p) => (
                     <TableRow key={p.id}>
-                      <TableCell className="font-mono text-sm">{p.id}</TableCell>
-                      <TableCell>{new Date(p.purchased_at || p.purchasedAt || "").toLocaleDateString()}</TableCell>
-                      <TableCell>{p.buyers?.users?.display_name || p.buyers?.users?.email || "Unknown"}</TableCell>
-                      <TableCell className="font-medium">{p.compositions?.title || "Unknown"}</TableCell>
-                      <TableCell className="text-right font-semibold">${Number(p.price_paid || 0).toFixed(2)}</TableCell>
+                      <TableCell className="font-mono text-sm">
+                        {p.id}
+                      </TableCell>
+                      <TableCell>
+                        {new Date(
+                          p.purchased_at || p.purchasedAt || "",
+                        ).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>
+                        {p.buyers?.users?.display_name ||
+                          p.buyers?.users?.email ||
+                          "Unknown"}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {p.compositions?.title || "Unknown"}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        ${Number(p.price_paid || 0).toFixed(2)}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
