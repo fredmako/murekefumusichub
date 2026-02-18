@@ -48,7 +48,7 @@ export const authService = {
   /**
    * Sync user with backend after Firebase authentication
    */
-  async syncUser(firebaseUser: FirebaseUser, role: string) {
+  async syncUser(firebaseUser: FirebaseUser, role?: string | null) {
     try {
       // Get Firebase ID token
       const token = await firebaseUser.getIdToken();
@@ -59,55 +59,95 @@ export const authService = {
         .from('users')
         .select('*, user_roles(role_id, roles(name))')
         .eq('firebase_uid', firebaseUser.uid)
-        .single();
+        .maybeSingle();
       
-      if (findError && findError.code !== 'PGRST116') {
-        throw findError;
+      if (findError) {
+        // If Supabase returns an error here, log it but continue to attempt sync via backend
+        console.warn('authService.syncUser: find user error', findError);
       }
       
       let userId: string;
       
       if (!existingUser) {
         // Create new user
-        const { data: newUser, error: createError } = await supabase
-          .from('users')
-          .insert({
-            firebase_uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            display_name: firebaseUser.displayName,
-            phone: firebaseUser.phoneNumber,
-            avatar_url: firebaseUser.photoURL,
-          })
-          .select()
-          .single();
+        // Try to create the user in Supabase directly. If row-level security prevents
+        // client inserts (common in production), fall back to calling a server-side
+        // sync endpoint that can use a service role key.
+        try {
+          const { data: newUser, error: createError } = await supabase
+            .from('users')
+            .insert({
+              firebase_uid: firebaseUser.uid,
+              email: firebaseUser.email,
+              display_name: firebaseUser.displayName,
+              phone: firebaseUser.phoneNumber,
+              avatar_url: firebaseUser.photoURL,
+            })
+            .select()
+            .single();
+
+          if (createError) throw createError;
+          userId = newUser.id;
+        } catch (createErr: any) {
+          console.warn('authService.syncUser: direct insert failed', createErr);
+
+          // If the error is an RLS violation, attempt to call the server-side sync
+          // endpoint which should be implemented to perform the insert using a
+          // privileged key. If no backend exists, this will surface a clear error.
+          if (createErr?.code === '42501' || createErr?.message?.includes('row-level security')) {
+            try {
+              const result: any = await apiRequest('/sync-user', {
+                method: 'POST',
+                body: JSON.stringify({
+                  firebaseUid: firebaseUser.uid,
+                  email: firebaseUser.email,
+                  displayName: firebaseUser.displayName,
+                  phone: firebaseUser.phoneNumber,
+                  avatarUrl: firebaseUser.photoURL,
+                  role,
+                }),
+              });
+
+              if (result?.id) {
+                userId = result.id;
+              } else {
+                throw new Error('Server sync did not return user id');
+              }
+            } catch (serverErr) {
+              console.error('authService.syncUser: server-side sync failed', serverErr);
+              throw serverErr;
+            }
+          } else {
+            throw createErr;
+          }
+        }
         
-        if (createError) throw createError;
-        userId = newUser.id;
-        
-        // Get role ID
-        const { data: roleData, error: roleError } = await supabase
-          .from('roles')
-          .select('id')
-          .eq('name', role)
-          .single();
-        
-        if (roleError) throw roleError;
-        
-        // Assign role
-        const { error: roleAssignError } = await supabase
-          .from('user_roles')
-          .insert({
-            user_id: userId,
-            role_id: roleData.id,
-          });
-        
-        if (roleAssignError) throw roleAssignError;
-        
-        // Create buyer or composer record
-        if (role === 'buyer') {
-          await supabase.from('buyers').insert({ user_id: userId });
-        } else if (role === 'composer') {
-          await supabase.from('composers').insert({ user_id: userId });
+        // If a role was provided, attempt to assign it and create related records
+        if (role) {
+          const { data: roleData, error: roleError } = await supabase
+            .from('roles')
+            .select('id')
+            .eq('name', role)
+            .single();
+
+          if (roleError) throw roleError;
+
+          // Assign role
+          const { error: roleAssignError } = await supabase
+            .from('user_roles')
+            .insert({
+              user_id: userId,
+              role_id: roleData.id,
+            });
+
+          if (roleAssignError) throw roleAssignError;
+
+          // Create buyer or composer record
+          if (role === 'buyer') {
+            await supabase.from('buyers').insert({ user_id: userId });
+          } else if (role === 'composer') {
+            await supabase.from('composers').insert({ user_id: userId });
+          }
         }
       } else {
         userId = existingUser.id;
@@ -153,10 +193,9 @@ export const authService = {
         .from('users')
         .select('user_roles(roles(name))')
         .eq('firebase_uid', firebaseUid)
-        .single();
+        .maybeSingle();
 
       if (error) {
-        // Fail gracefully and return null if the user isn't found or on other errors
         console.warn('getUserRole supabase error:', error);
         return null;
       }

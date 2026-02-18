@@ -18,19 +18,26 @@ export function ManageAccount() {
   const [loading, setLoading] = useState(true);
   const [composerRequest, setComposerRequest] = useState(false);
   const [roles, setRoles] = useState<string[]>([]);
+  const [supabaseId, setSupabaseId] = useState<string | null>(null);
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
     const fetchUser = async () => {
-      if (!appUser?.id) return;
+      const uid = appUser?.uid || firebaseUser?.uid;
+
+      if (!uid) {
+        setLoading(false);
+        return;
+      }
 
       const { data } = await supabase
         .from("users")
-        .select("roles, composer_request")
-        .eq("id", appUser.id)
-        .single();
+        .select("id, roles, composer_request")
+        .eq("firebase_uid", uid)
+        .maybeSingle();
 
       if (data) {
+        setSupabaseId(data.id);
         setRoles(data.roles || []);
         setComposerRequest(data.composer_request);
       }
@@ -39,15 +46,15 @@ export function ManageAccount() {
     };
 
     fetchUser();
-  }, [appUser]);
+  }, [appUser, firebaseUser]);
 
   const handleRequestComposer = async () => {
-    if (!appUser?.id) return;
+    if (!supabaseId) return;
 
     const { error } = await supabase
       .from("users")
       .update({ composer_request: true })
-      .eq("id", appUser.id);
+      .eq("id", supabaseId);
 
     if (!error) {
       setComposerRequest(true);
@@ -57,13 +64,13 @@ export function ManageAccount() {
     }
   };
   const requestComposer = async () => {
-    if (!appUser?.id) return;
+    if (!supabaseId) return;
 
     // First check if request already exists
     const { data: existing } = await supabase
       .from("role_requests")
       .select("*")
-      .eq("user_id", appUser.id)
+      .eq("user_id", supabaseId)
       .eq("requested_role", "composer")
       .in("status", ["pending", "approved"])
       .maybeSingle();
@@ -75,7 +82,7 @@ export function ManageAccount() {
 
     const { error } = await supabase.from("role_requests").insert([
       {
-        user_id: appUser.id,
+        user_id: supabaseId,
         requested_role: "composer",
       },
     ]);

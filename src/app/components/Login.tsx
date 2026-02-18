@@ -158,7 +158,8 @@ export function Login() {
     email: string,
     role: UserRole
   ) => {
-    // Upsert user
+    // Upsert user. If client RLS prevents creating users directly, fall back
+    // to the server-side sync endpoint which can use a service role key.
     const { data: userData, error: userError } = await db
       .from("users")
       .upsert({
@@ -168,10 +169,43 @@ export function Login() {
         created_at: new Date().toISOString(),
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (userError) {
-console.error("User sync error:", error?.message || error);
+      console.warn("User sync error (client):", userError?.message || userError);
+
+      // If this is an RLS or permission issue, call server-side sync endpoint
+      if (userError?.code === '42501' || userError?.message?.includes('row-level security')) {
+        try {
+          const token = await auth.currentUser?.getIdToken();
+          const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:7071/api';
+          const res = await fetch(`${base}/sync-user`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ firebaseUid: uid, email, role }),
+          });
+
+          if (!res.ok) {
+            const errBody = await res.text().catch(() => '');
+            console.error('Server sync failed:', res.status, errBody);
+            return;
+          }
+
+          const serverData = await res.json().catch(() => null);
+          if (serverData?.id) {
+            // Optionally, update or continue with serverData
+            return;
+          }
+        } catch (sev) {
+          console.error('Server-side sync error:', sev);
+        }
+
+        return;
+      }
+
       return;
     }
 

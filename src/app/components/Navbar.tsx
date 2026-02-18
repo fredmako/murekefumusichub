@@ -1,6 +1,7 @@
 // src/app/components/Navbar.tsx
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { authService } from "@/services/api";
 import { useLocation, NavLink, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { CartItem } from "@/app/types";
@@ -50,14 +51,16 @@ useEffect(() => {
       return;
     }
 
+    // Query the users table by firebase_uid and get related roles
     const { data, error } = await supabase
-      .from("user_roles")
+      .from("users")
       .select(`
-        roles (
-          name
+        user_roles (
+          roles (name)
         )
       `)
-      .eq("user_id", firebaseUser.uid);
+      .eq("firebase_uid", firebaseUser.uid)
+      .maybeSingle();
 
     if (error) {
       console.error("Navbar role fetch error:", error.message);
@@ -65,12 +68,25 @@ useEffect(() => {
     }
 
     const roleNames =
-      data?.map((r: any) => r.roles?.name).filter(Boolean) ?? [];
+      data?.user_roles?.map((r: any) => r.roles?.name).filter(Boolean) ?? [];
 
     setRoles(roleNames);
   }
 
   fetchRoles();
+}, [firebaseUser]);
+
+useEffect(() => {
+  // Ensure a Supabase user record exists for the signed-in Firebase user
+  if (!firebaseUser) return;
+
+  (async () => {
+    try {
+      await authService.syncUser(firebaseUser);
+    } catch (err) {
+      console.error('Navbar: failed to sync user to Supabase', err);
+    }
+  })();
 }, [firebaseUser]);
 
   const navItems = [
