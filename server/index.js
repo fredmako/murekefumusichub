@@ -451,11 +451,104 @@ app.use((err, req, res, next) => {
   });
 });
 
+/**
+ * Request composer/admin role
+ * POST /api/request-role
+ * 
+ * Request body:
+ * {
+ *   firebaseUid: string,
+ *   requestedRole: 'composer' | 'admin',
+ *   userId?: string (supabase user id)
+ * }
+ */
+app.post('/api/request-role', async (req, res) => {
+  try {
+    const { firebaseUid, requestedRole, userId } = req.body;
+
+    if (!firebaseUid) {
+      return res.status(400).json({ message: 'firebaseUid is required' });
+    }
+
+    if (!['composer', 'admin'].includes(requestedRole)) {
+      return res.status(400).json({ message: 'requestedRole must be "composer" or "admin"' });
+    }
+
+    console.log(`[request-role] 🎯 Role request from Firebase UID: ${firebaseUid} for role: ${requestedRole}`);
+
+    // Find user if userId not provided
+    let uid = userId;
+    if (!uid) {
+      const { data: user } = await supabase
+        .from('users')
+        .select('id')
+        .eq('firebase_uid', firebaseUid)
+        .maybeSingle();
+      
+      if (!user) {
+        console.warn(`[request-role] ⚠️ User not found for Firebase UID: ${firebaseUid}`);
+        return res.status(404).json({ message: 'User not found. Please sync your profile first.' });
+      }
+      uid = user.id;
+    }
+
+    // Check for existing pending/approved request
+    const { data: existing } = await supabase
+      .from('role_requests')
+      .select('id, status')
+      .eq('user_id', uid)
+      .eq('requested_role', requestedRole)
+      .in('status', ['pending', 'approved'])
+      .maybeSingle();
+
+    if (existing) {
+      console.log(`[request-role] ℹ️ Existing ${requestedRole} request found with status: ${existing.status}`);
+      return res.status(409).json({ 
+        message: `You already have a ${existing.status} ${requestedRole} request.`,
+        requestId: existing.id,
+        status: existing.status
+      });
+    }
+
+    // Create role request
+    const { data: newRequest, error: createErr } = await supabase
+      .from('role_requests')
+      .insert({
+        user_id: uid,
+        requested_role: requestedRole,
+        status: 'pending',
+        requested_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (createErr) {
+      console.error(`[request-role] ❌ Error creating request: ${createErr.message}`);
+      throw createErr;
+    }
+
+    console.log(`[request-role] ✅ Successfully created ${requestedRole} request for user ${uid}:`, newRequest);
+
+    return res.status(201).json({
+      message: `${requestedRole} request submitted successfully. Awaiting admin approval.`,
+      requestId: newRequest.id,
+      status: newRequest.status,
+    });
+  } catch (error) {
+    console.error('[request-role] ❌ Error:', error);
+    return res.status(500).json({
+      message: 'Failed to submit request',
+      error: error?.message || 'Internal server error',
+    });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`🚀 Sync server running on http://localhost:${PORT}`);
   console.log(`📍 Health check: http://localhost:${PORT}/health`);
   console.log(`📍 Sync user: POST http://localhost:${PORT}/api/sync-user`);
+  console.log(`📍 Request role: POST http://localhost:${PORT}/api/request-role`);
   console.log(`📍 Batch sync: POST http://localhost:${PORT}/api/sync-users-batch`);
   console.log(`\nWaiting for ngrok tunnel...\n`);
 });

@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import type { User as FirebaseUser } from 'firebase/auth';
 
 // API Configuration
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) || 'http://localhost:3001/api';
 
 // Helper to get Firebase ID token
 async function getIdToken(): Promise<string | null> {
@@ -63,7 +63,8 @@ export const authService = {
         .from('users')
         .select('id')
         .eq('firebase_uid', firebaseUser.uid)
-        .maybeSingle();
+        .maybeSingle
+();
 
           if (findError) {
         console.warn('authService.syncUser: find user error', findError);
@@ -111,7 +112,8 @@ export const authService = {
           )
         `)
         .eq('id', userId)
-        .single();
+        .maybeSingle
+();
 
       if (fetchError) throw fetchError;
 
@@ -229,7 +231,8 @@ export const compositionService = {
           composition_stats(views, purchases)
         `)
         .eq('id', id)
-        .single();
+        .maybeSingle
+();
       
       if (error) throw error;
       
@@ -261,7 +264,8 @@ export const compositionService = {
         .from('compositions')
         .insert(compositionData)
         .select()
-        .single();
+        .maybeSingle
+();
       
       if (error) throw error;
       
@@ -293,7 +297,8 @@ export const compositionService = {
         .update(updates)
         .eq('id', id)
         .select()
-        .single();
+        .maybeSingle
+();
       
       if (error) throw error;
       return data;
@@ -492,7 +497,8 @@ export const categoryService = {
         .from('categories')
         .insert({ name, description })
         .select()
-        .single();
+        .maybeSingle
+();
       
       if (error) throw error;
       return data;
@@ -521,7 +527,8 @@ export const reportService = {
         .from('reports')
         .insert(reportData)
         .select()
-        .single();
+        .maybeSingle
+();
       
       if (error) throw error;
       return data;
@@ -582,7 +589,8 @@ export const reportService = {
           .from('reports')
           .select('composition_id')
           .eq('id', reportId)
-          .single();
+          .maybeSingle
+();
         
         if (report) {
           await compositionService.delete(report.composition_id);
