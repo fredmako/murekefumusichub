@@ -14,8 +14,22 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 app.use(express.json());
 
-// Enable CORS for browser clients and ngrok forwarders (reflect origin)
-app.use(cors({ origin: true, credentials: true }));
+// Configure CORS
+// Allow configuring allowed origin via environment variable `ALLOWED_ORIGIN`.
+// If not set, default to the requested origin https://murekefumusichub.vercel.app
+const DEFAULT_ALLOWED_ORIGIN = 'https://murekefumusichub.vercel.app';
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || DEFAULT_ALLOWED_ORIGIN;
+
+// Add explicit headers (this sets Access-Control-Allow-Origin to the configured origin)
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  next();
+});
+
+// Keep express CORS middleware for robust handling of preflight and origin checks
+app.use(cors({ origin: ALLOWED_ORIGIN, credentials: true }));
 
 // Simple OPTIONS handler for any route (helps with preflight replies)
 app.options('*', (req, res) => res.sendStatus(204));
