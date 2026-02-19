@@ -53,8 +53,13 @@ import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 
 /* --------- CONFIG --------- */
-const SUPER_ADMIN_EMAIL = "fredrickmakori102@gmail.com";
+const ADMIN_IDENTIFIERS = ["fredrickmakori102@gmail.com", "murekefumusichub"];
 const normalizeEmail = (e: string) => e?.toLowerCase().trim() ?? "";
+const isAdminEmail = (email?: string | null) => {
+  if (!email) return false;
+  const e = normalizeEmail(email);
+  return ADMIN_IDENTIFIERS.some((id) => e === id || e.includes(id));
+};
 
 /* --------- TYPES --------- */
 type RoleMap = Record<number, string>;
@@ -113,7 +118,7 @@ export function AdminPanel() {
     // Wait until we know currentUserEmail
     if (currentUserEmail === null) return;
 
-    if (currentUserEmail !== normalizeEmail(SUPER_ADMIN_EMAIL)) {
+    if (!isAdminEmail(currentUserEmail)) {
       // Not allowed
       toast.error("Access denied.");
       navigate("/", { replace: true });

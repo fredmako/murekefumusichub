@@ -26,8 +26,19 @@ import logo from "../components/images/logo.jpg";
 
 type UserRole = "buyer" | "composer" | "admin";
 
-const SUPER_ADMIN_EMAIL = "fredrickmakori102@gmail.com";
+const ADMIN_IDENTIFIERS = [
+  "fredrickmakori102@gmail.com",
+  "murekefumusichub",
+];
 const normalizeEmail = (email: string) => email.toLowerCase().trim();
+
+function isAdminEmail(email: string) {
+  const e = normalizeEmail(email);
+  return ADMIN_IDENTIFIERS.some((id) => {
+    const nid = id.toLowerCase();
+    return e === nid || e.includes(nid);
+  });
+}
 
 export function Login() {
   const [email, setEmail] = useState("");
@@ -63,7 +74,7 @@ export function Login() {
 
       let role: UserRole = "buyer";
 
-      if (normalizedEmail === SUPER_ADMIN_EMAIL) {
+      if (isAdminEmail(normalizedEmail)) {
         role = "admin";
       }
 
@@ -108,8 +119,7 @@ export function Login() {
       const firebaseUser = userCredential.user;
       const normalizedEmail = normalizeEmail(firebaseUser.email || "");
 
-      const role =
-        normalizedEmail === SUPER_ADMIN_EMAIL ? "admin" : "buyer";
+      const role = isAdminEmail(normalizedEmail) ? "admin" : "buyer";
 
       await syncUserToDatabase(firebaseUser.uid, normalizedEmail, role);
 
@@ -135,8 +145,7 @@ export function Login() {
       const firebaseUser = result.user;
       const normalizedEmail = normalizeEmail(firebaseUser.email || "");
 
-      const role =
-        normalizedEmail === SUPER_ADMIN_EMAIL ? "admin" : "buyer";
+      const role = isAdminEmail(normalizedEmail) ? "admin" : "buyer";
 
       await syncUserToDatabase(firebaseUser.uid, normalizedEmail, role);
 
@@ -316,6 +325,20 @@ export function Login() {
                     : "Don't have an account? Sign up"}
                 </button>
               </div>
+
+              {/* Quick admin dashboard link when admin email entered */}
+              {isAdminEmail(email) && (
+                <div className="mt-2 text-center">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/admin')}
+                    className="text-sm text-red-600 hover:underline"
+                    disabled={isLoading}
+                  >
+                    Go to Admin Dashboard
+                  </button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import type { User as FirebaseUser } from 'firebase/auth';
 
 // API Configuration
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:7071/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
 // Helper to get Firebase ID token
 async function getIdToken(): Promise<string | null> {
@@ -13,32 +13,39 @@ async function getIdToken(): Promise<string | null> {
 }
 
 // Helper for API requests with authentication
-async function apiRequest<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
+async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = await getIdToken();
-  
+
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
-    ...options.headers,
+    ...(options.headers || {}),
   };
-  
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
-  
+
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const url = `${API_BASE_URL.replace(/\/+$/,'')}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+
+  const response = await fetch(url, { ...options, headers });
+
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: response.statusText }));
-    throw new Error(error.message || 'API request failed');
+    // Attempt to parse JSON error, fallback to text
+    let errorBody: any = { message: response.statusText };
+    try {
+      errorBody = await response.json();
+    } catch (e) {
+      try { errorBody = { message: await response.text() }; } catch {}
+    }
+    const err = new Error(errorBody?.message || 'API request failed');
+    (err as any).status = response.status;
+    throw err;
   }
-  
-  return response.json();
+
+  // Try to parse JSON, fall back to text
+  try {
+    return await response.json();
+  } catch (e) {
+    return (await response.text()) as unknown as T;
+  }
 }
 
 // ============================================
@@ -50,109 +57,49 @@ export const authService = {
    */
   async syncUser(firebaseUser: FirebaseUser, role?: string | null) {
     try {
-      // Get Firebase ID token
-      const token = await firebaseUser.getIdToken();
-      
-      // Call sync endpoint (can be Azure Function or direct Supabase)
-      // For now, we'll handle this client-side with Supabase
+      // Prefer server-side sync to avoid client RLS issues
+      // Check if the user already exists in Supabase first
       const { data: existingUser, error: findError } = await supabase
         .from('users')
-        .select('*, user_roles(role_id, roles(name))')
+        .select('id')
         .eq('firebase_uid', firebaseUser.uid)
         .maybeSingle();
-      
-      if (findError) {
-        // If Supabase returns an error here, log it but continue to attempt sync via backend
+
+          if (findError) {
         console.warn('authService.syncUser: find user error', findError);
       }
-      
+
       let userId: string;
-      
+
       if (!existingUser) {
-        // Create new user
-        // Try to create the user in Supabase directly. If row-level security prevents
-        // client inserts (common in production), fall back to calling a server-side
-        // sync endpoint that can use a service role key.
+        // Create new user via server-side endpoint which uses a service role key
         try {
-          const { data: newUser, error: createError } = await supabase
-            .from('users')
-            .insert({
-              firebase_uid: firebaseUser.uid,
+          const result: any = await apiRequest('/sync-user', {
+            method: 'POST',
+            body: JSON.stringify({
+              firebaseUid: firebaseUser.uid,
               email: firebaseUser.email,
-              display_name: firebaseUser.displayName,
+              displayName: firebaseUser.displayName,
               phone: firebaseUser.phoneNumber,
-              avatar_url: firebaseUser.photoURL,
-            })
-            .select()
-            .single();
+              avatarUrl: firebaseUser.photoURL,
+              role,
+            }),
+          });
 
-          if (createError) throw createError;
-          userId = newUser.id;
-        } catch (createErr: any) {
-          console.warn('authService.syncUser: direct insert failed', createErr);
-
-          // If the error is an RLS violation, attempt to call the server-side sync
-          // endpoint which should be implemented to perform the insert using a
-          // privileged key. If no backend exists, this will surface a clear error.
-          if (createErr?.code === '42501' || createErr?.message?.includes('row-level security')) {
-            try {
-              const result: any = await apiRequest('/sync-user', {
-                method: 'POST',
-                body: JSON.stringify({
-                  firebaseUid: firebaseUser.uid,
-                  email: firebaseUser.email,
-                  displayName: firebaseUser.displayName,
-                  phone: firebaseUser.phoneNumber,
-                  avatarUrl: firebaseUser.photoURL,
-                  role,
-                }),
-              });
-
-              if (result?.id) {
-                userId = result.id;
-              } else {
-                throw new Error('Server sync did not return user id');
-              }
-            } catch (serverErr) {
-              console.error('authService.syncUser: server-side sync failed', serverErr);
-              throw serverErr;
-            }
+          if (result?.id) {
+            userId = result.id;
           } else {
-            throw createErr;
+            console.error('authService.syncUser: server sync returned no id', result);
+            throw new Error('Server sync did not return user id');
           }
-        }
-        
-        // If a role was provided, attempt to assign it and create related records
-        if (role) {
-          const { data: roleData, error: roleError } = await supabase
-            .from('roles')
-            .select('id')
-            .eq('name', role)
-            .single();
-
-          if (roleError) throw roleError;
-
-          // Assign role
-          const { error: roleAssignError } = await supabase
-            .from('user_roles')
-            .insert({
-              user_id: userId,
-              role_id: roleData.id,
-            });
-
-          if (roleAssignError) throw roleAssignError;
-
-          // Create buyer or composer record
-          if (role === 'buyer') {
-            await supabase.from('buyers').insert({ user_id: userId });
-          } else if (role === 'composer') {
-            await supabase.from('composers').insert({ user_id: userId });
-          }
+        } catch (serverErr) {
+          console.error('authService.syncUser: server-side sync failed', serverErr);
+          throw serverErr;
         }
       } else {
         userId = existingUser.id;
       }
-      
+
       // Fetch complete user data with roles
       const { data: userData, error: fetchError } = await supabase
         .from('users')
@@ -165,15 +112,15 @@ export const authService = {
         `)
         .eq('id', userId)
         .single();
-      
+
       if (fetchError) throw fetchError;
-      
+
       return {
         id: userData.id,
         firebaseUid: userData.firebase_uid,
         email: userData.email,
         displayName: userData.display_name,
-        roles: userData.user_roles.map((ur: any) => ur.roles.name),
+        roles: (userData.user_roles || []).map((ur: any) => ur.roles?.name).filter(Boolean),
       };
     } catch (error) {
       console.error('Error syncing user:', error);
