@@ -174,15 +174,22 @@ export function AdminPanel() {
     const { data: usersData, error } = await supabase.from("users").select("*");
     if (error) {
       console.warn("users fetch error:", error);
+      console.log("Error details:", error.code, error.message, error.hint);
       return;
     }
+    console.log("[AdminPanel] Fetched users:", usersData);
     setUsers(usersData || []);
 
     // fetch user_roles mapping as well (if your schema uses it)
     const { data: urData, error: urErr } = await supabase
       .from("user_roles")
       .select("*");
-    if (!urErr) setUserRoles(urData || []);
+    if (!urErr) {
+      console.log("[AdminPanel] Fetched user_roles:", urData);
+      setUserRoles(urData || []);
+    } else {
+      console.warn("user_roles fetch error:", urErr);
+    }
   };
 
   const fetchCompositions = async () => {
@@ -334,6 +341,12 @@ export function AdminPanel() {
 
     return map;
   }, [users, userRoles, roleIdToName]);
+
+  // Debug: Log users whenever they change
+  useEffect(() => {
+    console.log("[AdminPanel] Users state updated:", users);
+    console.log("[AdminPanel] Users count:", users.length);
+  }, [users]);
 
   /* ---------------- actions ---------------- */
   async function addComposerInvite(email: string) {

@@ -59,9 +59,12 @@ export function ManageAccount() {
       const uid = appUser?.uid || firebaseUser?.uid;
 
       if (!uid) {
+        console.log('[ManageAccount] No user UID found');
         setLoading(false);
         return;
       }
+
+      console.log('[ManageAccount] Fetching user data for UID:', uid);
 
       try {
         const { data, error } = await supabase
@@ -70,9 +73,13 @@ export function ManageAccount() {
           .eq("firebase_uid", uid)
           .maybeSingle();
 
-        if (error) throw error;
+        if (error) {
+          console.error('[ManageAccount] Fetch error:', error);
+          throw error;
+        }
 
         if (data) {
+          console.log('[ManageAccount] User data fetched:', data);
           setSupabaseId(data.id);
           setUser({
             ...data,
@@ -81,9 +88,16 @@ export function ManageAccount() {
           setDisplayName(data.display_name || "");
           setPhone(data.phone || "");
           setAvatarUrl(data.avatar_url || null);
+          console.log('[ManageAccount] Form state initialized:', {
+            displayName: data.display_name,
+            phone: data.phone,
+            avatarUrl: data.avatar_url,
+          });
+        } else {
+          console.log('[ManageAccount] No user found in database');
         }
       } catch (err) {
-        console.error("Error fetching user:", err);
+        console.error('[ManageAccount] Error fetching user:', err);
         toast.error("Failed to load profile");
       } finally {
         setLoading(false);
@@ -100,19 +114,31 @@ export function ManageAccount() {
   };
 
   const handleSaveProfile = async () => {
-    if (!supabaseId) return;
+    if (!supabaseId) {
+      toast.error("User ID not found");
+      return;
+    }
+    
     setLoading(true);
     try {
+      console.log('[handleSaveProfile] Starting profile update for user:', supabaseId);
+      console.log('[handleSaveProfile] Data:', { displayName, phone, avatarUrl });
+      
       let finalAvatarUrl = avatarUrl;
 
       if (avatarFile) {
         try {
+          console.log('[handleSaveProfile] Uploading avatar...');
           finalAvatarUrl = await storageService.uploadFile('avatars', avatarFile, supabaseId);
+          console.log('[handleSaveProfile] Avatar uploaded:', finalAvatarUrl);
         } catch (uploadErr) {
           console.warn('Avatar upload failed (client)', uploadErr);
+          // Continue without avatar
         }
       }
 
+      // Try direct Supabase update first
+      console.log('[handleSaveProfile] Attempting direct Supabase update...');
       const { error } = await supabase
         .from('users')
         .update({ 
@@ -123,11 +149,27 @@ export function ManageAccount() {
         .eq('id', supabaseId);
 
       if (error) {
+        console.error('[handleSaveProfile] Supabase direct update failed:', error);
+        
+        // If RLS policy blocks direct update, use server endpoint
         if (error?.code === '42501' || error?.message?.toLowerCase().includes('row-level')) {
+          console.log('[handleSaveProfile] RLS blocked direct update, using server endpoint...');
+          
           try {
             const token = await firebaseUser?.getIdToken();
-            const base = (import.meta as any).VITE_API_BASE_URL || 'http://localhost:3001';
-            const res = await fetch(`${base}/api/sync-user`, {
+            const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+            const endpoint = `${base}/sync-user`;
+            
+            console.log('[handleSaveProfile] Calling server endpoint:', endpoint);
+            console.log('[handleSaveProfile] Payload:', {
+              firebaseUid: firebaseUser?.uid,
+              email: firebaseUser?.email,
+              displayName,
+              phone,
+              avatarUrl: finalAvatarUrl,
+            });
+            
+            const res = await fetch(endpoint, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -142,13 +184,25 @@ export function ManageAccount() {
               }),
             });
 
-            if (!res.ok) throw new Error('Server sync failed');
+            console.log('[handleSaveProfile] Server response status:', res.status);
+            
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({}));
+              console.error('[handleSaveProfile] Server error:', errData);
+              throw new Error(errData?.message || 'Server sync failed');
+            }
+            
+            const resultData = await res.json();
+            console.log('[handleSaveProfile] Server response:', resultData);
           } catch (srvErr) {
+            console.error('[handleSaveProfile] Server endpoint error:', srvErr);
             throw srvErr;
           }
         } else {
           throw error;
         }
+      } else {
+        console.log('[handleSaveProfile] Supabase update successful');
       }
 
       setAvatarFile(null);
@@ -165,8 +219,9 @@ export function ManageAccount() {
       }
 
       toast.success('✅ Profile updated successfully');
+      console.log('[handleSaveProfile] Profile update completed successfully');
     } catch (err: any) {
-      console.error('save profile error', err);
+      console.error('[handleSaveProfile] Error:', err);
       toast.error(err?.message || 'Failed to save profile');
     } finally {
       setLoading(false);
@@ -179,9 +234,12 @@ export function ManageAccount() {
     setRoleLoading(true);
     try {
       const token = await firebaseUser.getIdToken();
-      const base = (import.meta as any).VITE_API_BASE_URL || 'http://localhost:3001';
+      const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
       
-      const res = await fetch(`${base}/api/request-role`, {
+      console.log('[handleRequestRole] Sending request to:', `${base}/request-role`);
+      console.log('[handleRequestRole] Payload:', { firebaseUid: firebaseUser.uid, requestedRole: roleType, userId: supabaseId });
+      
+      const res = await fetch(`${base}/request-role`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -193,6 +251,8 @@ export function ManageAccount() {
           userId: supabaseId,
         }),
       });
+
+      console.log('[handleRequestRole] Response status:', res.status);
 
       const data = await res.json();
 
@@ -209,8 +269,8 @@ export function ManageAccount() {
       toast.success(`✅ ${roleType.charAt(0).toUpperCase() + roleType.slice(1)} request submitted!\nAwaiting admin approval.`);
       setShowRoleModal(false);
     } catch (err: any) {
-      console.error(`request ${showRoleModal} error:`, err);
-      toast.error(err?.message || `Failed to request ${roleType} access`);
+      console.error(`[handleRequestRole] Error requesting ${showRoleModal}:`, err);
+      toast.error(err?.message || `Failed to request ${showRoleModal} access`);
     } finally {
       setRoleLoading(false);
     }
@@ -316,7 +376,10 @@ export function ManageAccount() {
 
                 <div className="border-t pt-6">
                   <Button 
-                    onClick={() => setIsEditing(true)}
+                    onClick={() => {
+                      console.log('[ManageAccount] Edit button clicked, current displayName:', displayName);
+                      setIsEditing(true);
+                    }}
                     className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 w-full"
                   >
                     <Edit2 className="w-4 h-4 mr-2" />
@@ -384,6 +447,7 @@ export function ManageAccount() {
                   </Button>
                   <Button
                     onClick={() => {
+                      console.log('[ManageAccount] Cancel button clicked, resetting form');
                       setIsEditing(false);
                       setDisplayName(user?.display_name || "");
                       setPhone(user?.phone || "");

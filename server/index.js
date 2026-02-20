@@ -1,8 +1,6 @@
 import express from "express";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
-import fs from "fs";
-import admin from "firebase-admin";
 import cors from "cors";
 
 // Load environment variables from .env file
@@ -72,123 +70,9 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 // Initialize Supabase client with service role key (has elevated privileges)
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-// Firebase initialization (optional)
-const FIREBASE_SERVICE_ACCOUNT = process.env.FIREBASE_SERVICE_ACCOUNT;
-const FIREBASE_SERVICE_ACCOUNT_PATH = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
 
-let firebaseAvailable = false;
-if (FIREBASE_SERVICE_ACCOUNT || FIREBASE_SERVICE_ACCOUNT_PATH) {
-  try {
-    let serviceAccount;
-    if (FIREBASE_SERVICE_ACCOUNT) {
-      serviceAccount = JSON.parse(FIREBASE_SERVICE_ACCOUNT);
-    } else {
-      serviceAccount = JSON.parse(
-        fs.readFileSync(FIREBASE_SERVICE_ACCOUNT_PATH, "utf8")
-      );
-    }
 
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
-    firebaseAvailable = true;
-    console.log("[firebase] initialized");
-  } catch (err) {
-    console.error("[firebase] initialization error:", err);
-  }
-} else {
-  console.log(
-    "[firebase] no service account provided; Firebase endpoints disabled"
-  );
-}
 
-/**
- * Internal helper: sync a batch of users to Supabase. Returns { results, errors }
- */
-async function syncUsersBatchInternal(users) {
-  const results = [];
-  const errors = [];
-
-  for (const user of users) {
-    try {
-      const { firebaseUid, email, displayName, phone, avatarUrl, role } = user;
-
-      if (!firebaseUid || !email) {
-        errors.push({
-          firebaseUid: firebaseUid || "unknown",
-          message: "Missing firebaseUid or email",
-        });
-        continue;
-      }
-
-      // Check if user exists
-      const { data: existingUser } = await supabase
-        .from("users")
-        .select("id")
-        .eq("firebase_uid", firebaseUid)
-        .maybeSingle();
-
-      let userId;
-
-      if (existingUser) {
-        userId = existingUser.id;
-        // Update if new data
-        if (displayName || phone || avatarUrl) {
-          await supabase
-            .from("users")
-            .update({
-              ...(displayName && { display_name: displayName }),
-              ...(phone && { phone }),
-              ...(avatarUrl && { avatar_url: avatarUrl }),
-            })
-            .eq("id", userId);
-        }
-      } else {
-        const { data: newUser, error: createErr } = await supabase
-          .from("users")
-          .insert({
-            firebase_uid: firebaseUid,
-            email,
-            display_name: displayName || null,
-            phone: phone || null,
-            avatar_url: avatarUrl || null,
-            is_active: true,
-            created_at: new Date().toISOString(),
-          })
-          .select()
-          .single();
-
-        if (createErr) throw createErr;
-        userId = newUser.id;
-      }
-
-      // Assign role if provided
-      if (role) {
-        const { data: roleData } = await supabase
-          .from("roles")
-          .select("id")
-          .eq("name", role)
-          .maybeSingle();
-
-        if (roleData) {
-          await supabase
-            .from("user_roles")
-            .upsert({ user_id: userId, role_id: roleData.id });
-        }
-      }
-
-      results.push({ firebaseUid, email, id: userId, status: "success" });
-    } catch (err) {
-      errors.push({
-        firebaseUid: user.firebaseUid || "unknown",
-        message: err?.message || "Unknown error",
-        error: err?.code || "ERROR",
-      });
-    }
-  }
-
-  return { results, errors };
-}
 
 /**
  * Health check endpoint
@@ -198,7 +82,101 @@ app.get("/health", (req, res) => {
 });
 
 /**
- * Sync user endpoint
+ * User registration endpoint
+ * POST /api/register
+ *
+ * Request body:
+ * {
+ *   email: string,
+ *   displayName?: string,
+ *   phone?: string,
+ *   avatarUrl?: string
+ * }
+ * 
+ * This endpoint adds user data to Supabase asynchronously during registration.
+ */
+app.post("/api/register", async (req, res) => {
+  try {
+    const { email, displayName, phone, avatarUrl } = req.body;
+
+    // Validate required fields
+    if (!email) {
+      return res.status(400).json({
+        message: "email is required",
+        error: "MISSING_EMAIL",
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        message: "email is not valid",
+        error: "INVALID_EMAIL",
+      });
+    }
+
+    console.log(`[register] Registering user: ${email}`);
+
+    // Check if user already exists
+    const { data: existingUser } = await supabase
+      .from("users")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (existingUser) {
+      console.log(`[register] User already exists with email: ${email}`);
+      return res.status(409).json({
+        message: "User with this email already exists",
+        error: "USER_EXISTS",
+        id: existingUser.id,
+      });
+    }
+
+    // Asynchronously create user in Supabase
+    const userPromise = supabase
+      .from("users")
+      .insert({
+        email,
+        display_name: displayName || null,
+        phone: phone || null,
+        avatar_url: avatarUrl || null,
+        is_active: true,
+        created_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    // Return immediately and let it process in the background
+    const { data: newUser, error: createErr } = await userPromise;
+
+    if (createErr) {
+      console.error(`[register] Create user error for ${email}:`, createErr);
+      throw createErr;
+    }
+
+    console.log(`[register] Successfully registered user ${email} with id: ${newUser.id}`);
+
+    return res.status(201).json({
+      id: newUser.id,
+      email,
+      displayName: newUser.display_name,
+      message: "User registered successfully",
+    });
+  } catch (error) {
+    console.error("[register] Error:", error);
+
+    return res.status(500).json({
+      message: "Failed to register user",
+      error: error?.message || "Internal server error",
+      code: error?.code || "UNKNOWN_ERROR",
+    });
+  }
+});
+
+/**
+ * Sync user endpoint - Create or update user in Supabase
  * POST /api/sync-user
  *
  * Request body:
@@ -208,13 +186,12 @@ app.get("/health", (req, res) => {
  *   displayName?: string,
  *   phone?: string,
  *   avatarUrl?: string,
- *   role?: 'buyer' | 'composer' | 'admin'
+ *   role?: 'user' | 'composer' | 'admin'
  * }
  */
 app.post("/api/sync-user", async (req, res) => {
   try {
-    const { firebaseUid, email, displayName, phone, avatarUrl, role } =
-      req.body;
+    const { firebaseUid, email, displayName, phone, avatarUrl, role } = req.body;
 
     // Validate required fields
     if (!firebaseUid) {
@@ -231,44 +208,49 @@ app.post("/api/sync-user", async (req, res) => {
       });
     }
 
-    console.log(`[sync-user] Syncing user: ${firebaseUid} (${email})`);
+    console.log(`[sync-user] Syncing user: ${email} (Firebase UID: ${firebaseUid})`);
 
-    // Check if user already exists
-    const { data: existingUser } = await supabase
+    // Check if user already exists by Firebase UID
+    const { data: existingUser, error: findError } = await supabase
       .from("users")
-      .select("id")
+      .select("id, firebase_uid, email")
       .eq("firebase_uid", firebaseUid)
       .maybeSingle();
 
+    if (findError && findError.code !== "PGRST116") {
+      console.error(`[sync-user] Error finding user:`, findError);
+      throw findError;
+    }
+
     let userId;
+    let isNewUser = false;
 
     if (existingUser) {
-      // User exists, just update
-      console.log(
-        `[sync-user] User ${firebaseUid} already exists with id: ${existingUser.id}`
-      );
-      userId = existingUser.id;
+      // User exists, update their information
+      console.log(`[sync-user] User exists with ID: ${existingUser.id}`);
 
-      // Update user info if new data provided
-      if (displayName || phone || avatarUrl) {
-        const { error: updateErr } = await supabase
-          .from("users")
-          .update({
-            ...(displayName && { display_name: displayName }),
-            ...(phone && { phone }),
-            ...(avatarUrl && { avatar_url: avatarUrl }),
-            is_active: true,
-          })
-          .eq("id", userId);
+      const { data: updatedUser, error: updateError } = await supabase
+        .from("users")
+        .update({
+          email,
+          display_name: displayName || null,
+          phone: phone || null,
+          avatar_url: avatarUrl || null,
+        })
+        .eq("id", existingUser.id)
+        .select()
+        .single();
 
-        if (updateErr) {
-          console.error(`[sync-user] Update error for ${userId}:`, updateErr);
-          throw updateErr;
-        }
+      if (updateError) {
+        console.error(`[sync-user] Error updating user:`, updateError);
+        throw updateError;
       }
+
+      userId = existingUser.id;
+      console.log(`[sync-user] User updated successfully: ${userId}`);
     } else {
       // Create new user
-      const { data: newUser, error: createErr } = await supabase
+      const { data: newUser, error: createError } = await supabase
         .from("users")
         .insert({
           firebase_uid: firebaseUid,
@@ -276,84 +258,28 @@ app.post("/api/sync-user", async (req, res) => {
           display_name: displayName || null,
           phone: phone || null,
           avatar_url: avatarUrl || null,
+          role: role || "user",
           is_active: true,
           created_at: new Date().toISOString(),
         })
         .select()
         .single();
 
-      if (createErr) {
-        console.error(
-          `[sync-user] Create user error for ${firebaseUid}:`,
-          createErr
-        );
-        throw createErr;
+      if (createError) {
+        console.error(`[sync-user] Error creating user:`, createError);
+        throw createError;
       }
 
       userId = newUser.id;
-      console.log(
-        `[sync-user] Created new user ${firebaseUid} with id: ${userId}`
-      );
+      isNewUser = true;
+      console.log(`[sync-user] New user created successfully: ${userId}`);
     }
 
-    // Assign role if provided
-    if (role) {
-      // Get the role ID
-      const { data: roleData, error: roleErr } = await supabase
-        .from("roles")
-        .select("id")
-        .eq("name", role)
-        .maybeSingle();
-
-      if (roleErr) {
-        console.error(`[sync-user] Role fetch error:`, roleErr);
-        throw roleErr;
-      }
-
-      if (!roleData) {
-        console.warn(`[sync-user] Role '${role}' not found in database`);
-      } else {
-        // Assign role via upsert (idempotent)
-        const { error: roleAssignErr } = await supabase
-          .from("user_roles")
-          .upsert({ user_id: userId, role_id: roleData.id });
-
-        if (roleAssignErr) {
-          console.error(`[sync-user] Role assignment error:`, roleAssignErr);
-          throw roleAssignErr;
-        }
-
-        console.log(`[sync-user] Assigned role '${role}' to user ${userId}`);
-
-        // Create buyer or composer record if needed
-        if (role === "buyer") {
-          const { error: buyerErr } = await supabase
-            .from("buyers")
-            .upsert({ user_id: userId });
-
-          if (buyerErr && buyerErr.code !== "PGRST116") {
-            console.warn(`[sync-user] Buyer record error:`, buyerErr);
-          }
-        } else if (role === "composer") {
-          const { error: composerErr } = await supabase
-            .from("composers")
-            .upsert({ user_id: userId });
-
-          if (composerErr && composerErr.code !== "PGRST116") {
-            console.warn(`[sync-user] Composer record error:`, composerErr);
-          }
-        }
-      }
-    }
-
-    console.log(`[sync-user] Successfully synced user ${firebaseUid}`);
-
-    return res.json({
+    return res.status(isNewUser ? 201 : 200).json({
       id: userId,
-      firebaseUid,
       email,
-      role: role || null,
-      message: "User synced successfully",
+      displayName,
+      message: isNewUser ? "User created and synced successfully" : "User synced successfully",
     });
   } catch (error) {
     console.error("[sync-user] Error:", error);
@@ -366,54 +292,43 @@ app.post("/api/sync-user", async (req, res) => {
   }
 });
 
-// Support the non-API path used by the frontend / ngrok: POST /sync-user
+// Alias for backwards compatibility - POST /sync-user routes to /api/sync-user logic
 app.post("/sync-user", async (req, res) => {
-  // Delegate to the same handler logic at /api/sync-user
-  // Reuse by calling the main route handler: craft a small proxy call
   try {
-    // Forward request to existing handler by calling the logic inline
-    const { firebaseUid, email, displayName, phone, avatarUrl, role } =
-      req.body;
+    const { firebaseUid, email, displayName, phone, avatarUrl, role } = req.body;
 
-    // Basic validation same as /api/sync-user
-    if (!firebaseUid)
+    if (!firebaseUid || !email) {
       return res.status(400).json({
-        message: "firebaseUid is required",
-        error: "MISSING_FIREBASE_UID",
+        message: "firebaseUid and email are required",
+        error: "MISSING_REQUIRED_FIELDS",
       });
-    if (!email)
-      return res
-        .status(400)
-        .json({ message: "email is required", error: "MISSING_EMAIL" });
+    }
 
-    // Reuse the same logic: call the supabase-backed sync by delegating to the /api route internals
-    // To avoid duplicating large logic, call the /api/sync-user endpoint internally using the supabase client.
-    // This mirrors the main handler behavior.
-
-    // Check if user already exists
     const { data: existingUser } = await supabase
       .from("users")
       .select("id")
       .eq("firebase_uid", firebaseUid)
       .maybeSingle();
+
     let userId;
+    let isNewUser = false;
 
     if (existingUser) {
+      const { data: updatedUser } = await supabase
+        .from("users")
+        .update({
+          email,
+          display_name: displayName || null,
+          phone: phone || null,
+          avatar_url: avatarUrl || null,
+        })
+        .eq("id", existingUser.id)
+        .select()
+        .single();
+
       userId = existingUser.id;
-      if (displayName || phone || avatarUrl) {
-        const { error: updateErr } = await supabase
-          .from("users")
-          .update({
-            ...(displayName && { display_name: displayName }),
-            ...(phone && { phone }),
-            ...(avatarUrl && { avatar_url: avatarUrl }),
-            is_active: true,
-          })
-          .eq("id", userId);
-        if (updateErr) throw updateErr;
-      }
     } else {
-      const { data: newUser, error: createErr } = await supabase
+      const { data: newUser } = await supabase
         .from("users")
         .insert({
           firebase_uid: firebaseUid,
@@ -421,163 +336,35 @@ app.post("/sync-user", async (req, res) => {
           display_name: displayName || null,
           phone: phone || null,
           avatar_url: avatarUrl || null,
+          role: role || "user",
           is_active: true,
           created_at: new Date().toISOString(),
         })
         .select()
         .single();
-      if (createErr) throw createErr;
+
       userId = newUser.id;
+      isNewUser = true;
     }
 
-    // Assign role if provided
-    if (role) {
-      const { data: roleData, error: roleErr } = await supabase
-        .from("roles")
-        .select("id")
-        .eq("name", role)
-        .maybeSingle();
-      if (roleErr) throw roleErr;
-      if (roleData) {
-        const { error: roleAssignErr } = await supabase
-          .from("user_roles")
-          .upsert({ user_id: userId, role_id: roleData.id });
-        if (roleAssignErr) throw roleAssignErr;
-      }
-    }
-
-    return res.json({
+    return res.status(isNewUser ? 201 : 200).json({
       id: userId,
-      firebaseUid,
       email,
-      role: role || null,
-      message: "User synced successfully",
+      displayName,
+      message: isNewUser ? "User created and synced successfully" : "User synced successfully",
     });
   } catch (error) {
-    console.error("[sync-user - alias] Error:", error);
+    console.error("[sync-user] Alias error:", error);
     return res.status(500).json({
       message: "Failed to sync user",
       error: error?.message || "Internal server error",
-      code: error?.code || "UNKNOWN_ERROR",
     });
   }
 });
 
-/**
- * Sync all users endpoint (useful for batch operations)
- * POST /api/sync-users-batch
- *
- * Request body:
- * {
- *   users: Array<{
- *     firebaseUid: string,
- *     email: string,
- *     displayName?: string,
- *     phone?: string,
- *     avatarUrl?: string,
- *     role?: string
- *   }>
- * }
- */
-app.post("/api/sync-users-batch", async (req, res) => {
-  try {
-    const { users } = req.body;
 
-    if (!Array.isArray(users)) {
-      return res
-        .status(400)
-        .json({ message: "users must be an array", error: "INVALID_REQUEST" });
-    }
 
-    console.log(
-      `[sync-users-batch] Starting batch sync for ${users.length} users`
-    );
 
-    const { results, errors } = await syncUsersBatchInternal(users);
-
-    console.log(
-      `[sync-users-batch] Completed: ${results.length} successful, ${errors.length} errors`
-    );
-
-    return res.json({
-      total: users.length,
-      successful: results.length,
-      failed: errors.length,
-      results,
-      errors: errors.length > 0 ? errors : undefined,
-    });
-  } catch (error) {
-    console.error("[sync-users-batch] Error:", error);
-    return res.status(500).json({
-      message: "Failed to sync users",
-      error: error?.message || "Internal server error",
-    });
-  }
-});
-
-/**
- * Trigger sync from Firebase Auth into Supabase
- * POST /api/sync-from-firebase
- * Optional body: { maxResults?: number } to limit number of users fetched (default 1000)
- */
-app.post("/api/sync-from-firebase", async (req, res) => {
-  try {
-    if (!firebaseAvailable) {
-      return res
-        .status(400)
-        .json({ message: "Firebase not configured on this server" });
-    }
-
-    const { maxResults = 1000 } = req.body || {};
-
-    console.log(
-      "[sync-from-firebase] Listing users from Firebase (maxResults=%s)",
-      maxResults
-    );
-
-    const users = [];
-    let nextPageToken = undefined;
-    let fetched = 0;
-
-    // Fetch users in pages until we reach maxResults or no more users
-    do {
-      const listResult = await admin.auth().listUsers(1000, nextPageToken);
-      for (const fbUser of listResult.users) {
-        if (fetched >= maxResults) break;
-        users.push({
-          firebaseUid: fbUser.uid,
-          email: fbUser.email || null,
-          displayName: fbUser.displayName || null,
-          phone: fbUser.phoneNumber || null,
-          avatarUrl: fbUser.photoURL ? fbUser.photoURL : null,
-        });
-        fetched += 1;
-      }
-
-      nextPageToken = listResult.pageToken;
-    } while (nextPageToken && fetched < maxResults);
-
-    console.log(
-      `[sync-from-firebase] Fetched ${users.length} users, starting sync`
-    );
-
-    const { results, errors } = await syncUsersBatchInternal(users);
-
-    return res.json({
-      totalFetched: users.length,
-      successful: results.length,
-      failed: errors.length,
-      results,
-      errors: errors.length > 0 ? errors : undefined,
-    });
-  } catch (err) {
-    console.error("[sync-from-firebase] Error:", err);
-    return res.status(500).json({
-      message: "Failed to sync from Firebase",
-      error: err?.message || "Internal server error",
-    });
-  }
-});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -603,11 +390,15 @@ app.post("/api/request-role", async (req, res) => {
   try {
     const { firebaseUid, requestedRole, userId } = req.body;
 
+    console.log(`[request-role] 📥 Received request with body:`, { firebaseUid, requestedRole, userId });
+
     if (!firebaseUid) {
+      console.log(`[request-role] ❌ Missing firebaseUid`);
       return res.status(400).json({ message: "firebaseUid is required" });
     }
 
     if (!["composer", "admin"].includes(requestedRole)) {
+      console.log(`[request-role] ❌ Invalid requestedRole: ${requestedRole}`);
       return res
         .status(400)
         .json({ message: 'requestedRole must be "composer" or "admin"' });
@@ -697,14 +488,11 @@ app.post("/api/request-role", async (req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Sync server running on http://localhost:${PORT}`);
+  console.log(`🚀 Auth server running on http://localhost:${PORT}`);
   console.log(`📍 Health check: http://localhost:${PORT}/health`);
-  console.log(`📍 Sync user: POST http://localhost:${PORT}/api/sync-user`);
+  console.log(`📍 Register user: POST http://localhost:${PORT}/api/register`);
   console.log(
     `📍 Request role: POST http://localhost:${PORT}/api/request-role`
   );
-  console.log(
-    `📍 Batch sync: POST http://localhost:${PORT}/api/sync-users-batch`
-  );
-  console.log(`\nWaiting for ngrok tunnel...\n`);
+  console.log(`\nWaiting for requests...\n`);
 });
