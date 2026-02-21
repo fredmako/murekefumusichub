@@ -47,13 +47,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
-import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
+import { adminService } from "@/services/adminService";
 
 /* --------- CONFIG --------- */
-const ADMIN_IDENTIFIERS = ["fredrickmakori102@gmail.com", "murekefumusichub"];
+const ADMIN_IDENTIFIERS = [
+  "fredrickmakori102@gmail.com",
+  "murekefumusichub@gmail.com",
+];
 const normalizeEmail = (e: string) => e?.toLowerCase().trim() ?? "";
 const isAdminEmail = (email?: string | null) => {
   if (!email) return false;
@@ -125,13 +128,6 @@ export function AdminPanel() {
       return;
     }
 
-    // Make sure supabase client exists
-    if (!supabase) {
-      toast.error("Supabase not configured.");
-      setLoading(false);
-      return;
-    }
-
     // Initial load
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -159,145 +155,45 @@ export function AdminPanel() {
   };
 
   const fetchRoles = async () => {
-    if (!supabase) return;
-    const { data, error } = await supabase.from("roles").select("*");
-    if (error) {
-      console.warn("roles fetch error:", error);
-      return;
-    }
+    const data = await adminService.fetchRoles();
     setRoles(data || []);
   };
 
   const fetchUsers = async () => {
-    if (!supabase) return;
-    // fetch users
-    const { data: usersData, error } = await supabase.from("users").select("*");
-    if (error) {
-      console.warn("users fetch error:", error);
-      console.log("Error details:", error.code, error.message, error.hint);
-      return;
-    }
-    console.log("[AdminPanel] Fetched users:", usersData);
-    setUsers(usersData || []);
-
-    // fetch user_roles mapping as well (if your schema uses it)
-    const { data: urData, error: urErr } = await supabase
-      .from("user_roles")
-      .select("*");
-    if (!urErr) {
-      console.log("[AdminPanel] Fetched user_roles:", urData);
-      setUserRoles(urData || []);
-    } else {
-      console.warn("user_roles fetch error:", urErr);
-    }
+    const data = await adminService.fetchUsers();
+    console.log("[AdminPanel] Fetched users:", data);
+    setUsers(data?.users || []);
+    setUserRoles(data?.userRoles || []);
   };
 
   const fetchCompositions = async () => {
-    if (!supabase) return;
-    const { data, error } = await supabase
-      .from("compositions")
-      .select(
-        `
-        *,
-        composers (
-          id,
-          user_id,
-          users ( display_name, email )
-        )
-      `,
-      )
-      .eq("deleted", false)
-      .order("created_at", { ascending: false });
-    if (error) {
-      console.warn("compositions fetch error:", error);
-      return;
-    }
+    const data = await adminService.fetchCompositions();
     setCompositions(data || []);
   };
 
   const fetchTransactions = async () => {
-    if (!supabase) return;
-    const { data, error } = await supabase
-      .from("purchases")
-      .select(
-        `
-        *,
-        compositions ( title, composer_id ),
-        buyers (
-          id,
-          user_id,
-          users ( display_name, email )
-        )
-      `,
-      )
-      .order("purchased_at", { ascending: false })
-      .limit(200);
-    if (error) {
-      console.warn("purchases fetch error:", error);
-      return;
-    }
+    const data = await adminService.fetchTransactions();
     setTransactions(data || []);
   };
 
   const fetchInvites = async () => {
-    if (!supabase) return;
-    const { data, error } = await supabase
-      .from("role_requests")
-      .select("*")
-      .order("createdAt", { ascending: false });
-    if (error) {
-      // try alternate table name if different casing
-      const alt = await supabase.from("role_requests").select("*");
-      if (!alt.error) {
-        setInvites(alt.data || []);
-        return;
-      }
-      console.warn("role_requests fetch error:", error);
-      return;
-    }
+    const data = await adminService.fetchInvites();
     setInvites(data || []);
   };
 
   const fetchRequests = async () => {
-    if (!supabase) return;
-    const { data, error } = await supabase
-      .from("users")
-      .select("id, email, roles, composer_request, created_at")
-      .eq("composer_request", true)
-      .order("created_at", { ascending: true });
-    if (error) {
-      console.warn("composer requests fetch error:", error);
-      setRequests([]);
-      return;
-    }
+    const data = await adminService.fetchRequests();
     setRequests(data || []);
   };
 
   /* ---------------- compute summary stats ---------------- */
   const computeStats = async () => {
     try {
-      if (!supabase) return;
-      // counts using head queries
-      const { count: uCount } = await supabase
-        .from("users")
-        .select("id", { count: "exact", head: true });
-      const { count: cCount } = await supabase
-        .from("compositions")
-        .select("id", { count: "exact", head: true });
-
-      // purchases details
-      const { data: purchases } = await supabase
-        .from("purchases")
-        .select("price_paid");
-      const revenue = (purchases || []).reduce(
-        (s: number, p: any) => s + (p.price_paid || 0),
-        0,
-      );
-
-      setTotalUsers(uCount || 0);
-      setTotalCompositions(cCount || 0);
-      setTotalRevenue(revenue || 0);
-      setTotalTransactions((purchases || []).length || 0);
+      const stats = await adminService.fetchStats();
+      setTotalUsers(stats.totalUsers || 0);
+      setTotalCompositions(stats.totalCompositions || 0);
+      setTotalRevenue(stats.totalRevenue || 0);
+      setTotalTransactions(stats.totalTransactions || 0);
     } catch (err) {
       console.error("computeStats error:", err);
     }
@@ -350,10 +246,6 @@ export function AdminPanel() {
 
   /* ---------------- actions ---------------- */
   async function addComposerInvite(email: string) {
-    if (!supabase) {
-      toast.error("Supabase not configured");
-      return;
-    }
     const normalized = normalizeEmail(email);
     if (!normalized) {
       toast.error("Enter a valid email");
@@ -362,215 +254,86 @@ export function AdminPanel() {
 
     setProcessing(true);
     try {
-      const payload = {
-        email: normalized,
-        invitedBy: currentUserUid,
-        createdAt: new Date().toISOString(),
-        used: false,
-      };
-
-      const { error } = await supabase
-        .from("role_requests")
-        .upsert([payload], { onConflict: "email" });
-      if (error) throw error;
-
-      toast.success("Composer invite added");
+      await adminService.addComposerInvite(normalized, currentUserUid || "");
       setNewInviteEmail("");
       await fetchInvites();
-    } catch (err: any) {
-      console.error("addComposerInvite error:", err);
-      toast.error(err.message || "Failed to add invite");
+    } catch (err) {
+      // Error handled in service
     } finally {
       setProcessing(false);
     }
   }
 
   async function revokeInvite(email: string) {
-    if (!supabase) return;
     setProcessing(true);
     try {
       const normalized = normalizeEmail(email);
-      const { error } = await supabase
-        .from("role_requests")
-        .delete()
-        .eq("email", normalized);
-      if (error) throw error;
-      toast.success("Invite revoked");
+      await adminService.revokeInvite(normalized);
       await fetchInvites();
-    } catch (err: any) {
-      console.error("revokeInvite error:", err);
-      toast.error("Failed to revoke invite");
+    } catch (err) {
+      // Error handled in service
     } finally {
       setProcessing(false);
     }
   }
 
   async function promoteUserToComposer(userId: string) {
-    if (!supabase) return;
     setProcessing(true);
     try {
-      const hasRoleColumn =
-        users.length > 0 &&
-        Object.prototype.hasOwnProperty.call(users[0], "role");
-      const hasRolesArray = users.length > 0 && Array.isArray(users[0].roles);
-
-      if (hasRoleColumn) {
-        const { error } = await supabase
-          .from("users")
-          .update({ role: "composer", composer_request: false })
-          .eq("id", userId);
-        if (error) throw error;
-        toast.success("User promoted to composer");
-      } else if (hasRolesArray) {
-        // fetch current roles for user
-        const u = users.find((x) => x.id === userId);
-        const curRoles = Array.isArray(u?.roles) ? u.roles : ["buyer"];
-        const updated = Array.from(new Set([...curRoles, "composer"]));
-        const { error } = await supabase
-          .from("users")
-          .update({ roles: updated, composer_request: false })
-          .eq("id", userId);
-        if (error) throw error;
-        toast.success("User promoted to composer");
-      } else {
-        // fallback to user_roles table approach
-        const composerRole = roles.find((r: any) => r.name === "composer");
-        if (!composerRole) {
-          toast.error("Composer role not found in roles table");
-          return;
-        }
-        const payload = { user_id: userId, role_id: composerRole.id };
-        const { error } = await supabase
-          .from("user_roles")
-          .upsert([payload], { onConflict: "user_id, role_id" });
-        if (error) throw error;
-        // clear composer_request flag on users table if exists by id
-        await supabase
-          .from("users")
-          .update({ composer_request: false })
-          .eq("id", userId);
-        toast.success("User promoted to composer (user_roles)");
-      }
-
-      // ensure composers table has a row for this user (avoid duplicates)
-      const { data: existing } = await supabase
-        .from("composers")
-        .select("id")
-        .eq("user_id", userId)
-        .maybeSingle();
-      if (!existing) {
-        const { error: compErr } = await supabase
-          .from("composers")
-          .insert([{ user_id: userId }]);
-        if (compErr) console.warn("composer insert warning:", compErr);
-      }
-
+      await adminService.promoteUserToComposer(userId);
       await fetchUsers();
       await fetchRequests();
-    } catch (err: any) {
-      console.error("promoteUserToComposer error:", err);
-      toast.error("Failed to promote user");
+    } catch (err) {
+      // Error handled in service
     } finally {
       setProcessing(false);
     }
   }
 
   async function promoteUserToAdmin(userId: string) {
-    if (!supabase) return;
     setProcessing(true);
     try {
-      const hasRoleColumn =
-        users.length > 0 &&
-        Object.prototype.hasOwnProperty.call(users[0], "role");
-      const hasRolesArray = users.length > 0 && Array.isArray(users[0].roles);
-
-      if (hasRoleColumn) {
-        const { error } = await supabase
-          .from("users")
-          .update({ role: "admin" })
-          .eq("id", userId);
-        if (error) throw error;
-        toast.success("User promoted to admin");
-      } else if (hasRolesArray) {
-        const u = users.find((x) => x.id === userId);
-        const curRoles = Array.isArray(u?.roles) ? u.roles : ["buyer"];
-        const updated = Array.from(new Set([...curRoles, "admin"]));
-        const { error } = await supabase
-          .from("users")
-          .update({ roles: updated })
-          .eq("id", userId);
-        if (error) throw error;
-        toast.success("User promoted to admin");
-      } else {
-        const adminRole = roles.find((r: any) => r.name === "admin");
-        if (!adminRole) {
-          toast.error("Admin role not found");
-          return;
-        }
-        const payload = { user_id: userId, role_id: adminRole.id };
-        const { error } = await supabase
-          .from("user_roles")
-          .upsert([payload], { onConflict: "user_id, role_id" });
-        if (error) throw error;
-        toast.success("User promoted to admin (user_roles)");
-      }
+      await adminService.promoteUserToAdmin(userId);
       await fetchUsers();
-    } catch (err: any) {
-      console.error("promoteUserToAdmin error:", err);
-      toast.error("Failed to promote user");
+    } catch (err) {
+      // Error handled in service
     } finally {
       setProcessing(false);
     }
   }
 
   async function suspendUser(userId: string) {
-    if (!supabase) return;
     setProcessing(true);
     try {
-      const { error } = await supabase
-        .from("users")
-        .update({ is_active: false })
-        .eq("id", userId);
-      if (error) throw error;
-      toast.success("User suspended");
+      await adminService.suspendUser(userId);
       await fetchUsers();
-    } catch (err: any) {
-      console.error("suspendUser error:", err);
-      toast.error("Failed to suspend user");
+    } catch (err) {
+      // Error handled in service
     } finally {
       setProcessing(false);
     }
   }
 
   async function approveRequest(user: any) {
-    if (!supabase) return;
     setProcessing(true);
     try {
       await promoteUserToComposer(user.id);
       toast.success(`Approved composer request for ${user.email}`);
       await fetchRequests();
-    } catch (err: any) {
-      console.error("approveRequest error:", err);
-      toast.error("Failed to approve request");
+    } catch (err) {
+      // Error handled in service
     } finally {
       setProcessing(false);
     }
   }
 
   async function rejectRequest(userId: string) {
-    if (!supabase) return;
     setProcessing(true);
     try {
-      const { error } = await supabase
-        .from("users")
-        .update({ composer_request: false })
-        .eq("id", userId);
-      if (error) throw error;
-      toast.success("Request rejected");
+      await adminService.rejectRequest(userId);
       await fetchRequests();
-    } catch (err: any) {
-      console.error("rejectRequest error:", err);
-      toast.error("Failed to reject request");
+    } catch (err) {
+      // Error handled in service
     } finally {
       setProcessing(false);
     }

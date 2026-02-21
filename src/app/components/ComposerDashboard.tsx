@@ -1,7 +1,23 @@
-import { useState, useEffect } from 'react';
-import { Plus, DollarSign, Music, TrendingUp, Eye, Edit, Trash2, Loader } from 'lucide-react';
-import { Button } from '@/app/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { useState, useEffect } from "react";
+import { useAuth } from "@/context/AuthContext";
+import {
+  Plus,
+  DollarSign,
+  Music,
+  TrendingUp,
+  Eye,
+  Edit,
+  Trash2,
+  Loader,
+} from "lucide-react";
+import { Button } from "@/app/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/app/components/ui/card";
 import {
   Table,
   TableBody,
@@ -9,7 +25,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/app/components/ui/table';
+} from "@/app/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -17,13 +33,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/app/components/ui/dialog';
-import { Badge } from '@/app/components/ui/badge';
-import { UploadComposition } from '@/app/components/UploadComposition';
-import { User } from '@/app/App';
-import { auth } from '@/lib/firebase';
-import { supabase } from '@/lib/supabase';
-import { toast } from 'sonner';
+} from "@/app/components/ui/dialog";
+import { Badge } from "@/app/components/ui/badge";
+import { UploadComposition } from "@/app/components/UploadComposition";
+import { User } from "@/app/App";
+import { auth } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 
 interface ComposerDashboardProps {
   currentUser: User;
@@ -50,40 +66,42 @@ interface ComposerStats {
 }
 
 export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
+  const { firebaseUser } = useAuth();
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [stats, setStats] = useState<ComposerStats>({
     composerCompositions: [],
     totalRevenue: 0,
     totalSales: 0,
-    loading: true
+    loading: true,
   });
 
   useEffect(() => {
     const fetchComposerData = async () => {
       try {
-        const firebaseUser = auth.currentUser;
-        if (!firebaseUser) {
-          toast.error('Not authenticated');
+        const firebaseUserLocal = firebaseUser || auth.currentUser;
+        if (!firebaseUserLocal) {
+          toast.error("Not authenticated");
           return;
         }
 
         // Get composer record by firebase UID
         const { data: composerData, error: composerError } = await supabase
-          .from('composers')
-          .select('id')
-          .eq('user_id', firebaseUser.uid)
+          .from("composers")
+          .select("id")
+          .eq("user_id", firebaseUserLocal.uid)
           .single();
 
         if (composerError || !composerData) {
-          toast.error('Composer profile not found');
-          setStats(prev => ({ ...prev, loading: false }));
+          toast.error("Composer profile not found");
+          setStats((prev) => ({ ...prev, loading: false }));
           return;
         }
 
         // Get composer's compositions with stats
         const { data: compositions, error: compError } = await supabase
-          .from('compositions')
-          .select(`
+          .from("compositions")
+          .select(
+            `
             id,
             title,
             description,
@@ -91,50 +109,60 @@ export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
             created_at,
             is_published,
             composition_stats(views, purchases)
-          `)
-          .eq('composer_id', composerData.id)
-          .eq('deleted', false);
+          `,
+          )
+          .eq("composer_id", composerData.id)
+          .eq("deleted", false);
 
         if (compError) throw compError;
 
         // Get total sales and revenue
         const { data: purchases, error: purchaseError } = await supabase
-          .from('purchases')
-          .select('price_paid')
-          .in('composition_id', compositions?.map(c => c.id) || [])
-          .eq('is_active', true);
+          .from("purchases")
+          .select("price_paid")
+          .in("composition_id", compositions?.map((c) => c.id) || [])
+          .eq("is_active", true);
 
         if (purchaseError) throw purchaseError;
 
-        const totalRevenue = purchases?.reduce((sum, p) => sum + (p.price_paid || 0), 0) || 0;
+        const totalRevenue =
+          purchases?.reduce((sum, p) => sum + (p.price_paid || 0), 0) || 0;
         const totalSales = purchases?.length || 0;
 
         setStats({
           composerCompositions: compositions || [],
           totalRevenue,
           totalSales,
-          loading: false
+          loading: false,
         });
       } catch (error) {
-        console.error('Error fetching composer data:', error);
-        toast.error('Failed to load dashboard');
-        setStats(prev => ({ ...prev, loading: false }));
+        console.error("Error fetching composer data:", error);
+        toast.error("Failed to load dashboard");
+        setStats((prev) => ({ ...prev, loading: false }));
       }
     };
 
     fetchComposerData();
   }, []);
 
+  // Redirect to home on logout
+  useEffect(() => {
+    if (firebaseUser === null) {
+      // using window.location to ensure full app redirect
+      window.location.href = "/";
+    }
+  }, [firebaseUser]);
+
   const { composerCompositions, totalRevenue, totalSales } = stats;
 
   // Get composition stats
-  const compositionStats = composerCompositions.map(comp => {
-    const sales = mockPurchases.filter(p => p.compositionId === comp.id);
+  const compositionStats = composerCompositions.map((comp) => {
+    const sales = mockPurchases.filter((p) => p.compositionId === comp.id);
     const revenue = sales.reduce((sum, sale) => sum + sale.price, 0);
     return {
       ...comp,
       salesCount: sales.length,
-      revenue
+      revenue,
     };
   });
 
@@ -144,7 +172,9 @@ export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold mb-2">Composer Dashboard</h1>
-          <p className="text-gray-600">Manage your compositions and track your sales</p>
+          <p className="text-gray-600">
+            Manage your compositions and track your sales
+          </p>
         </div>
         <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
           <DialogTrigger asChild>
@@ -169,37 +199,50 @@ export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Revenue</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">
+              Total Revenue
+            </CardTitle>
             <DollarSign className="size-5 text-green-600" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">${totalRevenue.toFixed(2)}</div>
-            <p className="text-xs text-gray-500 mt-1">From {totalSales} sales</p>
+            <p className="text-xs text-gray-500 mt-1">
+              From {totalSales} sales
+            </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Published Works</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">
+              Published Works
+            </CardTitle>
             <Music className="size-5 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{composerCompositions.length}</div>
+            <div className="text-3xl font-bold">
+              {composerCompositions.length}
+            </div>
             <p className="text-xs text-gray-500 mt-1">Active compositions</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Avg Price</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">
+              Avg Price
+            </CardTitle>
             <TrendingUp className="size-5 text-purple-600" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
-              ${composerCompositions.length > 0
-                ? (composerCompositions.reduce((sum, c) => sum + c.price, 0) / composerCompositions.length).toFixed(2)
-                : '0.00'
-              }
+              $
+              {composerCompositions.length > 0
+                ? (
+                    composerCompositions.reduce((sum, c) => sum + c.price, 0) /
+                    composerCompositions.length
+                  ).toFixed(2)
+                : "0.00"}
             </div>
             <p className="text-xs text-gray-500 mt-1">Average listing price</p>
           </CardContent>
@@ -210,13 +253,17 @@ export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
       <Card>
         <CardHeader>
           <CardTitle>My Compositions</CardTitle>
-          <CardDescription>Manage and track performance of your published works</CardDescription>
+          <CardDescription>
+            Manage and track performance of your published works
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {compositionStats.length === 0 ? (
             <div className="text-center py-12">
               <Music className="size-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500 mb-4">You haven't uploaded any compositions yet.</p>
+              <p className="text-gray-500 mb-4">
+                You haven't uploaded any compositions yet.
+              </p>
               <Button onClick={() => setIsUploadOpen(true)}>
                 <Plus className="size-4 mr-2" />
                 Upload Your First Composition
@@ -236,23 +283,29 @@ export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {compositionStats.map(comp => (
+                {compositionStats.map((comp) => (
                   <TableRow key={comp.id}>
                     <TableCell>
                       <div>
                         <p className="font-medium">{comp.title}</p>
-                        <p className="text-sm text-gray-500">{comp.voiceParts.join(', ')}</p>
+                        <p className="text-sm text-gray-500">
+                          {comp.voiceParts.join(", ")}
+                        </p>
                       </div>
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">{comp.difficulty}</Badge>
                     </TableCell>
                     <TableCell>${comp.price.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{comp.salesCount}</TableCell>
+                    <TableCell className="text-right">
+                      {comp.salesCount}
+                    </TableCell>
                     <TableCell className="text-right font-medium">
                       ${comp.revenue.toFixed(2)}
                     </TableCell>
-                    <TableCell>{new Date(comp.dateAdded).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      {new Date(comp.dateAdded).toLocaleDateString()}
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button variant="ghost" size="icon">

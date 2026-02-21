@@ -21,15 +21,13 @@ import {
   onAuthStateChanged,
 } from "firebase/auth";
 import { supabase as db } from "../../lib/supabase";
+import { navbarService } from "@/services/navbarService";
 import { toast } from "sonner";
 import logo from "../components/images/logo.jpg";
 
 type UserRole = "buyer" | "composer" | "admin";
 
-const ADMIN_IDENTIFIERS = [
-  "fredrickmakori102@gmail.com",
-  "murekefumusichub",
-];
+const ADMIN_IDENTIFIERS = ["fredrickmakori102@gmail.com", "murekefumusichub"];
 const normalizeEmail = (email: string) => email.toLowerCase().trim();
 
 function isAdminEmail(email: string) {
@@ -70,15 +68,25 @@ export function Login() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) return;
 
-      const normalizedEmail = normalizeEmail(user.email || "");
+      try {
+        // Ask server for current roles for this firebase UID
+        const roles = await navbarService.fetchUserRoles(user.uid);
 
-      let role: UserRole = "buyer";
+        let role: UserRole = "buyer";
+        if (roles.includes("admin")) role = "admin";
+        else if (roles.includes("composer")) role = "composer";
 
-      if (isAdminEmail(normalizedEmail)) {
-        role = "admin";
+        redirectToDashboard(role);
+      } catch (err) {
+        console.error(
+          "[Login] Failed to fetch roles on auth state change:",
+          err,
+        );
+        // Fallback to email-based heuristic
+        const normalizedEmail = normalizeEmail(user.email || "");
+        const role = isAdminEmail(normalizedEmail) ? "admin" : "buyer";
+        redirectToDashboard(role);
       }
-
-      redirectToDashboard(role);
     });
 
     return () => unsubscribe();
@@ -104,14 +112,14 @@ export function Login() {
         userCredential = await createUserWithEmailAndPassword(
           auth,
           email,
-          password
+          password,
         );
         toast.success("Account created successfully!");
       } else {
         userCredential = await signInWithEmailAndPassword(
           auth,
           email,
-          password
+          password,
         );
         toast.success("Login successful!");
       }
@@ -119,11 +127,24 @@ export function Login() {
       const firebaseUser = userCredential.user;
       const normalizedEmail = normalizeEmail(firebaseUser.email || "");
 
-      const role = isAdminEmail(normalizedEmail) ? "admin" : "buyer";
+      // Sync user record to Supabase first
+      await syncUserToDatabase(firebaseUser.uid, normalizedEmail, "buyer");
 
-      await syncUserToDatabase(firebaseUser.uid, normalizedEmail, role);
+      // Query server for up-to-date roles (role may have changed)
+      try {
+        const roles = await navbarService.fetchUserRoles(firebaseUser.uid);
+        const effectiveRole: UserRole = roles.includes("admin")
+          ? "admin"
+          : roles.includes("composer")
+            ? "composer"
+            : "buyer";
 
-      redirectToDashboard(role);
+        redirectToDashboard(effectiveRole);
+      } catch (err) {
+        console.error("[Login] Failed to fetch roles after sign-in:", err);
+        const role = isAdminEmail(normalizedEmail) ? "admin" : "buyer";
+        redirectToDashboard(role);
+      }
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Authentication failed");
@@ -145,12 +166,28 @@ export function Login() {
       const firebaseUser = result.user;
       const normalizedEmail = normalizeEmail(firebaseUser.email || "");
 
-      const role = isAdminEmail(normalizedEmail) ? "admin" : "buyer";
+      // Sync user as buyer initially, then check server for any upgraded roles
+      await syncUserToDatabase(firebaseUser.uid, normalizedEmail, "buyer");
 
-      await syncUserToDatabase(firebaseUser.uid, normalizedEmail, role);
+      try {
+        const roles = await navbarService.fetchUserRoles(firebaseUser.uid);
+        const effectiveRole: UserRole = roles.includes("admin")
+          ? "admin"
+          : roles.includes("composer")
+            ? "composer"
+            : "buyer";
 
-      toast.success("Google sign-in successful!");
-      redirectToDashboard(role);
+        toast.success("Google sign-in successful!");
+        redirectToDashboard(effectiveRole);
+      } catch (err) {
+        console.error(
+          "[Login] Failed to fetch roles after Google sign-in:",
+          err,
+        );
+        const role = isAdminEmail(normalizedEmail) ? "admin" : "buyer";
+        toast.success("Google sign-in successful!");
+        redirectToDashboard(role);
+      }
     } catch (error: any) {
       console.error(error);
       toast.error("Google sign-in failed");
@@ -165,7 +202,7 @@ export function Login() {
   const syncUserToDatabase = async (
     uid: string,
     email: string,
-    role: UserRole
+    role: UserRole,
   ) => {
     // Upsert user. If client RLS prevents creating users directly, fall back
     // to the server-side sync endpoint which can use a service role key.
@@ -181,25 +218,32 @@ export function Login() {
       .maybeSingle();
 
     if (userError) {
-      console.warn("User sync error (client):", userError?.message || userError);
+      console.warn(
+        "User sync error (client):",
+        userError?.message || userError,
+      );
 
       // If this is an RLS or permission issue, call server-side sync endpoint
-      if (userError?.code === '42501' || userError?.message?.includes('row-level security')) {
+      if (
+        userError?.code === "42501" ||
+        userError?.message?.includes("row-level security")
+      ) {
         try {
           const token = await auth.currentUser?.getIdToken();
-          const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:7071/api';
+          const base =
+            import.meta.env.VITE_API_BASE_URL || "http://localhost:3001/api";
           const res = await fetch(`${base}/sync-user`, {
-            method: 'POST',
+            method: "POST",
             headers: {
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
             body: JSON.stringify({ firebaseUid: uid, email, role }),
           });
 
           if (!res.ok) {
-            const errBody = await res.text().catch(() => '');
-            console.error('Server sync failed:', res.status, errBody);
+            const errBody = await res.text().catch(() => "");
+            console.error("Server sync failed:", res.status, errBody);
             return;
           }
 
@@ -209,7 +253,7 @@ export function Login() {
             return;
           }
         } catch (sev) {
-          console.error('Server-side sync error:', sev);
+          console.error("Server-side sync error:", sev);
         }
 
         return;
@@ -295,8 +339,8 @@ export function Login() {
                   {isLoading
                     ? "Processing..."
                     : isSignUp
-                    ? "Create Account"
-                    : "Sign In"}
+                      ? "Create Account"
+                      : "Sign In"}
                 </Button>
               </form>
 
@@ -331,7 +375,7 @@ export function Login() {
                 <div className="mt-2 text-center">
                   <button
                     type="button"
-                    onClick={() => navigate('/admin')}
+                    onClick={() => navigate("/admin")}
                     className="text-sm text-red-600 hover:underline"
                     disabled={isLoading}
                   >

@@ -1,9 +1,10 @@
-import { auth } from '@/lib/firebase';
-import { supabase } from '@/lib/supabase';
-import type { User as FirebaseUser } from 'firebase/auth';
+import { auth } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
+import type { User as FirebaseUser } from "firebase/auth";
 
 // API Configuration
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) || 'http://localhost:3001/api';
+const API_BASE_URL =
+  (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
 
 // Helper to get Firebase ID token
 async function getIdToken(): Promise<string | null> {
@@ -13,17 +14,21 @@ async function getIdToken(): Promise<string | null> {
 }
 
 // Helper for API requests with authentication
-async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+// Exported for use by other services
+export async function apiRequest<T>(
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<T> {
   const token = await getIdToken();
 
   const headers: HeadersInit = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     ...(options.headers || {}),
   };
 
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const url = `${API_BASE_URL.replace(/\/+$/,'')}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  const url = `${API_BASE_URL.replace(/\/+$/, "")}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
 
   const response = await fetch(url, { ...options, headers });
 
@@ -33,9 +38,11 @@ async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promi
     try {
       errorBody = await response.json();
     } catch (e) {
-      try { errorBody = { message: await response.text() }; } catch {}
+      try {
+        errorBody = { message: await response.text() };
+      } catch {}
     }
-    const err = new Error(errorBody?.message || 'API request failed');
+    const err = new Error(errorBody?.message || "API request failed");
     (err as any).status = response.status;
     throw err;
   }
@@ -60,14 +67,13 @@ export const authService = {
       // Prefer server-side sync to avoid client RLS issues
       // Check if the user already exists in Supabase first
       const { data: existingUser, error: findError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('firebase_uid', firebaseUser.uid)
-        .maybeSingle
-();
+        .from("users")
+        .select("id")
+        .eq("firebase_uid", firebaseUser.uid)
+        .maybeSingle();
 
-          if (findError) {
-        console.warn('authService.syncUser: find user error', findError);
+      if (findError) {
+        console.warn("authService.syncUser: find user error", findError);
       }
 
       let userId: string;
@@ -75,8 +81,8 @@ export const authService = {
       if (!existingUser) {
         // Create new user via server-side endpoint which uses a service role key
         try {
-          const result: any = await apiRequest('/sync-user', {
-            method: 'POST',
+          const result: any = await apiRequest("/sync-user", {
+            method: "POST",
             body: JSON.stringify({
               firebaseUid: firebaseUser.uid,
               email: firebaseUser.email,
@@ -90,11 +96,17 @@ export const authService = {
           if (result?.id) {
             userId = result.id;
           } else {
-            console.error('authService.syncUser: server sync returned no id', result);
-            throw new Error('Server sync did not return user id');
+            console.error(
+              "authService.syncUser: server sync returned no id",
+              result,
+            );
+            throw new Error("Server sync did not return user id");
           }
         } catch (serverErr) {
-          console.error('authService.syncUser: server-side sync failed', serverErr);
+          console.error(
+            "authService.syncUser: server-side sync failed",
+            serverErr,
+          );
           throw serverErr;
         }
       } else {
@@ -103,29 +115,40 @@ export const authService = {
 
       // Fetch complete user data with roles
       const { data: userData, error: fetchError } = await supabase
-        .from('users')
-        .select(`
+        .from("users")
+        .select(
+          `
           *,
           user_roles(
             role_id,
             roles(name)
           )
-        `)
-        .eq('id', userId)
-        .maybeSingle
-();
+        `,
+        )
+        .eq("id", userId)
+        .maybeSingle();
 
       if (fetchError) throw fetchError;
+
+      if (!userData) {
+        console.error(
+          "authService.syncUser: user data not found after sync for userId:",
+          userId,
+        );
+        throw new Error("User data not found after sync");
+      }
 
       return {
         id: userData.id,
         firebaseUid: userData.firebase_uid,
         email: userData.email,
         displayName: userData.display_name,
-        roles: (userData.user_roles || []).map((ur: any) => ur.roles?.name).filter(Boolean),
+        roles: (userData.user_roles || [])
+          .map((ur: any) => ur.roles?.name)
+          .filter(Boolean),
       };
     } catch (error) {
-      console.error('Error syncing user:', error);
+      console.error("Error syncing user:", error);
       throw error;
     }
   },
@@ -139,38 +162,40 @@ export const authService = {
       if (!firebaseUid) return null;
 
       const { data, error } = await supabase
-        .from('users')
-        .select('user_roles(roles(name))')
-        .eq('firebase_uid', firebaseUid)
+        .from("users")
+        .select("user_roles(roles(name))")
+        .eq("firebase_uid", firebaseUid)
         .maybeSingle();
 
       if (error) {
-        console.warn('getUserRole supabase error:', error);
+        console.warn("getUserRole supabase error:", error);
         return null;
       }
 
       if (!data || !data.user_roles) return null;
 
-      const roles = (data.user_roles as any[]).map((ur) => ur.roles?.name).filter(Boolean);
+      const roles = (data.user_roles as any[])
+        .map((ur) => ur.roles?.name)
+        .filter(Boolean);
       return roles.length > 0 ? (roles[0] as string) : null;
     } catch (err) {
-      console.warn('getUserRole failed:', err);
+      console.warn("getUserRole failed:", err);
       return null;
     }
   },
-  
+
   /**
    * Log audit action
    */
   async logAudit(userId: string, action: string, payload: any) {
     try {
-      await supabase.from('audit_logs').insert({
+      await supabase.from("audit_logs").insert({
         user_id: userId,
         action,
         payload,
       });
     } catch (error) {
-      console.error('Error logging audit:', error);
+      console.error("Error logging audit:", error);
     }
   },
 };
@@ -188,64 +213,30 @@ export const compositionService = {
     sortBy?: string;
   }) {
     try {
-      let query = supabase
-        .from('compositions')
-        .select(`
-          *,
-          composers(id, users(display_name)),
-          categories(name),
-          composition_stats(views, purchases)
-        `)
-        .eq('is_published', true)
-        .eq('deleted', false);
-      
-      if (filters?.category) {
-        query = query.eq('category_id', filters.category);
-      }
-      
-      if (filters?.search) {
-        query = query.or(`title.ilike.%${filters.search}%,description.ilike.%${filters.search}%`);
-      }
-      
-      const { data, error } = await query.order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      return data;
+      const params = new URLSearchParams();
+      if (filters?.category) params.set("category", String(filters.category));
+      if (filters?.search) params.set("search", String(filters.search));
+      // default limit can be changed by caller
+      const endpoint = `/compositions${params.toString() ? `?${params.toString()}` : ""}`;
+      return await apiRequest<any[]>(endpoint, { method: "GET" });
     } catch (error) {
-      console.error('Error fetching compositions:', error);
+      console.error("Error fetching compositions via API:", error);
       throw error;
     }
   },
-  
+
   /**
    * Get composition by ID
    */
   async getById(id: string) {
     try {
-      const { data, error } = await supabase
-        .from('compositions')
-        .select(`
-          *,
-          composers(id, users(display_name, email)),
-          categories(name),
-          composition_stats(views, purchases)
-        `)
-        .eq('id', id)
-        .maybeSingle
-();
-      
-      if (error) throw error;
-      
-      // Increment view count
-      await supabase.rpc('increment_views', { composition_id: id });
-      
-      return data;
+      return await apiRequest(`/compositions/${id}`, { method: "GET" });
     } catch (error) {
-      console.error('Error fetching composition:', error);
+      console.error("Error fetching composition via API:", error);
       throw error;
     }
   },
-  
+
   /**
    * Create new composition
    */
@@ -260,91 +251,84 @@ export const compositionService = {
     composer_id: string;
   }) {
     try {
-      const { data, error } = await supabase
-        .from('compositions')
-        .insert(compositionData)
-        .select()
-        .maybeSingle
-();
-      
-      if (error) throw error;
-      
-      // Initialize stats
-      await supabase.from('composition_stats').insert({
-        composition_id: data.id,
+      return await apiRequest(`/compositions`, {
+        method: "POST",
+        body: JSON.stringify(compositionData),
       });
-      
-      return data;
     } catch (error) {
-      console.error('Error creating composition:', error);
+      console.error("Error creating composition via API:", error);
       throw error;
     }
   },
-  
+
   /**
    * Update composition
    */
-  async update(id: string, updates: Partial<{
-    title: string;
-    description: string;
-    category_id: number;
-    price: number;
-    is_published: boolean;
-  }>) {
+  async update(
+    id: string,
+    updates: Partial<{
+      title: string;
+      description: string;
+      category_id: number;
+      price: number;
+      is_published: boolean;
+    }>,
+  ) {
     try {
       const { data, error } = await supabase
-        .from('compositions')
+        .from("compositions")
         .update(updates)
-        .eq('id', id)
+        .eq("id", id)
         .select()
-        .maybeSingle
-();
-      
+        .maybeSingle();
+
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error updating composition:', error);
+      console.error("Error updating composition:", error);
       throw error;
     }
   },
-  
+
   /**
    * Delete composition (soft delete)
    */
   async delete(id: string) {
     try {
       const { error } = await supabase
-        .from('compositions')
+        .from("compositions")
         .update({ deleted: true, is_published: false })
-        .eq('id', id);
-      
+        .eq("id", id);
+
       if (error) throw error;
     } catch (error) {
-      console.error('Error deleting composition:', error);
+      console.error("Error deleting composition:", error);
       throw error;
     }
   },
-  
+
   /**
    * Get composer's compositions
    */
   async getByComposer(composerId: string) {
     try {
       const { data, error } = await supabase
-        .from('compositions')
-        .select(`
+        .from("compositions")
+        .select(
+          `
           *,
           categories(name),
           composition_stats(views, purchases)
-        `)
-        .eq('composer_id', composerId)
-        .eq('deleted', false)
-        .order('created_at', { ascending: false });
-      
+        `,
+        )
+        .eq("composer_id", composerId)
+        .eq("deleted", false)
+        .order("created_at", { ascending: false });
+
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error fetching composer compositions:', error);
+      console.error("Error fetching composer compositions:", error);
       throw error;
     }
   },
@@ -364,60 +348,62 @@ export const purchaseService = {
     payment_ref: string;
   }) {
     try {
-      const { data, error } = await supabase.rpc('purchase_composition', {
+      const { data, error } = await supabase.rpc("purchase_composition", {
         p_buyer_id: purchaseData.buyer_id,
         p_composition_id: purchaseData.composition_id,
         p_price_paid: purchaseData.price_paid,
         p_payment_ref: purchaseData.payment_ref,
       });
-      
+
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error creating purchase:', error);
+      console.error("Error creating purchase:", error);
       throw error;
     }
   },
-  
+
   /**
    * Get buyer's purchases
    */
   async getByBuyer(buyerId: string) {
     try {
       const { data, error } = await supabase
-        .from('purchases')
-        .select(`
+        .from("purchases")
+        .select(
+          `
           *,
           compositions(
             *,
             composers(users(display_name)),
             categories(name)
           )
-        `)
-        .eq('buyer_id', buyerId)
-        .eq('is_active', true)
-        .order('purchased_at', { ascending: false });
-      
+        `,
+        )
+        .eq("buyer_id", buyerId)
+        .eq("is_active", true)
+        .order("purchased_at", { ascending: false });
+
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error fetching purchases:', error);
+      console.error("Error fetching purchases:", error);
       throw error;
     }
   },
-  
+
   /**
    * Discard/refund a purchase
    */
   async discard(purchaseId: string) {
     try {
-      const { error } = await supabase.rpc('discard_purchase', {
+      const { error } = await supabase.rpc("discard_purchase", {
         p_purchase_id: purchaseId,
       });
-      
+
       if (error) throw error;
     } catch (error) {
-      console.error('Error discarding purchase:', error);
+      console.error("Error discarding purchase:", error);
       throw error;
     }
   },
@@ -432,35 +418,33 @@ export const fypService = {
    */
   async getRecommendations(buyerId: string, limit: number = 20) {
     try {
-      const { data, error } = await supabase.rpc('get_fyp_recommendations', {
+      const { data, error } = await supabase.rpc("get_fyp_recommendations", {
         p_buyer_id: buyerId,
         p_limit: limit,
       });
-      
+
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error fetching recommendations:', error);
+      console.error("Error fetching recommendations:", error);
       throw error;
     }
   },
-  
+
   /**
    * Update buyer preferences
    */
   async updatePreferences(buyerId: string, categoryId: number, weight: number) {
     try {
-      const { error } = await supabase
-        .from('buyer_preferences')
-        .upsert({
-          buyer_id: buyerId,
-          category_id: categoryId,
-          weight,
-        });
-      
+      const { error } = await supabase.from("buyer_preferences").upsert({
+        buyer_id: buyerId,
+        category_id: categoryId,
+        weight,
+      });
+
       if (error) throw error;
     } catch (error) {
-      console.error('Error updating preferences:', error);
+      console.error("Error updating preferences:", error);
       throw error;
     }
   },
@@ -476,34 +460,33 @@ export const categoryService = {
   async getAll() {
     try {
       const { data, error } = await supabase
-        .from('categories')
-        .select('*')
-        .order('name');
-      
+        .from("categories")
+        .select("*")
+        .order("name");
+
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error fetching categories:', error);
+      console.error("Error fetching categories:", error);
       throw error;
     }
   },
-  
+
   /**
    * Create category
    */
   async create(name: string, description?: string) {
     try {
       const { data, error } = await supabase
-        .from('categories')
+        .from("categories")
         .insert({ name, description })
         .select()
-        .maybeSingle
-();
-      
+        .maybeSingle();
+
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error creating category:', error);
+      console.error("Error creating category:", error);
       throw error;
     }
   },
@@ -524,80 +507,84 @@ export const reportService = {
   }) {
     try {
       const { data, error } = await supabase
-        .from('reports')
+        .from("reports")
         .insert(reportData)
         .select()
-        .maybeSingle
-();
-      
+        .maybeSingle();
+
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error creating report:', error);
+      console.error("Error creating report:", error);
       throw error;
     }
   },
-  
+
   /**
    * Get all reports (admin)
    */
   async getAll(status?: string) {
     try {
       let query = supabase
-        .from('reports')
-        .select(`
+        .from("reports")
+        .select(
+          `
           *,
           users!reported_by(display_name, email),
           compositions(title, composer_id)
-        `)
-        .order('created_at', { ascending: false });
-      
+        `,
+        )
+        .order("created_at", { ascending: false });
+
       if (status) {
-        query = query.eq('status', status);
+        query = query.eq("status", status);
       }
-      
+
       const { data, error } = await query;
-      
+
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error fetching reports:', error);
+      console.error("Error fetching reports:", error);
       throw error;
     }
   },
-  
+
   /**
    * Resolve a report
    */
-  async resolve(reportId: string, adminNotes: string, deleteComposition: boolean = false) {
+  async resolve(
+    reportId: string,
+    adminNotes: string,
+    deleteComposition: boolean = false,
+  ) {
     try {
       // Update report status
       const { error: updateError } = await supabase
-        .from('reports')
+        .from("reports")
         .update({
-          status: 'resolved',
+          status: "resolved",
           admin_notes: adminNotes,
           resolved_at: new Date().toISOString(),
         })
-        .eq('id', reportId);
-      
+        .eq("id", reportId);
+
       if (updateError) throw updateError;
-      
+
       // Optionally delete composition
       if (deleteComposition) {
         const { data: report } = await supabase
-          .from('reports')
-          .select('composition_id')
-          .eq('id', reportId)
-          .maybeSingle
-();
-        
+          .from("reports")
+          .select("composition_id")
+          .eq("id", reportId)
+          .maybeSingle();
+
         if (report) {
           await compositionService.delete(report.composition_id);
         }
       }
     } catch (error) {
-      console.error('Error resolving report:', error);
+      console.error("Error resolving report:", error);
       throw error;
     }
   },
@@ -611,47 +598,45 @@ export const storageService = {
    * Upload file to Supabase Storage
    */
   async uploadFile(
-    bucket: 'compositions' | 'thumbnails' | 'avatars',
+    bucket: "compositions" | "thumbnails" | "avatars",
     file: File,
-    userId: string
+    userId: string,
   ): Promise<string> {
     try {
-      const fileExt = file.name.split('.').pop();
+      const fileExt = file.name.split(".").pop();
       const fileName = `${userId}/${Date.now()}.${fileExt}`;
-      
+
       const { data, error } = await supabase.storage
         .from(bucket)
         .upload(fileName, file, {
-          cacheControl: '3600',
+          cacheControl: "3600",
           upsert: false,
         });
-      
+
       if (error) throw error;
-      
+
       // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from(bucket)
-        .getPublicUrl(data.path);
-      
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from(bucket).getPublicUrl(data.path);
+
       return publicUrl;
     } catch (error) {
-      console.error('Error uploading file:', error);
+      console.error("Error uploading file:", error);
       throw error;
     }
   },
-  
+
   /**
    * Delete file from storage
    */
   async deleteFile(bucket: string, path: string) {
     try {
-      const { error } = await supabase.storage
-        .from(bucket)
-        .remove([path]);
-      
+      const { error } = await supabase.storage.from(bucket).remove([path]);
+
       if (error) throw error;
     } catch (error) {
-      console.error('Error deleting file:', error);
+      console.error("Error deleting file:", error);
       throw error;
     }
   },
@@ -667,25 +652,34 @@ export const analyticsService = {
   async getComposerStats(composerId: string) {
     try {
       const { data: compositions, error: compError } = await supabase
-        .from('compositions')
-        .select(`
+        .from("compositions")
+        .select(
+          `
           id,
           title,
           price,
           composition_stats(views, purchases)
-        `)
-        .eq('composer_id', composerId)
-        .eq('deleted', false);
-      
+        `,
+        )
+        .eq("composer_id", composerId)
+        .eq("deleted", false);
+
       if (compError) throw compError;
-      
+
       const totalCompositions = compositions.length;
-      const totalViews = compositions.reduce((sum, c) => sum + (c.composition_stats?.views || 0), 0);
-      const totalPurchases = compositions.reduce((sum, c) => sum + (c.composition_stats?.purchases || 0), 0);
-      const totalRevenue = compositions.reduce((sum, c) => 
-        sum + (c.composition_stats?.purchases || 0) * c.price, 0
+      const totalViews = compositions.reduce(
+        (sum, c) => sum + (c.composition_stats?.views || 0),
+        0,
       );
-      
+      const totalPurchases = compositions.reduce(
+        (sum, c) => sum + (c.composition_stats?.purchases || 0),
+        0,
+      );
+      const totalRevenue = compositions.reduce(
+        (sum, c) => sum + (c.composition_stats?.purchases || 0) * c.price,
+        0,
+      );
+
       return {
         totalCompositions,
         totalViews,
@@ -694,11 +688,11 @@ export const analyticsService = {
         compositions,
       };
     } catch (error) {
-      console.error('Error fetching composer stats:', error);
+      console.error("Error fetching composer stats:", error);
       throw error;
     }
   },
-  
+
   /**
    * Get admin dashboard stats
    */
@@ -710,12 +704,21 @@ export const analyticsService = {
         { count: totalPurchases },
         { count: pendingReports },
       ] = await Promise.all([
-        supabase.from('users').select('*', { count: 'exact', head: true }),
-        supabase.from('compositions').select('*', { count: 'exact', head: true }).eq('deleted', false),
-        supabase.from('purchases').select('*', { count: 'exact', head: true }).eq('is_active', true),
-        supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from("users").select("*", { count: "exact", head: true }),
+        supabase
+          .from("compositions")
+          .select("*", { count: "exact", head: true })
+          .eq("deleted", false),
+        supabase
+          .from("purchases")
+          .select("*", { count: "exact", head: true })
+          .eq("is_active", true),
+        supabase
+          .from("reports")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "pending"),
       ]);
-      
+
       return {
         totalUsers: totalUsers || 0,
         totalCompositions: totalCompositions || 0,
@@ -723,11 +726,14 @@ export const analyticsService = {
         pendingReports: pendingReports || 0,
       };
     } catch (error) {
-      console.error('Error fetching admin stats:', error);
+      console.error("Error fetching admin stats:", error);
       throw error;
     }
   },
 };
+
+// Export helpers for authenticated requests
+export { getIdToken };
 
 // Export all services
 export const api = {

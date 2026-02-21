@@ -19,9 +19,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/app/components/ui/alert-dialog";
-import { Trash2, Edit2, Shield, CheckCircle, AlertCircle, Loader2, Music } from "lucide-react";
+import {
+  Trash2,
+  Edit2,
+  Shield,
+  CheckCircle,
+  AlertCircle,
+  Loader2,
+  Music,
+} from "lucide-react";
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { storageService } from "@/services/api";
 
@@ -45,7 +52,9 @@ export function ManageAccount() {
   const [supabaseId, setSupabaseId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showRoleModal, setShowRoleModal] = useState<false | "composer" | "admin">(false);
+  const [showRoleModal, setShowRoleModal] = useState<
+    false | "composer" | "admin"
+  >(false);
   const [roleLoading, setRoleLoading] = useState(false);
 
   // Form state
@@ -59,45 +68,64 @@ export function ManageAccount() {
       const uid = appUser?.uid || firebaseUser?.uid;
 
       if (!uid) {
-        console.log('[ManageAccount] No user UID found');
+        console.log("[ManageAccount] No user UID found");
         setLoading(false);
         return;
       }
 
-      console.log('[ManageAccount] Fetching user data for UID:', uid);
+      console.log("[ManageAccount] Fetching user data for UID:", uid);
 
       try {
-        const { data, error } = await supabase
-          .from("users")
-          .select("id, roles, display_name, phone, avatar_url, email, firebase_uid")
-          .eq("firebase_uid", uid)
-          .maybeSingle();
+        const base =
+          (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
 
-        if (error) {
-          console.error('[ManageAccount] Fetch error:', error);
-          throw error;
+        // Ensure user exists in Supabase and get the Supabase id
+        const syncRes = await fetch(`${base}/sync-user`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            firebaseUid: uid,
+            email: firebaseUser?.email,
+          }),
+        });
+
+        if (!syncRes.ok) {
+          const err = await syncRes.json().catch(() => ({}));
+          console.error("[ManageAccount] sync-user failed:", err);
+          throw new Error(err?.message || "sync-user failed");
         }
 
-        if (data) {
-          console.log('[ManageAccount] User data fetched:', data);
-          setSupabaseId(data.id);
-          setUser({
-            ...data,
-            roles: data.roles || [],
-          });
-          setDisplayName(data.display_name || "");
-          setPhone(data.phone || "");
-          setAvatarUrl(data.avatar_url || null);
-          console.log('[ManageAccount] Form state initialized:', {
-            displayName: data.display_name,
-            phone: data.phone,
-            avatarUrl: data.avatar_url,
-          });
-        } else {
-          console.log('[ManageAccount] No user found in database');
+        const syncData = await syncRes.json();
+        const id = syncData?.id;
+        if (!id) throw new Error("Failed to obtain Supabase user id");
+
+        // Fetch user details from server
+        const userRes = await fetch(`${base}/users/${id}`, {
+          headers: { "Content-Type": "application/json" },
+        });
+        if (!userRes.ok) {
+          const err = await userRes.json().catch(() => ({}));
+          console.error("[ManageAccount] fetch user by id failed:", err);
+          throw new Error(err?.message || "fetch user failed");
         }
+
+        const data = await userRes.json();
+        console.log("[ManageAccount] User data fetched from server:", data);
+        setSupabaseId(data.id);
+        setUser({
+          ...data,
+          roles: data.roles || [],
+        } as User);
+        setDisplayName(data.display_name || "");
+        setPhone(data.phone || "");
+        setAvatarUrl(data.avatar_url || null);
+        console.log("[ManageAccount] Form state initialized:", {
+          displayName: data.display_name,
+          phone: data.phone,
+          avatarUrl: data.avatar_url,
+        });
       } catch (err) {
-        console.error('[ManageAccount] Error fetching user:', err);
+        console.error("[ManageAccount] Error fetching user:", err);
         toast.error("Failed to load profile");
       } finally {
         setLoading(false);
@@ -118,96 +146,71 @@ export function ManageAccount() {
       toast.error("User ID not found");
       return;
     }
-    
+
     setLoading(true);
     try {
-      console.log('[handleSaveProfile] Starting profile update for user:', supabaseId);
-      console.log('[handleSaveProfile] Data:', { displayName, phone, avatarUrl });
-      
+      console.log(
+        "[handleSaveProfile] Starting profile update for user:",
+        supabaseId,
+      );
+      console.log("[handleSaveProfile] Data:", {
+        displayName,
+        phone,
+        avatarUrl,
+      });
+
       let finalAvatarUrl = avatarUrl;
 
       if (avatarFile) {
         try {
-          console.log('[handleSaveProfile] Uploading avatar...');
-          finalAvatarUrl = await storageService.uploadFile('avatars', avatarFile, supabaseId);
-          console.log('[handleSaveProfile] Avatar uploaded:', finalAvatarUrl);
+          console.log("[handleSaveProfile] Uploading avatar...");
+          finalAvatarUrl = await storageService.uploadFile(
+            "avatars",
+            avatarFile,
+            supabaseId,
+          );
+          console.log("[handleSaveProfile] Avatar uploaded:", finalAvatarUrl);
         } catch (uploadErr) {
-          console.warn('Avatar upload failed (client)', uploadErr);
+          console.warn("Avatar upload failed (client)", uploadErr);
           // Continue without avatar
         }
       }
+      // Send update to server endpoint
+      try {
+        const token = await firebaseUser?.getIdToken();
+        const base =
+          (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
+        const res = await fetch(`${base}/account`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            firebaseUid: firebaseUser?.uid,
+            email: firebaseUser?.email,
+            displayName,
+            phone,
+            avatarUrl: finalAvatarUrl,
+          }),
+        });
 
-      // Try direct Supabase update first
-      console.log('[handleSaveProfile] Attempting direct Supabase update...');
-      const { error } = await supabase
-        .from('users')
-        .update({ 
-          display_name: displayName || null, 
-          phone: phone || null, 
-          avatar_url: finalAvatarUrl || null 
-        })
-        .eq('id', supabaseId);
-
-      if (error) {
-        console.error('[handleSaveProfile] Supabase direct update failed:', error);
-        
-        // If RLS policy blocks direct update, use server endpoint
-        if (error?.code === '42501' || error?.message?.toLowerCase().includes('row-level')) {
-          console.log('[handleSaveProfile] RLS blocked direct update, using server endpoint...');
-          
-          try {
-            const token = await firebaseUser?.getIdToken();
-            const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-            const endpoint = `${base}/sync-user`;
-            
-            console.log('[handleSaveProfile] Calling server endpoint:', endpoint);
-            console.log('[handleSaveProfile] Payload:', {
-              firebaseUid: firebaseUser?.uid,
-              email: firebaseUser?.email,
-              displayName,
-              phone,
-              avatarUrl: finalAvatarUrl,
-            });
-            
-            const res = await fetch(endpoint, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(token ? { Authorization: `Bearer ${token}` } : {}),
-              },
-              body: JSON.stringify({
-                firebaseUid: firebaseUser?.uid,
-                email: firebaseUser?.email,
-                displayName,
-                phone,
-                avatarUrl: finalAvatarUrl,
-              }),
-            });
-
-            console.log('[handleSaveProfile] Server response status:', res.status);
-            
-            if (!res.ok) {
-              const errData = await res.json().catch(() => ({}));
-              console.error('[handleSaveProfile] Server error:', errData);
-              throw new Error(errData?.message || 'Server sync failed');
-            }
-            
-            const resultData = await res.json();
-            console.log('[handleSaveProfile] Server response:', resultData);
-          } catch (srvErr) {
-            console.error('[handleSaveProfile] Server endpoint error:', srvErr);
-            throw srvErr;
-          }
-        } else {
-          throw error;
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          console.error("[handleSaveProfile] Server error:", errData);
+          throw new Error(errData?.message || "Server update failed");
         }
-      } else {
-        console.log('[handleSaveProfile] Supabase update successful');
+
+        const resultData = await res.json();
+        console.log("[handleSaveProfile] Server response:", resultData);
+      } catch (srvErr) {
+        console.error("[handleSaveProfile] Server endpoint error:", srvErr);
+        throw srvErr;
       }
 
       setAvatarFile(null);
       setIsEditing(false);
-      
+
       // Update local state
       if (user) {
         setUser({
@@ -218,11 +221,11 @@ export function ManageAccount() {
         });
       }
 
-      toast.success('✅ Profile updated successfully');
-      console.log('[handleSaveProfile] Profile update completed successfully');
+      toast.success("✅ Profile updated successfully");
+      console.log("[handleSaveProfile] Profile update completed successfully");
     } catch (err: any) {
-      console.error('[handleSaveProfile] Error:', err);
-      toast.error(err?.message || 'Failed to save profile');
+      console.error("[handleSaveProfile] Error:", err);
+      toast.error(err?.message || "Failed to save profile");
     } finally {
       setLoading(false);
     }
@@ -234,15 +237,23 @@ export function ManageAccount() {
     setRoleLoading(true);
     try {
       const token = await firebaseUser.getIdToken();
-      const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-      
-      console.log('[handleRequestRole] Sending request to:', `${base}/request-role`);
-      console.log('[handleRequestRole] Payload:', { firebaseUid: firebaseUser.uid, requestedRole: roleType, userId: supabaseId });
-      
+      const base =
+        (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
+
+      console.log(
+        "[handleRequestRole] Sending request to:",
+        `${base}/request-role`,
+      );
+      console.log("[handleRequestRole] Payload:", {
+        firebaseUid: firebaseUser.uid,
+        requestedRole: roleType,
+        userId: supabaseId,
+      });
+
       const res = await fetch(`${base}/request-role`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
@@ -252,13 +263,15 @@ export function ManageAccount() {
         }),
       });
 
-      console.log('[handleRequestRole] Response status:', res.status);
+      console.log("[handleRequestRole] Response status:", res.status);
 
       const data = await res.json();
 
       if (!res.ok) {
         if (res.status === 409) {
-          toast.error(`⏳ You already have a ${data.status} ${roleType} request`);
+          toast.error(
+            `⏳ You already have a ${data.status} ${roleType} request`,
+          );
         } else {
           toast.error(data.message || `Failed to request ${roleType} access`);
         }
@@ -266,10 +279,15 @@ export function ManageAccount() {
         return;
       }
 
-      toast.success(`✅ ${roleType.charAt(0).toUpperCase() + roleType.slice(1)} request submitted!\nAwaiting admin approval.`);
+      toast.success(
+        `✅ ${roleType.charAt(0).toUpperCase() + roleType.slice(1)} request submitted!\nAwaiting admin approval.`,
+      );
       setShowRoleModal(false);
     } catch (err: any) {
-      console.error(`[handleRequestRole] Error requesting ${showRoleModal}:`, err);
+      console.error(
+        `[handleRequestRole] Error requesting ${showRoleModal}:`,
+        err,
+      );
       toast.error(err?.message || `Failed to request ${showRoleModal} access`);
     } finally {
       setRoleLoading(false);
@@ -283,7 +301,7 @@ export function ManageAccount() {
       setLoading(true);
       await firebaseUser.delete();
       await signOut();
-      toast.success('Account deleted successfully');
+      toast.success("Account deleted successfully");
       navigate("/");
     } catch (error: any) {
       if (error.code === "auth/requires-recent-login") {
@@ -312,75 +330,133 @@ export function ManageAccount() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 py-12 px-4">
-      <div className="max-w-2xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
+            Account Settings
+          </h1>
+          <p className="text-gray-600">Manage your profile and preferences</p>
+        </div>
+
         {/* Profile Card */}
-        <Card className="overflow-hidden shadow-lg border-0">
-          <CardHeader className="bg-gradient-to-r from-blue-600 to-purple-600 text-white pb-0">
-            <div className="flex items-start justify-between pt-6 pb-6">
-              <div>
-                <CardTitle className="text-3xl">Manage Profile</CardTitle>
-                <p className="text-blue-100 mt-2">Update your account details</p>
+        <Card className="overflow-hidden shadow-xl border-0">
+          <CardHeader className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+            <CardTitle className="text-2xl flex items-center gap-2">
+              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+                👤
               </div>
-            </div>
+              Profile Information
+            </CardTitle>
           </CardHeader>
 
-          <CardContent className="pt-8">
+          <CardContent className="pt-8 pb-8">
             {/* Profile View */}
             {!isEditing ? (
-              <div className="space-y-6">
-                {/* Avatar and Basic Info */}
-                <div className="flex gap-6 items-start">
-                  <div className="flex-shrink-0">
-                    <div className="w-32 h-32 bg-gradient-to-br from-blue-100 to-purple-100 rounded-2xl overflow-hidden flex items-center justify-center shadow-md">
-                      {user?.avatar_url ? (
-                        <img src={user.avatar_url} alt="avatar" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="text-4xl">👤</div>
-                      )}
+              <div className="space-y-8">
+                {/* Avatar and Basic Info Grid */}
+                <div className="grid md:grid-cols-[auto_1fr] gap-8 items-start">
+                  {/* Avatar Section */}
+                  <div className="flex flex-col items-center space-y-3">
+                    <div className="relative group">
+                      <div className="w-40 h-40 bg-gradient-to-br from-blue-400 via-purple-400 to-pink-400 rounded-3xl overflow-hidden flex items-center justify-center shadow-xl ring-4 ring-white">
+                        {user?.avatar_url ? (
+                          <img
+                            src={user.avatar_url}
+                            alt="avatar"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="text-6xl">👤</div>
+                        )}
+                      </div>
+                      <div className="absolute -bottom-2 -right-2 bg-green-500 w-8 h-8 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
+                        <CheckCircle className="w-4 h-4 text-white" />
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-semibold text-gray-900 text-lg">
+                        {user?.display_name || "User"}
+                      </p>
+                      <p className="text-sm text-gray-500">{user?.email}</p>
                     </div>
                   </div>
 
-                  <div className="flex-1 space-y-4">
-                    <div>
-                      <p className="text-sm text-gray-500 font-semibold uppercase">Email</p>
-                      <p className="text-lg font-medium text-gray-900">{user?.email}</p>
+                  {/* Info Grid */}
+                  <div className="grid sm:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">
+                        <div className="w-1 h-4 bg-blue-500 rounded-full"></div>
+                        Display Name
+                      </div>
+                      <p className="text-lg font-medium text-gray-900 pl-3">
+                        {user?.display_name || (
+                          <span className="text-gray-400 italic">Not set</span>
+                        )}
+                      </p>
                     </div>
 
-                    <div>
-                      <p className="text-sm text-gray-500 font-semibold uppercase">Display Name</p>
-                      <p className="text-lg font-medium text-gray-900">{user?.display_name || "Not set"}</p>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">
+                        <div className="w-1 h-4 bg-purple-500 rounded-full"></div>
+                        Phone
+                      </div>
+                      <p className="text-lg font-medium text-gray-900 pl-3">
+                        {user?.phone || (
+                          <span className="text-gray-400 italic">Not set</span>
+                        )}
+                      </p>
                     </div>
 
-                    <div>
-                      <p className="text-sm text-gray-500 font-semibold uppercase">Phone</p>
-                      <p className="text-lg font-medium text-gray-900">{user?.phone || "Not set"}</p>
+                    <div className="space-y-2 sm:col-span-2">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">
+                        <div className="w-1 h-4 bg-pink-500 rounded-full"></div>
+                        Email Address
+                      </div>
+                      <p className="text-lg font-medium text-gray-900 pl-3">
+                        {user?.email}
+                      </p>
                     </div>
 
-                    <div>
-                      <p className="text-sm text-gray-500 font-semibold uppercase">Current Roles</p>
-                      <div className="flex gap-2 mt-2">
+                    <div className="space-y-3 sm:col-span-2">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">
+                        <div className="w-1 h-4 bg-emerald-500 rounded-full"></div>
+                        Current Roles
+                      </div>
+                      <div className="flex flex-wrap gap-2 pl-3">
                         {user?.roles && user.roles.length > 0 ? (
                           user.roles.map((role) => (
-                            <span key={role} className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                            <span
+                              key={role}
+                              className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-full text-sm font-semibold shadow-md"
+                            >
                               <CheckCircle className="w-4 h-4" />
                               {role.charAt(0).toUpperCase() + role.slice(1)}
                             </span>
                           ))
                         ) : (
-                          <span className="text-gray-500">User (basic)</span>
+                          <span className="inline-flex items-center gap-1.5 px-4 py-2 bg-gray-100 text-gray-600 rounded-full text-sm font-medium">
+                            <Shield className="w-4 h-4" />
+                            Basic User
+                          </span>
                         )}
                       </div>
                     </div>
                   </div>
                 </div>
 
+                {/* Edit Button */}
                 <div className="border-t pt-6">
-                  <Button 
+                  <Button
                     onClick={() => {
-                      console.log('[ManageAccount] Edit button clicked, current displayName:', displayName);
+                      console.log(
+                        "[ManageAccount] Edit button clicked, current displayName:",
+                        displayName,
+                      );
                       setIsEditing(true);
                     }}
-                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 w-full"
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 w-full sm:w-auto px-8 shadow-lg"
+                    size="lg"
                   >
                     <Edit2 className="w-4 h-4 mr-2" />
                     Edit Profile
@@ -389,65 +465,95 @@ export function ManageAccount() {
               </div>
             ) : (
               /* Profile Edit Form */
-              <div className="space-y-6">
-                <div className="flex gap-6 items-start">
-                  <div className="flex-shrink-0">
-                    <div className="w-32 h-32 bg-gradient-to-br from-blue-100 to-purple-100 rounded-2xl overflow-hidden flex items-center justify-center shadow-md">
+              <div className="space-y-8">
+                {/* Avatar Upload Section */}
+                <div className="flex flex-col items-center space-y-4">
+                  <div className="relative group cursor-pointer">
+                    <div className="w-40 h-40 bg-gradient-to-br from-blue-400 via-purple-400 to-pink-400 rounded-3xl overflow-hidden flex items-center justify-center shadow-xl ring-4 ring-purple-100 transition-all group-hover:ring-purple-300">
                       {avatarUrl ? (
-                        <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+                        <img
+                          src={avatarUrl}
+                          alt="avatar"
+                          className="w-full h-full object-cover"
+                        />
                       ) : (
-                        <div className="text-4xl">👤</div>
+                        <div className="text-6xl">👤</div>
                       )}
                     </div>
-                    <Label htmlFor="avatar-input" className="block mt-4 text-sm text-center cursor-pointer text-purple-600 hover:text-purple-700">
-                      <input
-                        id="avatar-input"
-                        type="file"
-                        accept="image/*"
-                        onChange={handleAvatarChange}
-                        className="hidden"
-                      />
-                      Change Photo
+                    <div className="absolute inset-0 bg-black/40 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <p className="text-white font-semibold">Change Photo</p>
+                    </div>
+                  </div>
+                  <Label
+                    htmlFor="avatar-input"
+                    className="cursor-pointer inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-lg font-medium shadow-md transition-all"
+                  >
+                    <input
+                      id="avatar-input"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAvatarChange}
+                      className="hidden"
+                    />
+                    📷 Upload New Photo
+                  </Label>
+                </div>
+
+                {/* Form Fields */}
+                <div className="grid sm:grid-cols-2 gap-6">
+                  <div className="space-y-3">
+                    <Label
+                      htmlFor="displayName"
+                      className="text-sm font-semibold text-gray-700"
+                    >
+                      Display Name
                     </Label>
+                    <Input
+                      id="displayName"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      placeholder="e.g., John Musician"
+                      className="h-12 text-base"
+                    />
                   </div>
 
-                  <div className="flex-1 space-y-4">
-                    <div>
-                      <Label htmlFor="displayName">Display Name</Label>
-                      <Input
-                        id="displayName"
-                        value={displayName}
-                        onChange={(e) => setDisplayName(e.target.value)}
-                        placeholder="e.g., John Musician"
-                        className="mt-2"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="phone">Phone</Label>
-                      <Input
-                        id="phone"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="e.g., +254 712 345 678"
-                        className="mt-2"
-                      />
-                    </div>
+                  <div className="space-y-3">
+                    <Label
+                      htmlFor="phone"
+                      className="text-sm font-semibold text-gray-700"
+                    >
+                      Phone Number
+                    </Label>
+                    <Input
+                      id="phone"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="e.g., +254 712 345 678"
+                      className="h-12 text-base"
+                    />
                   </div>
                 </div>
 
-                <div className="border-t pt-6 flex gap-3">
+                {/* Action Buttons */}
+                <div className="border-t pt-6 flex flex-col sm:flex-row gap-3">
                   <Button
                     onClick={handleSaveProfile}
                     disabled={loading}
-                    className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                    className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg"
+                    size="lg"
                   >
-                    {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+                    {loading ? (
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    ) : (
+                      <CheckCircle className="w-5 h-5 mr-2" />
+                    )}
                     Save Changes
                   </Button>
                   <Button
                     onClick={() => {
-                      console.log('[ManageAccount] Cancel button clicked, resetting form');
+                      console.log(
+                        "[ManageAccount] Cancel button clicked, resetting form",
+                      );
                       setIsEditing(false);
                       setDisplayName(user?.display_name || "");
                       setPhone(user?.phone || "");
@@ -455,7 +561,8 @@ export function ManageAccount() {
                       setAvatarFile(null);
                     }}
                     variant="outline"
-                    className="flex-1"
+                    className="flex-1 sm:flex-none sm:px-8 border-2"
+                    size="lg"
                   >
                     Cancel
                   </Button>
@@ -466,64 +573,113 @@ export function ManageAccount() {
         </Card>
 
         {/* Request Roles Card */}
-        <Card className="shadow-lg border-0">
-          <CardHeader className="bg-gradient-to-r from-purple-600 to-pink-600 text-white pb-4">
+        <Card className="shadow-xl border-0 overflow-hidden">
+          <CardHeader className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
             <CardTitle className="text-2xl flex items-center gap-2">
-              <Shield className="w-6 h-6" />
-              Role Requests
+              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+                <Shield className="w-5 h-5" />
+              </div>
+              Role Management
             </CardTitle>
           </CardHeader>
 
-          <CardContent className="pt-6 space-y-4">
-            {isComposer && (
-              <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg">
-                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-                <p className="text-green-800 font-medium">You are approved as a Composer 🎵</p>
+          <CardContent className="pt-6 pb-6">
+            <div className="grid sm:grid-cols-2 gap-4">
+              {/* Composer Role */}
+              <div className="p-6 border-2 rounded-xl transition-all hover:shadow-md">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-orange-100 to-pink-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Music className="w-6 h-6 text-orange-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-gray-900 mb-1">
+                      Composer Access
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Upload and publish music compositions
+                    </p>
+                    {isComposer ? (
+                      <div className="flex items-center gap-2 text-green-700 font-medium">
+                        <CheckCircle className="w-5 h-5 flex-shrink-0" />
+                        <span className="text-sm">Active</span>
+                      </div>
+                    ) : (
+                      <Button
+                        onClick={() => setShowRoleModal("composer")}
+                        className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 shadow-md"
+                        size="sm"
+                      >
+                        Request Access
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </div>
-            )}
 
-            {!isComposer && (
-              <Button
-                onClick={() => setShowRoleModal("composer")}
-                className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600"
-              >
-                <Music className="w-4 h-4 mr-2" />
-                Request Composer Access
-              </Button>
-            )}
-
-            {isAdmin && (
-              <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                <p className="text-blue-800 font-medium">You are an Administrator 🛡️</p>
+              {/* Admin Role */}
+              <div className="p-6 border-2 rounded-xl transition-all hover:shadow-md">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-purple-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Shield className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-gray-900 mb-1">
+                      Admin Access
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Manage platform and users
+                    </p>
+                    {isAdmin ? (
+                      <div className="flex items-center gap-2 text-blue-700 font-medium">
+                        <CheckCircle className="w-5 h-5 flex-shrink-0" />
+                        <span className="text-sm">Active</span>
+                      </div>
+                    ) : (
+                      <Button
+                        onClick={() => setShowRoleModal("admin")}
+                        variant="outline"
+                        className="w-full border-2 hover:bg-gray-50"
+                        size="sm"
+                      >
+                        Request Access
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </div>
-            )}
-
-            {!isAdmin && (
-              <Button
-                onClick={() => setShowRoleModal("admin")}
-                variant="outline"
-                className="w-full"
-              >
-                <Shield className="w-4 h-4 mr-2" />
-                Request Admin Access
-              </Button>
-            )}
+            </div>
           </CardContent>
         </Card>
 
         {/* Danger Zone */}
-        <Card className="shadow-lg border-0 border-red-200">
-          <CardHeader className="bg-gradient-to-r from-red-600 to-rose-600 text-white pb-4">
-            <CardTitle className="text-xl">Danger Zone</CardTitle>
+        <Card className="shadow-xl border-2 border-red-200 overflow-hidden">
+          <CardHeader className="bg-gradient-to-r from-red-600 to-rose-600 text-white">
+            <CardTitle className="text-xl flex items-center gap-2">
+              <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center">
+                <AlertCircle className="w-4 h-4" />
+              </div>
+              Danger Zone
+            </CardTitle>
           </CardHeader>
 
-          <CardContent className="pt-6">
-            <p className="text-gray-600 mb-4">This action cannot be undone.</p>
+          <CardContent className="pt-6 pb-6">
+            <div className="flex items-start gap-4 mb-4 p-4 bg-red-50 rounded-lg border border-red-200">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-red-900 mb-1">
+                  Delete Account
+                </p>
+                <p className="text-sm text-red-700">
+                  This action cannot be undone. All your data will be
+                  permanently deleted.
+                </p>
+              </div>
+            </div>
             <Button
               onClick={() => setShowDeleteConfirm(true)}
               variant="destructive"
-              className="w-full"
+              className="w-full sm:w-auto shadow-md"
+              size="lg"
             >
               <Trash2 className="w-4 h-4 mr-2" />
               Delete My Account
@@ -533,10 +689,16 @@ export function ManageAccount() {
       </div>
 
       {/* Role Request Modal */}
-      <AlertDialog open={showRoleModal !== false} onOpenChange={(open) => !open && setShowRoleModal(false)}>
+      <AlertDialog
+        open={showRoleModal !== false}
+        onOpenChange={(open) => !open && setShowRoleModal(false)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Request {showRoleModal === "composer" ? "Composer" : "Admin"} Access</AlertDialogTitle>
+            <AlertDialogTitle>
+              Request {showRoleModal === "composer" ? "Composer" : "Admin"}{" "}
+              Access
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {showRoleModal === "composer"
                 ? "Request access to upload and publish music compositions."
@@ -550,7 +712,9 @@ export function ManageAccount() {
               disabled={roleLoading}
               className="bg-purple-600 hover:bg-purple-700"
             >
-              {roleLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              {roleLoading ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : null}
               Confirm Request
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -561,9 +725,12 @@ export function ManageAccount() {
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-red-600">Delete Account</AlertDialogTitle>
+            <AlertDialogTitle className="text-red-600">
+              Delete Account
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete your account and all associated data. This action cannot be undone.
+              This will permanently delete your account and all associated data.
+              This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -573,7 +740,9 @@ export function ManageAccount() {
               disabled={loading}
               className="bg-red-600 hover:bg-red-700"
             >
-              {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              {loading ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : null}
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
