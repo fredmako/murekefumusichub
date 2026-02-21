@@ -31,6 +31,7 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { storageService } from "@/services/api";
+import { navbarService } from "@/services/navbarService";
 
 interface User {
   id: string;
@@ -56,6 +57,9 @@ export function ManageAccount() {
     false | "composer" | "admin"
   >(false);
   const [roleLoading, setRoleLoading] = useState(false);
+  const [requestStatus, setRequestStatus] = useState<
+    "none" | "pending" | "approved"
+  >("none");
 
   // Form state
   const [displayName, setDisplayName] = useState<string>("");
@@ -79,30 +83,119 @@ export function ManageAccount() {
         const base =
           (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
 
-        // Ensure user exists in Supabase and get the Supabase id
-        const syncRes = await fetch(`${base}/sync-user`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            firebaseUid: uid,
-            email: firebaseUser?.email,
-          }),
-        });
+        // Prefer Supabase record if it exists. First try to fetch by firebase UID
+        let id: string | null = null;
+        try {
+          const existingRes = await fetch(`${base}/users/by-firebase/${uid}`, {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+          });
+          if (existingRes.ok) {
+            const existingData = await existingRes.json();
+            id = existingData?.id;
+            // use the existing data directly
+            console.log(
+              "[ManageAccount] Found Supabase user by firebase uid:",
+              existingData,
+            );
+            setSupabaseId(existingData.id);
+            setUser({
+              ...existingData,
+              roles: existingData.roles || [],
+            } as User);
+            setDisplayName(existingData.display_name || "");
+            setPhone(existingData.phone || "");
+            setAvatarUrl(existingData.avatar_url || null);
+            // initialize request status
+            if (
+              existingData.roles &&
+              Array.isArray(existingData.roles) &&
+              existingData.roles.includes("composer")
+            ) {
+              setRequestStatus("approved");
+            } else if (existingData.composer_request) {
+              setRequestStatus("pending");
+            } else {
+              setRequestStatus("none");
+            }
+          } else if (existingRes.status === 404) {
+            // No Supabase user exists; fall back to syncing with Firebase/Google data
+            console.log(
+              "[ManageAccount] No Supabase user found; calling sync-user to create using Firebase data",
+            );
+            const syncRes = await fetch(`${base}/sync-user`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                firebaseUid: uid,
+                email: firebaseUser?.email,
+                displayName: firebaseUser?.displayName,
+                phone: firebaseUser?.phoneNumber,
+                avatarUrl: firebaseUser?.photoURL,
+              }),
+            });
 
-        if (!syncRes.ok) {
-          const err = await syncRes.json().catch(() => ({}));
-          console.error("[ManageAccount] sync-user failed:", err);
-          throw new Error(err?.message || "sync-user failed");
+            if (!syncRes.ok) {
+              const err = await syncRes.json().catch(() => ({}));
+              console.error("[ManageAccount] sync-user failed:", err);
+              throw new Error(err?.message || "sync-user failed");
+            }
+
+            const syncData = await syncRes.json();
+            id = syncData?.id;
+            if (!id)
+              throw new Error("Failed to obtain Supabase user id after sync");
+
+            // use returned server data when available
+            setSupabaseId(syncData.id);
+            setUser({ ...syncData, roles: syncData.roles || [] } as User);
+            setDisplayName(
+              syncData.displayName || firebaseUser?.displayName || "",
+            );
+            setPhone(syncData.phone || firebaseUser?.phoneNumber || "");
+            setAvatarUrl(syncData.avatarUrl || firebaseUser?.photoURL || null);
+            if (
+              syncData.roles &&
+              Array.isArray(syncData.roles) &&
+              syncData.roles.includes("composer")
+            )
+              setRequestStatus("approved");
+          } else {
+            const err = await existingRes.json().catch(() => ({}));
+            console.error("[ManageAccount] Error checking Supabase user:", err);
+            throw new Error(err?.message || "Failed to check Supabase user");
+          }
+        } catch (innerErr) {
+          console.error(
+            "[ManageAccount] Error resolving user from backend:",
+            innerErr,
+          );
+          throw innerErr;
         }
 
-        const syncData = await syncRes.json();
-        const id = syncData?.id;
-        if (!id) throw new Error("Failed to obtain Supabase user id");
-
-        // Fetch user details from server
-        const userRes = await fetch(`${base}/users/${id}`, {
-          headers: { "Content-Type": "application/json" },
-        });
+        // If we obtained id from existing fetch but didn't populate user (shouldn't happen), fetch user by id
+        let userRes;
+        if (id && !user) {
+          userRes = await fetch(`${base}/users/${id}`, {
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (userRes) {
+          if (!userRes.ok) {
+            const err = await userRes.json().catch(() => ({}));
+            console.error("[ManageAccount] fetch user by id failed:", err);
+            throw new Error(err?.message || "fetch user failed");
+          }
+          const data = await userRes.json();
+          console.log("[ManageAccount] User data fetched from server:", data);
+          setSupabaseId(data.id);
+          setLoading(false);
+          return;
+          setUser({ ...data, roles: data.roles || [] } as User);
+          setDisplayName(data.display_name || "");
+          setPhone(data.phone || "");
+          setAvatarUrl(data.avatar_url || null);
+        }
         if (!userRes.ok) {
           const err = await userRes.json().catch(() => ({}));
           console.error("[ManageAccount] fetch user by id failed:", err);
@@ -119,6 +212,18 @@ export function ManageAccount() {
         setDisplayName(data.display_name || "");
         setPhone(data.phone || "");
         setAvatarUrl(data.avatar_url || null);
+        // Initialize request status from server response
+        if (
+          data.roles &&
+          Array.isArray(data.roles) &&
+          data.roles.includes("composer")
+        ) {
+          setRequestStatus("approved");
+        } else if (data.composer_request) {
+          setRequestStatus("pending");
+        } else {
+          setRequestStatus("none");
+        }
         console.log("[ManageAccount] Form state initialized:", {
           displayName: data.display_name,
           phone: data.phone,
@@ -283,6 +388,7 @@ export function ManageAccount() {
         `✅ ${roleType.charAt(0).toUpperCase() + roleType.slice(1)} request submitted!\nAwaiting admin approval.`,
       );
       setShowRoleModal(false);
+      if (roleType === "composer") setRequestStatus("pending");
     } catch (err: any) {
       console.error(
         `[handleRequestRole] Error requesting ${showRoleModal}:`,
@@ -293,6 +399,32 @@ export function ManageAccount() {
       setRoleLoading(false);
     }
   };
+
+  // Poll for role changes (detect when admin approves composer role)
+  useEffect(() => {
+    let timer: any;
+    let mounted = true;
+    async function checkRoles() {
+      if (!firebaseUser) return;
+      try {
+        const roles = await navbarService.fetchUserRoles(firebaseUser.uid);
+        if (!mounted) return;
+        if (Array.isArray(roles) && roles.includes("composer")) {
+          setRequestStatus("approved");
+        }
+      } catch (e) {
+        // ignore polling errors
+      }
+    }
+
+    // initial check and interval
+    checkRoles();
+    timer = setInterval(checkRoles, 10000);
+    return () => {
+      mounted = false;
+      if (timer) clearInterval(timer);
+    };
+  }, [firebaseUser]);
 
   const handleDeleteAccount = async () => {
     if (!firebaseUser) return;
@@ -598,11 +730,34 @@ export function ManageAccount() {
                     <p className="text-sm text-gray-600 mb-4">
                       Upload and publish music compositions
                     </p>
-                    {isComposer ? (
-                      <div className="flex items-center gap-2 text-green-700 font-medium">
-                        <CheckCircle className="w-5 h-5 flex-shrink-0" />
-                        <span className="text-sm">Active</span>
+                    {isComposer || requestStatus === "approved" ? (
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 text-green-700 font-medium">
+                          <CheckCircle className="w-5 h-5 flex-shrink-0" />
+                          <span className="text-sm">Active</span>
+                        </div>
+                        {/* Show redirect button for newly approved users */}
+                        {requestStatus === "approved" && !isComposer && (
+                          <Button
+                            onClick={() => {
+                              // navigate to composer dashboard and clear status locally
+                              window.location.href = "/composer";
+                            }}
+                            className="ml-3 bg-green-600 hover:bg-green-700"
+                            size="sm"
+                          >
+                            Go to Composer Dashboard
+                          </Button>
+                        )}
                       </div>
+                    ) : requestStatus === "pending" ? (
+                      <Button
+                        disabled
+                        className="w-full bg-gray-200 text-gray-700 border-gray-200"
+                        size="sm"
+                      >
+                        Pending Approval
+                      </Button>
                     ) : (
                       <Button
                         onClick={() => setShowRoleModal("composer")}

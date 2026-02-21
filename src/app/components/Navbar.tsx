@@ -47,51 +47,16 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     0,
   );
 
-  const [roles, setRoles] = useState<string[]>([]);
+  const roles = appUser?.roles || [];
   const [notifications, setNotifications] = useState<any[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
 
   // Polling interval (ms) for admin notifications
   const NOTIF_POLL_INTERVAL = 15000;
 
-  const ADMIN_IDENTIFIERS = ["fredrickmakori102@gmail.com", "murekefumusichub"];
+  // roles are fetched from server; do not derive admin from email heuristics
 
-  const isAdminEmail = (email?: string | null) => {
-    if (!email) return false;
-    const e = email.toLowerCase().trim();
-    return ADMIN_IDENTIFIERS.some((id) => {
-      const nid = id.toLowerCase();
-      return e === nid || e.includes(nid);
-    });
-  };
-
-  useEffect(() => {
-    async function fetchRoles() {
-      if (!firebaseUser?.uid) {
-        setRoles([]);
-        return;
-      }
-
-      try {
-        const roleNames = await navbarService.fetchUserRoles(firebaseUser.uid);
-
-        // If the firebase email matches one of the admin identifiers, ensure admin role exists client-side
-        const augmented = [
-          ...new Set([
-            ...(roleNames || []),
-            ...(isAdminEmail(firebaseUser?.email) ? ["admin"] : []),
-          ]),
-        ];
-
-        setRoles(augmented);
-      } catch (err) {
-        console.error("Navbar role fetch error:", err);
-        setRoles([]);
-      }
-    }
-
-    fetchRoles();
-  }, [firebaseUser]);
+  // roles are derived from AuthContext (appUser) and kept in sync there
 
   // Fetch admin notifications (role requests and composer requests)
   useEffect(() => {
@@ -410,7 +375,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
 
                     {/* Logout */}
                     <DropdownMenuItem
-                      onClick={signOut}
+                      onClick={() => signOut()}
                       className="text-red-600"
                     >
                       <LogOut className="size-4 mr-2" />

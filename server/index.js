@@ -9,6 +9,8 @@ import authRouter from "./routes/auth.js";
 import adminRouter from "./routes/admin.js";
 import usersRouter from "./routes/users.js";
 import navbarRouter from "./routes/navbar.js";
+import purchasesRouter from "./routes/purchases.js";
+import categoriesRouter from "./routes/categories.js";
 
 // Load environment variables from .env file
 dotenv.config();
@@ -68,6 +70,8 @@ app.use("/api", usersRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/user", navbarRouter);
 app.use("/api/compositions", compositionsRouter);
+app.use("/api/purchases", purchasesRouter);
+app.use("/api/categories", categoriesRouter);
 
 /**
  * Health check endpoint
@@ -75,6 +79,23 @@ app.use("/api/compositions", compositionsRouter);
 app.get("/health", (req, res) => {
   res.json({ status: "ok", message: "Server is running" });
 });
+
+// Export server start/stop helpers for tests
+let _serverInstance = null;
+export function startServer(port = PORT) {
+  if (_serverInstance) return _serverInstance;
+  _serverInstance = app.listen(port, () => {
+    console.log(`[server] Listening on port ${port}`);
+  });
+  return _serverInstance;
+}
+
+export function stopServer() {
+  if (_serverInstance) {
+    _serverInstance.close();
+    _serverInstance = null;
+  }
+}
 
 /**
  * Sync user endpoint - Create or update user in Supabase
@@ -402,22 +423,38 @@ app.post("/api/request-role", verifyFirebaseToken, async (req, res) => {
 
     // Find user if userId not provided
     let uid = userId;
-    if (!uid) {
-      const { data: user } = await supabase
-        .from("users")
-        .select("id")
-        .eq("firebase_uid", firebaseUid)
-        .maybeSingle();
+    try {
+      if (!uid) {
+        const { data: user, error: findErr } = await supabase
+          .from("users")
+          .select("id")
+          .eq("firebase_uid", firebaseUid)
+          .maybeSingle();
 
-      if (!user) {
-        console.warn(
-          `[request-role] ⚠️ User not found for Firebase UID: ${firebaseUid}`,
-        );
-        return res
-          .status(404)
-          .json({ message: "User not found. Please sync your profile first." });
+        if (findErr) {
+          console.error("[request-role] Supabase find user error:", findErr);
+          throw findErr;
+        }
+
+        if (!user) {
+          console.warn(
+            `[request-role] ⚠️ User not found for Firebase UID: ${firebaseUid}`,
+          );
+          return res.status(404).json({
+            message: "User not found. Please sync your profile first.",
+          });
+        }
+        uid = user.id;
       }
-      uid = user.id;
+    } catch (e) {
+      console.error("[request-role] Error while resolving user id:", e);
+      const payload = {
+        message: "Failed to resolve user id",
+        error: e?.message || String(e),
+      };
+      if (process.env.ALLOW_FIREBASE_VERIFY_BYPASS === "true")
+        payload.stack = e?.stack;
+      return res.status(500).json(payload);
     }
 
     // Check for existing pending/approved request
@@ -441,34 +478,43 @@ app.post("/api/request-role", verifyFirebaseToken, async (req, res) => {
     }
 
     // Create role request
-    const { data: newRequest, error: createErr } = await supabase
-      .from("role_requests")
-      .insert({
-        user_id: uid,
-        requested_role: requestedRole,
-        status: "pending",
-        requested_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+    try {
+      const { data: newRequest, error: createErr } = await supabase
+        .from("role_requests")
+        .insert({
+          user_id: uid,
+          requested_role: requestedRole,
+          status: "pending",
+          requested_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
 
-    if (createErr) {
-      console.error(
-        `[request-role] ❌ Error creating request: ${createErr.message}`,
+      if (createErr) {
+        console.error(`[request-role] ❌ Error creating request:`, createErr);
+        throw createErr;
+      }
+
+      console.log(
+        `[request-role] ✅ Successfully created ${requestedRole} request for user ${uid}:`,
+        newRequest,
       );
-      throw createErr;
+
+      return res.status(201).json({
+        message: `${requestedRole} request submitted successfully. Awaiting admin approval.`,
+        requestId: newRequest.id,
+        status: newRequest.status,
+      });
+    } catch (e) {
+      console.error("[request-role] Error inserting role_request:", e);
+      const payload = {
+        message: "Failed to create role request",
+        error: e?.message || String(e),
+      };
+      if (process.env.ALLOW_FIREBASE_VERIFY_BYPASS === "true")
+        payload.stack = e?.stack;
+      return res.status(500).json(payload);
     }
-
-    console.log(
-      `[request-role] ✅ Successfully created ${requestedRole} request for user ${uid}:`,
-      newRequest,
-    );
-
-    return res.status(201).json({
-      message: `${requestedRole} request submitted successfully. Awaiting admin approval.`,
-      requestId: newRequest.id,
-      status: newRequest.status,
-    });
   } catch (error) {
     console.error("[request-role] ❌ Error:", error);
     return res.status(500).json({

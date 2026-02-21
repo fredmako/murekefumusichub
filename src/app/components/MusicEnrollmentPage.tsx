@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
@@ -23,13 +24,19 @@ const musicClasses = [
 
 export const MusicEnrollmentPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
+  const { setUserRole, firebaseUser } = useAuth();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     // Later: save to Firestore / send email / payment
-    setTimeout(() => {
+    setTimeout(async () => {
+      try {
+        if (setUserRole && firebaseUser) await setUserRole("student");
+      } catch (err) {
+        console.warn("Failed to set student role after enrollment:", err);
+      }
       alert("Enrollment submitted successfully 🎶");
       setLoading(false);
     }, 1200);
@@ -47,7 +54,8 @@ export const MusicEnrollmentPage: React.FC = () => {
             Music Class Enrollment
           </h1>
           <p className="text-gray-600">
-            Enroll in professional music classes guided by experienced instructors
+            Enroll in professional music classes guided by experienced
+            instructors
           </p>
         </div>
 
@@ -94,7 +102,7 @@ export const MusicEnrollmentPage: React.FC = () => {
                     <SelectValue placeholder="Choose a class" />
                   </SelectTrigger>
                   <SelectContent>
-                    {musicClasses.map(cls => (
+                    {musicClasses.map((cls) => (
                       <SelectItem key={cls} value={cls}>
                         {cls}
                       </SelectItem>

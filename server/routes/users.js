@@ -31,6 +31,36 @@ router.get("/users/:id", async (req, res) => {
   }
 });
 
+// GET /api/users/by-firebase/:firebaseUid
+router.get("/users/by-firebase/:firebaseUid", async (req, res) => {
+  try {
+    const { firebaseUid } = req.params;
+    if (!firebaseUid)
+      return res.status(400).json({ message: "firebaseUid is required" });
+
+    const { data, error } = await supabase
+      .from("users")
+      .select(
+        `id, firebase_uid, email, display_name, phone, avatar_url, is_active, created_at, user_roles ( roles ( name ) )`,
+      )
+      .eq("firebase_uid", firebaseUid)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ message: "User not found" });
+
+    const roles = (data.user_roles || [])
+      .map((r) => r.roles?.name)
+      .filter(Boolean);
+    return res.json({ ...data, roles });
+  } catch (err) {
+    console.error("[get-user-by-firebase] Error:", err);
+    return res
+      .status(500)
+      .json({ message: "Failed to fetch user", error: err.message });
+  }
+});
+
 // PUT /api/users/:id
 router.put("/users/:id", verifyFirebaseToken, async (req, res) => {
   try {

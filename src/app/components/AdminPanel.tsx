@@ -50,19 +50,11 @@ import {
 import { toast } from "sonner";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
+import { useAuth } from "../../context/AuthContext";
 import { adminService } from "@/services/adminService";
 
 /* --------- CONFIG --------- */
-const ADMIN_IDENTIFIERS = [
-  "fredrickmakori102@gmail.com",
-  "murekefumusichub@gmail.com",
-];
 const normalizeEmail = (e: string) => e?.toLowerCase().trim() ?? "";
-const isAdminEmail = (email?: string | null) => {
-  if (!email) return false;
-  const e = normalizeEmail(email);
-  return ADMIN_IDENTIFIERS.some((id) => e === id || e.includes(id));
-};
 
 /* --------- TYPES --------- */
 type RoleMap = Record<number, string>;
@@ -72,8 +64,7 @@ export function AdminPanel() {
   const navigate = useNavigate();
 
   // auth user (firebase)
-  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
-  const [currentUserUid, setCurrentUserUid] = useState<string | null>(null);
+  const { firebaseUser, appUser } = useAuth();
 
   // requests
   const [requests, setRequests] = useState<any[]>([]);
@@ -98,31 +89,18 @@ export function AdminPanel() {
   const [processing, setProcessing] = useState(false);
   const [newInviteEmail, setNewInviteEmail] = useState("");
 
-  /* ---------------- auth protection ---------------- */
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      if (!u) {
-        setCurrentUserEmail(null);
-        setCurrentUserUid(null);
-        // if not logged in, redirect to login page
-        navigate("/", { replace: true });
-        return;
-      }
-      setCurrentUserEmail(normalizeEmail(u.email || ""));
-      setCurrentUserUid(u.uid || null);
-    });
-
-    return () => unsub();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   /* ---------------- guard admin access & initial load ---------------- */
   useEffect(() => {
-    // Wait until we know currentUserEmail
-    if (currentUserEmail === null) return;
+    // If not signed in at all, redirect to home
+    if (!firebaseUser) {
+      navigate("/", { replace: true });
+      return;
+    }
 
-    if (!isAdminEmail(currentUserEmail)) {
-      // Not allowed
+    // Wait until appUser is loaded
+    if (appUser === null) return;
+
+    if (!appUser?.roles || !appUser.roles.includes("admin")) {
       toast.error("Access denied.");
       navigate("/", { replace: true });
       return;
@@ -131,7 +109,7 @@ export function AdminPanel() {
     // Initial load
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUserEmail]);
+  }, [firebaseUser, appUser]);
 
   /* ---------------- fetch all admin data ---------------- */
   const fetchAll = async () => {
@@ -254,7 +232,7 @@ export function AdminPanel() {
 
     setProcessing(true);
     try {
-      await adminService.addComposerInvite(normalized, currentUserUid || "");
+      await adminService.addComposerInvite(normalized, appUser?.uid || "");
       setNewInviteEmail("");
       await fetchInvites();
     } catch (err) {

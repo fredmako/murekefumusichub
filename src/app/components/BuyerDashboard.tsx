@@ -35,10 +35,10 @@ import {
   TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { Separator } from "@/app/components/ui/separator";
-import { User, CartItem } from "@/app/App";
 import { toast } from "sonner";
-import { supabase } from "@/lib/supabase";
-import { auth } from "@/lib/firebase";
+import { purchaseService } from "@/services/api";
+import { User } from "firebase/auth";
+import { CartItem } from "../types";
 
 interface BuyerDashboardProps {
   currentUser: User;
@@ -54,7 +54,7 @@ export function BuyerDashboard({
   onRemoveFromCart,
 }: BuyerDashboardProps) {
   const navigate = useNavigate();
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, setUserRole } = useAuth();
   const [activeTab, setActiveTab] = useState("library");
   const [loading, setLoading] = useState(true);
   const [purchasedCompositions, setPurchasedCompositions] = useState<any[]>([]);
@@ -64,36 +64,16 @@ export function BuyerDashboard({
     const fetchUserPurchases = async () => {
       try {
         setLoading(true);
-        const firebaseUserLocal = firebaseUser || auth.currentUser;
-        if (!firebaseUserLocal) {
+        if (!firebaseUser) {
           toast.error("You must be signed in to view purchases");
           setLoading(false);
           return;
         }
 
-        // Resolve supabase users.id from firebase_uid
-        const { data: sbUser } = await supabase
-          .from("users")
-          .select("id")
-          .eq("firebase_uid", firebaseUserLocal.uid)
-          .single();
-
-        if (!sbUser) {
-          setPurchasedCompositions([]);
-          setTotalSpent(0);
-          setLoading(false);
-          return;
-        }
-
-        // Fetch purchases with composition details
-        const { data: purchases, error: purchasesError } = await supabase
-          .from("purchases")
-          .select(`*, compositions(*)`)
-          .eq("buyer_id", sbUser.id)
-          .eq("is_active", true)
-          .order("purchased_at", { ascending: false });
-
-        if (purchasesError) throw purchasesError;
+        // Fetch purchases via API (which handles firebase UID resolution)
+        const purchases = (await purchaseService.getByBuyer(
+          firebaseUser.uid,
+        )) as any[];
 
         const enriched = (purchases || []).map((p: any) => ({
           ...p,
@@ -115,7 +95,7 @@ export function BuyerDashboard({
     };
 
     fetchUserPurchases();
-  }, []);
+  }, [firebaseUser]);
 
   // Redirect to home if user logs out
   useEffect(() => {
@@ -131,11 +111,18 @@ export function BuyerDashboard({
   );
 
   const handleCheckout = () => {
-    toast.success(
-      "Purchase successful! Your compositions are now in your library.",
-    );
-    onClearCart();
-    setActiveTab("library");
+    (async () => {
+      try {
+        if (setUserRole && firebaseUser) await setUserRole("buyer");
+      } catch (err) {
+        console.warn("Failed to set buyer role after purchase:", err);
+      }
+      toast.success(
+        "Purchase successful! Your compositions are now in your library.",
+      );
+      onClearCart();
+      setActiveTab("library");
+    })();
   };
 
   const handleRemoveItem = (compositionId: string) => {

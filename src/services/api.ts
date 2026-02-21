@@ -78,6 +78,7 @@ export const authService = {
 
       let userId: string;
 
+      let serverResult: any = null;
       if (!existingUser) {
         // Create new user via server-side endpoint which uses a service role key
         try {
@@ -95,6 +96,7 @@ export const authService = {
 
           if (result?.id) {
             userId = result.id;
+            serverResult = result;
           } else {
             console.error(
               "authService.syncUser: server sync returned no id",
@@ -131,6 +133,17 @@ export const authService = {
       if (fetchError) throw fetchError;
 
       if (!userData) {
+        // If server-side sync returned user info, use it instead of failing a supabase read
+        if (serverResult) {
+          return {
+            id: serverResult.id,
+            firebaseUid: firebaseUser.uid,
+            email: serverResult.email || firebaseUser.email,
+            displayName: serverResult.displayName || firebaseUser.displayName,
+            roles: serverResult.roles || [],
+          };
+        }
+
         console.error(
           "authService.syncUser: user data not found after sync for userId:",
           userId,
@@ -275,15 +288,10 @@ export const compositionService = {
     }>,
   ) {
     try {
-      const { data, error } = await supabase
-        .from("compositions")
-        .update(updates)
-        .eq("id", id)
-        .select()
-        .maybeSingle();
-
-      if (error) throw error;
-      return data;
+      return await apiRequest(`/compositions/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(updates),
+      });
     } catch (error) {
       console.error("Error updating composition:", error);
       throw error;
@@ -295,12 +303,9 @@ export const compositionService = {
    */
   async delete(id: string) {
     try {
-      const { error } = await supabase
-        .from("compositions")
-        .update({ deleted: true, is_published: false })
-        .eq("id", id);
-
-      if (error) throw error;
+      await apiRequest(`/compositions/${id}`, {
+        method: "DELETE",
+      });
     } catch (error) {
       console.error("Error deleting composition:", error);
       throw error;
@@ -312,21 +317,9 @@ export const compositionService = {
    */
   async getByComposer(composerId: string) {
     try {
-      const { data, error } = await supabase
-        .from("compositions")
-        .select(
-          `
-          *,
-          categories(name),
-          composition_stats(views, purchases)
-        `,
-        )
-        .eq("composer_id", composerId)
-        .eq("deleted", false)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      return data;
+      return await apiRequest(`/compositions/composer/${composerId}`, {
+        method: "GET",
+      });
     } catch (error) {
       console.error("Error fetching composer compositions:", error);
       throw error;
@@ -348,15 +341,14 @@ export const purchaseService = {
     payment_ref: string;
   }) {
     try {
-      const { data, error } = await supabase.rpc("purchase_composition", {
-        p_buyer_id: purchaseData.buyer_id,
-        p_composition_id: purchaseData.composition_id,
-        p_price_paid: purchaseData.price_paid,
-        p_payment_ref: purchaseData.payment_ref,
+      return await apiRequest(`/purchases`, {
+        method: "POST",
+        body: JSON.stringify({
+          composition_id: purchaseData.composition_id,
+          price_paid: purchaseData.price_paid,
+          payment_ref: purchaseData.payment_ref,
+        }),
       });
-
-      if (error) throw error;
-      return data;
     } catch (error) {
       console.error("Error creating purchase:", error);
       throw error;
@@ -368,24 +360,7 @@ export const purchaseService = {
    */
   async getByBuyer(buyerId: string) {
     try {
-      const { data, error } = await supabase
-        .from("purchases")
-        .select(
-          `
-          *,
-          compositions(
-            *,
-            composers(users(display_name)),
-            categories(name)
-          )
-        `,
-        )
-        .eq("buyer_id", buyerId)
-        .eq("is_active", true)
-        .order("purchased_at", { ascending: false });
-
-      if (error) throw error;
-      return data;
+      return await apiRequest(`/purchases`, { method: "GET" });
     } catch (error) {
       console.error("Error fetching purchases:", error);
       throw error;
@@ -397,11 +372,9 @@ export const purchaseService = {
    */
   async discard(purchaseId: string) {
     try {
-      const { error } = await supabase.rpc("discard_purchase", {
-        p_purchase_id: purchaseId,
+      await apiRequest(`/purchases/${purchaseId}`, {
+        method: "DELETE",
       });
-
-      if (error) throw error;
     } catch (error) {
       console.error("Error discarding purchase:", error);
       throw error;
@@ -418,13 +391,9 @@ export const fypService = {
    */
   async getRecommendations(buyerId: string, limit: number = 20) {
     try {
-      const { data, error } = await supabase.rpc("get_fyp_recommendations", {
-        p_buyer_id: buyerId,
-        p_limit: limit,
+      return await apiRequest(`/purchases/recommendations?limit=${limit}`, {
+        method: "GET",
       });
-
-      if (error) throw error;
-      return data;
     } catch (error) {
       console.error("Error fetching recommendations:", error);
       throw error;
@@ -436,13 +405,13 @@ export const fypService = {
    */
   async updatePreferences(buyerId: string, categoryId: number, weight: number) {
     try {
-      const { error } = await supabase.from("buyer_preferences").upsert({
-        buyer_id: buyerId,
-        category_id: categoryId,
-        weight,
+      await apiRequest(`/purchases/preferences`, {
+        method: "PUT",
+        body: JSON.stringify({
+          category_id: categoryId,
+          weight,
+        }),
       });
-
-      if (error) throw error;
     } catch (error) {
       console.error("Error updating preferences:", error);
       throw error;
@@ -459,13 +428,7 @@ export const categoryService = {
    */
   async getAll() {
     try {
-      const { data, error } = await supabase
-        .from("categories")
-        .select("*")
-        .order("name");
-
-      if (error) throw error;
-      return data;
+      return await apiRequest(`/categories`, { method: "GET" });
     } catch (error) {
       console.error("Error fetching categories:", error);
       throw error;
@@ -477,14 +440,10 @@ export const categoryService = {
    */
   async create(name: string, description?: string) {
     try {
-      const { data, error } = await supabase
-        .from("categories")
-        .insert({ name, description })
-        .select()
-        .maybeSingle();
-
-      if (error) throw error;
-      return data;
+      return await apiRequest(`/categories`, {
+        method: "POST",
+        body: JSON.stringify({ name, description }),
+      });
     } catch (error) {
       console.error("Error creating category:", error);
       throw error;
@@ -613,14 +572,35 @@ export const storageService = {
           upsert: false,
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error(`Error uploading to storage bucket ${bucket}:`, error);
+        throw new Error(
+          `Storage upload failed for bucket ${bucket}: ${error.message || String(error)}`,
+        );
+      }
 
-      // Get public URL
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from(bucket).getPublicUrl(data.path);
+      if (!data || !data.path) {
+        throw new Error("Storage upload returned no path");
+      }
 
-      return publicUrl;
+      // Attempt to build a public URL; supabase client versions vary in the returned field name
+      try {
+        const getUrlRes: any = supabase.storage
+          .from(bucket)
+          .getPublicUrl(data.path);
+        const publicUrl =
+          getUrlRes?.data?.publicUrl ||
+          getUrlRes?.publicURL ||
+          getUrlRes?.data?.publicURL ||
+          "";
+        return publicUrl || data.path;
+      } catch (e) {
+        console.warn(
+          "Could not derive public URL from storage client, returning path instead",
+          e,
+        );
+        return data.path;
+      }
     } catch (error) {
       console.error("Error uploading file:", error);
       throw error;
