@@ -4,6 +4,21 @@ import { verifyFirebaseToken } from "../middleware/auth.js";
 
 const router = express.Router();
 
+// Utility: Validate avatar URL - only accept valid Supabase URLs or null
+function isValidAvatarUrl(url) {
+  if (!url) return true; // null/undefined is valid (removes avatar)
+  if (typeof url !== "string") return false;
+
+  // Reject blob URLs (temporary client-side URLs)
+  if (url.startsWith("blob:")) return false;
+
+  // Accept Supabase storage URLs
+  if (url.includes("supabase.co/storage/")) return true;
+
+  // Reject anything else to prevent invalid URLs
+  return false;
+}
+
 // POST /api/register
 router.post("/register", async (req, res) => {
   try {
@@ -19,19 +34,29 @@ router.post("/register", async (req, res) => {
         .status(400)
         .json({ message: "email is not valid", error: "INVALID_EMAIL" });
 
+    // Validate avatar URL - only accept Supabase URLs or null
+    if (avatarUrl !== undefined) {
+      if (!isValidAvatarUrl(avatarUrl)) {
+        console.warn("[register] Invalid avatar URL rejected:", avatarUrl);
+        return res.status(400).json({
+          message:
+            "Invalid avatar URL. Only Supabase storage URLs are accepted.",
+          error: "INVALID_AVATAR_URL",
+        });
+      }
+    }
+
     const { data: existingUser } = await supabase
       .from("users")
       .select("id")
       .eq("email", email)
       .maybeSingle();
     if (existingUser)
-      return res
-        .status(409)
-        .json({
-          message: "User with this email already exists",
-          error: "USER_EXISTS",
-          id: existingUser.id,
-        });
+      return res.status(409).json({
+        message: "User with this email already exists",
+        error: "USER_EXISTS",
+        id: existingUser.id,
+      });
 
     const { data: newUser, error: createErr } = await supabase
       .from("users")
@@ -48,22 +73,49 @@ router.post("/register", async (req, res) => {
 
     if (createErr) throw createErr;
 
-    return res
-      .status(201)
-      .json({
-        id: newUser.id,
-        email,
-        displayName: newUser.display_name,
-        message: "User registered successfully",
-      });
+    // Check if email is in admin_emails table and auto-assign admin role
+    let roles = [];
+    try {
+      const { data: adminEmail } = await supabase
+        .from("admin_emails")
+        .select("id")
+        .eq("email", email)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (adminEmail) {
+        console.log(
+          "[register] Email found in admin_emails, assigning admin role:",
+          email,
+        );
+        const { data: adminRole } = await supabase
+          .from("roles")
+          .select("id")
+          .eq("name", "admin")
+          .maybeSingle();
+
+        if (adminRole?.id) {
+          await supabase
+            .from("user_roles")
+            .insert({ user_id: newUser.id, role_id: adminRole.id });
+          roles.push("admin");
+        }
+      }
+    } catch (e) {
+      console.warn("[register] admin email check failed:", e?.message || e);
+    }
+
+    return res.status(201).json({
+      ...newUser,
+      roles,
+      message: "User registered successfully",
+    });
   } catch (error) {
     console.error("[register] Error:", error);
-    return res
-      .status(500)
-      .json({
-        message: "Failed to register user",
-        error: error?.message || "Internal server error",
-      });
+    return res.status(500).json({
+      message: "Failed to register user",
+      error: error?.message || "Internal server error",
+    });
   }
 });
 
@@ -73,12 +125,10 @@ router.post("/sync-user", async (req, res) => {
     const { firebaseUid, email, displayName, phone, avatarUrl, role } =
       req.body;
     if (!firebaseUid)
-      return res
-        .status(400)
-        .json({
-          message: "firebaseUid is required",
-          error: "MISSING_FIREBASE_UID",
-        });
+      return res.status(400).json({
+        message: "firebaseUid is required",
+        error: "MISSING_FIREBASE_UID",
+      });
     if (!email)
       return res
         .status(400)
@@ -125,6 +175,38 @@ router.post("/sync-user", async (req, res) => {
       if (createError) throw createError;
       userId = newUser.id;
       isNewUser = true;
+
+      // Check if email is in admin_emails table and auto-assign admin role
+      try {
+        const { data: adminEmail } = await supabase
+          .from("admin_emails")
+          .select("id")
+          .eq("email", email)
+          .eq("is_active", true)
+          .maybeSingle();
+
+        if (adminEmail) {
+          console.log(
+            "[sync-user] Email found in admin_emails, assigning admin role:",
+            email,
+          );
+          const { data: adminRole } = await supabase
+            .from("roles")
+            .select("id")
+            .eq("name", "admin")
+            .maybeSingle();
+
+          if (adminRole?.id) {
+            await supabase
+              .from("user_roles")
+              .insert({ user_id: userId, role_id: adminRole.id });
+          }
+        }
+      } catch (e) {
+        console.warn("[sync-user] admin email check failed:", e?.message || e);
+      }
+
+      // Assign requested role if provided
       if (role) {
         try {
           const { data: roleRow } = await supabase
@@ -144,31 +226,28 @@ router.post("/sync-user", async (req, res) => {
 
     const { data: userWithRoles } = await supabase
       .from("users")
-      .select("user_roles ( roles ( name ) )")
+      .select(
+        `id, firebase_uid, email, display_name, phone, avatar_url, is_active, created_at, user_roles ( roles ( name ) )`,
+      )
       .eq("id", userId)
       .maybeSingle();
     const roles = (userWithRoles?.user_roles || [])
       .map((ur) => ur.roles?.name)
       .filter(Boolean);
-    return res
-      .status(isNewUser ? 201 : 200)
-      .json({
-        id: userId,
-        email,
-        displayName,
-        roles,
-        message: isNewUser
-          ? "User created and synced successfully"
-          : "User synced successfully",
-      });
+
+    return res.status(isNewUser ? 201 : 200).json({
+      ...userWithRoles,
+      roles,
+      message: isNewUser
+        ? "User created and synced successfully"
+        : "User synced successfully",
+    });
   } catch (error) {
     console.error("[sync-user] Error:", error);
-    return res
-      .status(500)
-      .json({
-        message: "Failed to sync user",
-        error: error?.message || "Internal server error",
-      });
+    return res.status(500).json({
+      message: "Failed to sync user",
+      error: error?.message || "Internal server error",
+    });
   }
 });
 
@@ -216,13 +295,11 @@ router.post("/request-role", verifyFirebaseToken, async (req, res) => {
       .in("status", ["pending", "approved"])
       .maybeSingle();
     if (existing)
-      return res
-        .status(409)
-        .json({
-          message: `You already have a ${existing.status} ${requestedRole} request.`,
-          requestId: existing.id,
-          status: existing.status,
-        });
+      return res.status(409).json({
+        message: `You already have a ${existing.status} ${requestedRole} request.`,
+        requestId: existing.id,
+        status: existing.status,
+      });
 
     const { data: newRequest, error: createErr } = await supabase
       .from("role_requests")
@@ -235,21 +312,17 @@ router.post("/request-role", verifyFirebaseToken, async (req, res) => {
       .select()
       .single();
     if (createErr) throw createErr;
-    return res
-      .status(201)
-      .json({
-        message: `${requestedRole} request submitted successfully. Awaiting admin approval.`,
-        requestId: newRequest.id,
-        status: newRequest.status,
-      });
+    return res.status(201).json({
+      message: `${requestedRole} request submitted successfully. Awaiting admin approval.`,
+      requestId: newRequest.id,
+      status: newRequest.status,
+    });
   } catch (error) {
     console.error("[request-role] Error:", error);
-    return res
-      .status(500)
-      .json({
-        message: "Failed to submit request",
-        error: error?.message || "Internal server error",
-      });
+    return res.status(500).json({
+      message: "Failed to submit request",
+      error: error?.message || "Internal server error",
+    });
   }
 });
 

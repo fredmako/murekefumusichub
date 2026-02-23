@@ -65,8 +65,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Refresh roles from server (roles are managed via Supabase only)
-  // Note: Users can only request roles via ManageAccount page
+  // Fetch complete user profile from Supabase by Firebase UID
+  const fetchSupabaseUserProfile = async (firebaseUid: string) => {
+    try {
+      const base =
+        (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
+      const response = await fetch(`${base}/users/by-firebase/${firebaseUid}`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!response.ok) throw new Error("User not found in Supabase");
+      return await response.json();
+    } catch (err) {
+      console.warn("Failed to fetch Supabase user profile:", err);
+      return null;
+    }
+  };
 
   // Centralized sign-in with email/password
   const signInWithEmail = async (email: string, password: string) => {
@@ -143,19 +157,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (user) {
         try {
-          // On auth state change (e.g., page refresh), only fetch roles, don't sync again
+          // Fetch complete Supabase user profile (includes display_name, phone, avatar_url, etc.)
+          const supabaseUser = await fetchSupabaseUserProfile(user.uid);
+
+          // Fetch roles from server
           const roles = (await navbarService.fetchUserRoles(user.uid)) || [];
+
+          // Use Supabase displayName if available, otherwise fall back to Firebase displayName
           setAppUser({
             uid: user.uid,
-            email: user.email,
-            displayName: user.displayName,
+            email: supabaseUser?.email || user.email,
+            displayName: supabaseUser?.display_name || user.displayName,
             roles,
           });
         } catch (err) {
           console.warn(
-            "Failed to fetch roles from server, defaulting to empty roles:",
+            "Failed to fetch user profile from server, using Firebase data:",
             err,
           );
+          // Fallback to Firebase data if Supabase fetch fails
           setAppUser({
             uid: user.uid,
             email: user.email,

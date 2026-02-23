@@ -5,6 +5,21 @@ import { verifyFirebaseToken } from "../middleware/auth.js";
 
 const router = express.Router();
 
+// Utility: Validate avatar URL - only accept valid Supabase URLs or null
+function isValidAvatarUrl(url) {
+  if (!url) return true; // null/undefined is valid (removes avatar)
+  if (typeof url !== "string") return false;
+
+  // Reject blob URLs (temporary client-side URLs)
+  if (url.startsWith("blob:")) return false;
+
+  // Accept Supabase storage URLs
+  if (url.includes("supabase.co/storage/")) return true;
+
+  // Reject anything else to prevent invalid URLs
+  return false;
+}
+
 // GET /api/users/:id
 router.get("/users/:id", async (req, res) => {
   try {
@@ -68,6 +83,18 @@ router.put("/users/:id", verifyFirebaseToken, async (req, res) => {
     const { id } = req.params;
     const { display_name, phone, avatar_url, email } = req.body;
     if (!id) return res.status(400).json({ message: "id is required" });
+
+    // Validate avatar URL - only accept Supabase URLs or null
+    if (avatar_url !== undefined) {
+      if (!isValidAvatarUrl(avatar_url)) {
+        console.warn("[update-user] Invalid avatar URL rejected:", avatar_url);
+        return res.status(400).json({
+          message:
+            "Invalid avatar URL. Only Supabase storage URLs are accepted.",
+        });
+      }
+    }
+
     const payload = {};
     if (display_name !== undefined) payload.display_name = display_name || null;
     if (phone !== undefined) payload.phone = phone || null;
@@ -95,7 +122,27 @@ router.put("/users/:id", verifyFirebaseToken, async (req, res) => {
 router.put("/account", verifyFirebaseToken, async (req, res) => {
   try {
     const { displayName, phone, avatarUrl, email } = req.body;
-    console.log('[update-account] Incoming payload:', { displayName, phone, avatarUrl, email });
+    console.log("[update-account] Incoming payload:", {
+      displayName,
+      phone,
+      avatarUrl,
+      email,
+    });
+
+    // Validate avatar URL - only accept Supabase URLs or null
+    if (avatarUrl !== undefined) {
+      if (!isValidAvatarUrl(avatarUrl)) {
+        console.warn(
+          "[update-account] Invalid avatar URL rejected:",
+          avatarUrl,
+        );
+        return res.status(400).json({
+          message:
+            "Invalid avatar URL. Only Supabase storage URLs are accepted.",
+        });
+      }
+    }
+
     const firebaseUid = req.firebaseDecoded?.uid || req.body.firebaseUid;
     if (!firebaseUid)
       return res.status(400).json({ message: "firebaseUid is required" });
@@ -122,7 +169,10 @@ router.put("/account", verifyFirebaseToken, async (req, res) => {
       .select()
       .single();
     if (error) throw error;
-    console.log('[update-account] Updated user row returned from supabase:', data);
+    console.log(
+      "[update-account] Updated user row returned from supabase:",
+      data,
+    );
     return res.json({ message: "Account updated", user: data });
   } catch (err) {
     console.error("[update-account] Error:", err);

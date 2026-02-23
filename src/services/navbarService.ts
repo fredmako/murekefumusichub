@@ -50,4 +50,44 @@ export const navbarService = {
       return [];
     }
   },
+
+  async approveComposerRequest(userId: string) {
+    try {
+      const headers = await buildAuthHeaders();
+      const response = await fetch(
+        `${API_BASE_URL}/admin/users/${userId}/promote-composer`,
+        {
+          method: "POST",
+          headers,
+        },
+      );
+      if (!response.ok) throw new Error("Failed to approve request");
+      toast.success("Composer request approved");
+      return await response.json();
+    } catch (err: any) {
+      console.error("approveComposerRequest error:", err);
+      toast.error(err.message || "Failed to approve request");
+      throw err;
+    }
+  },
+
+  async rejectComposerRequest(userId: string) {
+    try {
+      const headers = await buildAuthHeaders();
+      const response = await fetch(
+        `${API_BASE_URL}/admin/composer-requests/${userId}/reject`,
+        {
+          method: "POST",
+          headers,
+        },
+      );
+      if (!response.ok) throw new Error("Failed to reject request");
+      toast.success("Composer request rejected");
+      return await response.json();
+    } catch (err: any) {
+      console.error("rejectComposerRequest error:", err);
+      toast.error(err.message || "Failed to reject request");
+      throw err;
+    }
+  },
 };

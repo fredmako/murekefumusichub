@@ -159,10 +159,10 @@ export function ManageAccount() {
             setSupabaseId(syncData.id);
             setUser({ ...syncData, roles: syncData.roles || [] } as User);
             setDisplayName(
-              syncData.displayName || firebaseUser?.displayName || "",
+              syncData.display_name || firebaseUser?.displayName || "",
             );
             setPhone(syncData.phone || firebaseUser?.phoneNumber || "");
-            setAvatarUrl(syncData.avatarUrl || firebaseUser?.photoURL || null);
+            setAvatarUrl(syncData.avatar_url || firebaseUser?.photoURL || null);
             if (
               syncData.roles &&
               Array.isArray(syncData.roles) &&
@@ -243,9 +243,10 @@ export function ManageAccount() {
         avatarUrl,
       });
 
-      // IMPORTANT: Start with the real database URL, not blob URL
+      // Only use blob URL for preview while editing, never for saving
       let finalAvatarUrl = user?.avatar_url || null;
 
+      // 1. Upload avatar if a new file is selected
       if (avatarFile) {
         try {
           console.log("[handleSaveProfile] Uploading avatar...");
@@ -263,7 +264,8 @@ export function ManageAccount() {
           finalAvatarUrl = user?.avatar_url || null;
         }
       }
-      // Send update to server endpoint
+
+      // 2. Send update to server endpoint, always using the Supabase URL (never blob)
       try {
         const token = await firebaseUser?.getIdToken();
         const base =
@@ -279,7 +281,7 @@ export function ManageAccount() {
             email: firebaseUser?.email,
             displayName,
             phone,
-            avatarUrl: finalAvatarUrl,
+            avatarUrl: finalAvatarUrl, // always Supabase URL or null
           }),
         });
 
@@ -303,7 +305,7 @@ export function ManageAccount() {
       setAvatarFile(null);
       setIsEditing(false);
 
-      // Refetch user data from server to get the real persisted avatar URL
+      // 3. Refetch user data from server to get the real persisted avatar URL
       try {
         const base =
           (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";

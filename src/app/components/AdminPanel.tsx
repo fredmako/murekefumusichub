@@ -216,6 +216,13 @@ export function AdminPanel() {
     return map;
   }, [users, userRoles, roleIdToName]);
 
+  // Filter to show only pending requests in the admin panel
+  const pendingRequests = useMemo(() => {
+    return (requests || []).filter(
+      (r: any) => r.status === "pending" || !r.status,
+    );
+  }, [requests]);
+
   // Debug: Log users whenever they change
   useEffect(() => {
     console.log("[AdminPanel] Users state updated:", users);
@@ -709,7 +716,7 @@ export function AdminPanel() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {requests.length === 0 ? (
+              {pendingRequests.length === 0 ? (
                 <p className="text-sm text-gray-600">No pending requests.</p>
               ) : (
                 <Table>
@@ -722,7 +729,7 @@ export function AdminPanel() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {requests.map((r) => (
+                    {pendingRequests.map((r) => (
                       <TableRow key={r.id}>
                         <TableCell>{r.email}</TableCell>
                         <TableCell>

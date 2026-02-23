@@ -97,13 +97,32 @@ router.get("/invites", async (req, res) => {
 
 router.get("/composer-requests", async (req, res) => {
   try {
+    // Fetch ALL composer requests from role_requests table (not just pending)
+    // Admins need to see all requests for full management
     const { data, error } = await supabase
-      .from("users")
-      .select("id, email, roles, composer_request, created_at")
-      .eq("composer_request", true)
-      .order("created_at", { ascending: true });
+      .from("role_requests")
+      .select(
+        `id, user_id, requested_role, status, requested_at, users!inner(id, email, display_name, roles:user_roles(roles(name)))`,
+      )
+      .eq("requested_role", "composer")
+      .order("requested_at", { ascending: false });
+
     if (error) throw error;
-    return res.json(data || []);
+
+    // Transform response to match admin panel expectations
+    const formattedData = (data || []).map((req) => ({
+      id: req.id,
+      user_id: req.user_id,
+      email: req.users?.email,
+      display_name: req.users?.display_name,
+      displayName: req.users?.display_name, // support both field names
+      requested_role: req.requested_role,
+      status: req.status,
+      created_at: req.requested_at,
+      roles: req.users?.roles?.map((ur) => ur.roles?.name) || [],
+    }));
+
+    return res.json(formattedData);
   } catch (err) {
     console.error("[admin-composer-requests] Error:", err);
     return res.status(500).json({ error: err.message });
@@ -186,11 +205,27 @@ router.post("/users/:userId/promote-composer", async (req, res) => {
       .single();
     if (userErr || !user)
       return res.status(404).json({ error: "User not found" });
+
+    // Mark the composer request as approved in role_requests table
+    const { error: updateReqErr } = await supabase
+      .from("role_requests")
+      .update({ status: "approved" })
+      .eq("user_id", userId)
+      .eq("requested_role", "composer")
+      .eq("status", "pending");
+    if (updateReqErr)
+      console.warn(
+        "[admin-promote-composer] Failed to update role_requests:",
+        updateReqErr,
+      );
+
+    // Clear the old composer_request flag if it exists
     const { error: clearErr } = await supabase
       .from("users")
       .update({ composer_request: false })
       .eq("id", userId);
     if (clearErr) throw clearErr;
+
     try {
       const { data: roleRow } = await supabase
         .from("roles")
@@ -245,31 +280,27 @@ router.post("/users/:userId/promote-admin", async (req, res) => {
       .single();
     if (userErr || !user)
       return res.status(404).json({ error: "User not found" });
-    try {
-      const { data: roleRow } = await supabase
-        .from("roles")
-        .select("id")
-        .eq("name", "admin")
+
+    const { data: roleRow } = await supabase
+      .from("roles")
+      .select("id")
+      .eq("name", "admin")
+      .maybeSingle();
+    if (roleRow?.id) {
+      const { data: exists } = await supabase
+        .from("user_roles")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("role_id", roleRow.id)
         .maybeSingle();
-      if (roleRow?.id) {
-        const { data: exists } = await supabase
+      if (!exists) {
+        const { error: urErr } = await supabase
           .from("user_roles")
-          .select("*")
-          .eq("user_id", userId)
-          .eq("role_id", roleRow.id)
-          .maybeSingle();
-        if (!exists) {
-          const { error: urErr } = await supabase
-            .from("user_roles")
-            .insert({ user_id: userId, role_id: roleRow.id });
-          if (urErr) throw urErr;
-        }
+          .insert({ user_id: userId, role_id: roleRow.id });
+        if (urErr) throw urErr;
       }
-      return res.json({ success: true, message: "User promoted to admin" });
-    } catch (err) {
-      console.error("[admin-promote-admin] Error assigning admin role:", err);
-      return res.status(500).json({ error: err.message || String(err) });
     }
+    return res.json({ success: true, message: "User promoted to admin" });
   } catch (err) {
     console.error("[admin-promote-admin] Error:", err);
     return res.status(500).json({ error: err.message });
@@ -294,14 +325,17 @@ router.post("/users/:userId/suspend", async (req, res) => {
 router.post("/composer-requests/:userId/reject", async (req, res) => {
   try {
     const { userId } = req.params;
+    // Update the pending composer request to rejected status
     const { error } = await supabase
-      .from("users")
-      .update({ composer_request: false })
-      .eq("id", userId);
+      .from("role_requests")
+      .update({ status: "rejected" })
+      .eq("user_id", userId)
+      .eq("requested_role", "composer")
+      .eq("status", "pending");
     if (error) throw error;
-    return res.json({ success: true, message: "Request rejected" });
+    return res.json({ success: true, message: "Composer request rejected" });
   } catch (err) {
-    console.error("[admin-reject-request] Error:", err);
+    console.error("[admin-reject-composer-request] Error:", err);
     return res.status(500).json({ error: err.message });
   }
 });
@@ -315,21 +349,18 @@ router.get("/notifications", async (req, res) => {
       .eq("used", false)
       .order("created_at", { ascending: false })
       .limit(50);
+
+    // Fetch pending composer and admin requests from role_requests table
     const { data: roleReqData } = await supabase
       .from("role_requests")
       .select("*")
-      .order("created_at", { ascending: false })
-      .limit(50);
-    const { data: composerReqs } = await supabase
-      .from("users")
-      .select(
-        "id, email, display_name, created_at, composer_request, user_roles ( roles ( name ) )",
-      )
-      .eq("composer_request", true)
-      .order("created_at", { ascending: false })
+      .eq("status", "pending")
+      .order("requested_at", { ascending: false })
       .limit(50);
 
     const items = [];
+
+    // Add invites as notifications
     (invitesData || []).forEach((invite) =>
       items.push({
         id: `invite:${invite.id}`,
@@ -341,53 +372,48 @@ router.get("/notifications", async (req, res) => {
       }),
     );
 
+    // Fetch user details for all role requests
     const roleUserIds = (roleReqData || [])
       .map((r) => r.user_id)
       .filter(Boolean);
-    let rolesByUser = {};
+    let usersByUserId = {};
     if (roleUserIds.length > 0) {
       try {
-        const { data: usersWithRoles } = await supabase
+        const { data: usersData } = await supabase
           .from("users")
-          .select("id, user_roles ( roles ( name ) )")
+          .select("id, email, display_name, user_roles ( roles ( name ) )")
           .in("id", roleUserIds);
-        (usersWithRoles || []).forEach((u) => {
-          rolesByUser[u.id] = (u.user_roles || [])
-            .map((ur) => ur.roles?.name)
-            .filter(Boolean);
+        (usersData || []).forEach((u) => {
+          usersByUserId[u.id] = {
+            email: u.email,
+            display_name: u.display_name,
+            roles: (u.user_roles || [])
+              .map((ur) => ur.roles?.name)
+              .filter(Boolean),
+          };
         });
       } catch (e) {
         console.warn(
-          "[admin-notifications] Failed to fetch roles for role requests:",
+          "[admin-notifications] Failed to fetch users for role requests:",
           e?.message || e,
         );
       }
     }
 
+    // Add role requests (composer and admin) as notifications
     (roleReqData || []).forEach((reqItem) => {
+      const user = usersByUserId[reqItem.user_id] || {};
       items.push({
         id: `request:${reqItem.id}`,
-        type: "role_request",
+        type: "request", // Generic request type for composer/admin requests
         userId: reqItem.user_id,
+        email: user.email,
+        displayName: user.display_name,
         requestedRole: reqItem.requested_role,
         status: reqItem.status,
-        createdAt: reqItem.created_at || reqItem.requested_at,
-        roles: rolesByUser[reqItem.user_id] || [],
-      });
-    });
-
-    (composerReqs || []).forEach((u) => {
-      const roles = (u.user_roles || [])
-        .map((ur) => ur.roles?.name)
-        .filter(Boolean);
-      items.push({
-        id: `composer:${u.id}`,
-        type: "composer_request",
-        userId: u.id,
-        email: u.email,
-        displayName: u.display_name,
-        createdAt: u.created_at,
-        roles,
+        createdAt: reqItem.requested_at,
+        created_at: reqItem.requested_at,
+        roles: user.roles || [],
       });
     });
 

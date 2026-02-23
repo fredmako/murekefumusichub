@@ -10,6 +10,9 @@ import {
   LogOut,
   Settings,
   Bell,
+  Check,
+  X,
+  Loader,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -49,6 +52,9 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   const roles = appUser?.roles || [];
   const [notifications, setNotifications] = useState<any[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
+  const [processingNotification, setProcessingNotification] = useState<
+    string | null
+  >(null);
 
   // Polling interval (ms) for admin notifications
   const NOTIF_POLL_INTERVAL = 15000;
@@ -85,6 +91,37 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
       if (timer) clearTimeout(timer);
     };
   }, [roles]);
+
+  // Handle approve/reject actions
+  const handleApproveRequest = async (
+    notificationId: string,
+    userId: string,
+  ) => {
+    setProcessingNotification(notificationId);
+    try {
+      await navbarService.approveComposerRequest(userId);
+      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+    } catch (err) {
+      console.error("Failed to approve request:", err);
+    } finally {
+      setProcessingNotification(null);
+    }
+  };
+
+  const handleRejectRequest = async (
+    notificationId: string,
+    userId: string,
+  ) => {
+    setProcessingNotification(notificationId);
+    try {
+      await navbarService.rejectComposerRequest(userId);
+      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+    } catch (err) {
+      console.error("Failed to reject request:", err);
+    } finally {
+      setProcessingNotification(null);
+    }
+  };
 
   const navItems = [
     {
@@ -231,37 +268,79 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                   )}
 
                   {notifications.map((n) => (
-                    <DropdownMenuItem
+                    <div
                       key={n.id}
-                      onClick={() => navigate("/admin")}
+                      className="px-4 py-3 border-b hover:bg-gray-50 transition-colors"
                     >
-                      <div className="flex flex-col">
-                        {n.type === "invite" ? (
-                          <>
-                            <span className="font-semibold">
-                              Composer Invite
-                            </span>
-                            <span className="text-xs text-gray-500">
-                              {n.email}
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="font-semibold">
-                              Composer Request
-                            </span>
-                            <span className="text-xs text-gray-500">
-                              {n.displayName || n.email}
-                            </span>
-                          </>
+                      <div className="flex flex-col gap-2">
+                        <div>
+                          {n.type === "invite" ? (
+                            <>
+                              <span className="font-semibold block">
+                                Composer Invite
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {n.email}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="font-semibold block">
+                                Composer Access Request
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {n.displayName || n.email}
+                              </span>
+                            </>
+                          )}
+                          <span className="text-xs text-gray-400 block mt-1">
+                            {new Date(
+                              n.createdAt || n.created_at,
+                            ).toLocaleString()}
+                          </span>
+                        </div>
+
+                        {/* Action buttons for requests */}
+                        {n.type === "request" && (
+                          <div className="flex gap-2 mt-2">
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="flex-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleApproveRequest(n.id, n.userId);
+                              }}
+                              disabled={processingNotification === n.id}
+                            >
+                              {processingNotification === n.id ? (
+                                <Loader className="size-4 mr-1 animate-spin" />
+                              ) : (
+                                <Check className="size-4 mr-1" />
+                              )}
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="flex-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRejectRequest(n.id, n.userId);
+                              }}
+                              disabled={processingNotification === n.id}
+                            >
+                              {processingNotification === n.id ? (
+                                <Loader className="size-4 mr-1 animate-spin" />
+                              ) : (
+                                <X className="size-4 mr-1" />
+                              )}
+                              Reject
+                            </Button>
+                          </div>
                         )}
-                        <span className="text-xs text-gray-400">
-                          {new Date(
-                            n.createdAt || n.created_at,
-                          ).toLocaleString()}
-                        </span>
                       </div>
-                    </DropdownMenuItem>
+                    </div>
                   ))}
 
                   <DropdownMenuSeparator />
