@@ -1,6 +1,5 @@
 // src/app/components/Navbar.tsx
 import { useEffect, useState } from "react";
-import { authService } from "@/services/api";
 import { navbarService } from "@/services/navbarService";
 import { useLocation, NavLink, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -87,19 +86,6 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     };
   }, [roles]);
 
-  useEffect(() => {
-    // Ensure a Supabase user record exists for the signed-in Firebase user
-    if (!firebaseUser) return;
-
-    (async () => {
-      try {
-        await authService.syncUser(firebaseUser);
-      } catch (err) {
-        console.error("Navbar: failed to sync user to Supabase", err);
-      }
-    })();
-  }, [firebaseUser]);
-
   const navItems = [
     {
       label: "Learn Music",
@@ -145,6 +131,29 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     if (roles.includes("composer")) return "/composer";
     if (roles.includes("buyer")) return "/buyer";
     return "/";
+  };
+
+  const getDashboardPaths = () => {
+    const dashboards: Array<{ label: string; path: string; role: string }> = [];
+    if (roles.includes("admin"))
+      dashboards.push({
+        label: "Admin Dashboard",
+        path: "/admin",
+        role: "admin",
+      });
+    if (roles.includes("composer"))
+      dashboards.push({
+        label: "Composer Dashboard",
+        path: "/composer",
+        role: "composer",
+      });
+    if (roles.includes("buyer"))
+      dashboards.push({
+        label: "Buyer Dashboard",
+        path: "/buyer",
+        role: "buyer",
+      });
+    return dashboards;
   };
 
   return (
@@ -350,18 +359,38 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                         {firebaseUser.displayName || firebaseUser.email}
                       </p>
                       <p className="text-xs text-gray-500">
-                        {roles.join(", ") || "user"}
+                        {roles.length === 0 ? "user" : roles.join(", ")}
                       </p>
                     </DropdownMenuLabel>
 
                     <DropdownMenuSeparator />
 
-                    {/* Dashboard */}
-                    <DropdownMenuItem
-                      onClick={() => navigate(getDashboardPath())}
-                    >
-                      Dashboard
-                    </DropdownMenuItem>
+                    {/* Dashboard(s) - Show all available dashboards for user roles */}
+                    {getDashboardPaths().length > 0 && (
+                      <>
+                        {getDashboardPaths().length === 1 ? (
+                          <DropdownMenuItem
+                            onClick={() =>
+                              navigate(getDashboardPaths()[0].path)
+                            }
+                          >
+                            {getDashboardPaths()[0].label}
+                          </DropdownMenuItem>
+                        ) : (
+                          <>
+                            {getDashboardPaths().map((dashboard) => (
+                              <DropdownMenuItem
+                                key={dashboard.role}
+                                onClick={() => navigate(dashboard.path)}
+                              >
+                                {dashboard.label}
+                              </DropdownMenuItem>
+                            ))}
+                          </>
+                        )}
+                        <DropdownMenuSeparator />
+                      </>
+                    )}
 
                     {/* Manage Account */}
                     <DropdownMenuItem

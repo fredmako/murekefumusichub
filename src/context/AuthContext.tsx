@@ -32,19 +32,10 @@ interface AuthContextType {
   firebaseUser: User | null;
   appUser: AppUser | null;
   signOut: (redirect?: boolean) => Promise<void>;
-  signInWithEmail: (
-    email: string,
-    password: string,
-    roleHint?: string,
-  ) => Promise<void>;
-  signUpWithEmail: (
-    email: string,
-    password: string,
-    roleHint?: string,
-  ) => Promise<void>;
-  signInWithGoogle: (roleHint?: string) => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
+  signUpWithEmail: (email: string, password: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   refreshRoles: () => Promise<void>;
-  setUserRole: (role: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -53,6 +44,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const navigate = useNavigate();
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
+  const [isFirstLogin, setIsFirstLogin] = useState(false);
 
   // Refresh roles from server and update appUser
   const refreshRoles = async () => {
@@ -73,72 +65,64 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Assign a role to the current user (server-side sync) and refresh roles
-  const setUserRole = async (role: string) => {
-    if (!firebaseUser) return;
-    try {
-      await authService.syncUser(firebaseUser, role);
-      await refreshRoles();
-    } catch (err) {
-      console.error("setUserRole failed:", err);
-      throw err;
-    }
-  };
+  // Refresh roles from server (roles are managed via Supabase only)
+  // Note: Users can only request roles via ManageAccount page
 
   // Centralized sign-in with email/password
-  const signInWithEmail = async (
-    email: string,
-    password: string,
-    roleHint?: string,
-  ) => {
+  const signInWithEmail = async (email: string, password: string) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
     const user = cred.user;
     setFirebaseUser(user);
 
-    // Sync to backend and fetch roles (provide roleHint if caller indicates a purchase/enroll)
-    const synced = await authService.syncUser(user, roleHint || "user");
+    // Sync to backend and fetch roles (all users default to 'user' role)
+    const synced = await authService.syncUser(user);
     setAppUser({
       uid: user.uid,
       email: user.email,
       displayName: user.displayName,
       roles: synced?.roles || [],
     });
+
+    setIsFirstLogin(true);
+    navigate("/manage-account");
   };
 
   // Centralized sign-up
-  const signUpWithEmail = async (
-    email: string,
-    password: string,
-    roleHint?: string,
-  ) => {
+  const signUpWithEmail = async (email: string, password: string) => {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     const user = cred.user;
     setFirebaseUser(user);
 
-    const synced = await authService.syncUser(user, roleHint || "user");
+    const synced = await authService.syncUser(user);
     setAppUser({
       uid: user.uid,
       email: user.email,
       displayName: user.displayName,
       roles: synced?.roles || [],
     });
+
+    setIsFirstLogin(true);
+    navigate("/manage-account");
   };
 
   // Centralized Google sign-in
-  const signInWithGoogle = async (roleHint?: string) => {
+  const signInWithGoogle = async () => {
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       setFirebaseUser(user);
 
-      const synced = await authService.syncUser(user, roleHint || "user");
+      const synced = await authService.syncUser(user);
       setAppUser({
         uid: user.uid,
         email: user.email,
         displayName: user.displayName,
         roles: synced?.roles || [],
       });
+
+      setIsFirstLogin(true);
+      navigate("/manage-account");
     } catch (err: any) {
       // If popup blocked, try redirect
       if (
@@ -159,39 +143,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (user) {
         try {
-          // Try to sync and fetch authoritative roles
-          const synced = await authService.syncUser(user, undefined);
+          // On auth state change (e.g., page refresh), only fetch roles, don't sync again
+          const roles = (await navbarService.fetchUserRoles(user.uid)) || [];
           setAppUser({
             uid: user.uid,
             email: user.email,
             displayName: user.displayName,
-            roles: synced?.roles || [],
+            roles,
           });
         } catch (err) {
-          // fallback: try to fetch roles only
-          try {
-            const roles = (await navbarService.fetchUserRoles(user.uid)) || [];
-            setAppUser({
-              uid: user.uid,
-              email: user.email,
-              displayName: user.displayName,
-              roles,
-            });
-          } catch (err2) {
-            console.warn(
-              "Failed to fetch roles from server, defaulting to empty roles:",
-              err2,
-            );
-            setAppUser({
-              uid: user.uid,
-              email: user.email,
-              displayName: user.displayName,
-              roles: [],
-            });
-          }
+          console.warn(
+            "Failed to fetch roles from server, defaulting to empty roles:",
+            err,
+          );
+          setAppUser({
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName,
+            roles: [],
+          });
         }
       } else {
         setAppUser(null);
+        setIsFirstLogin(false);
       }
     });
 
@@ -221,7 +195,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         signUpWithEmail,
         signInWithGoogle,
         refreshRoles,
-        setUserRole,
       }}
     >
       {children}

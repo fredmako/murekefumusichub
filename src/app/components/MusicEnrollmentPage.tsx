@@ -24,19 +24,13 @@ const musicClasses = [
 
 export const MusicEnrollmentPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
-  const { setUserRole, firebaseUser } = useAuth();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     // Later: save to Firestore / send email / payment
-    setTimeout(async () => {
-      try {
-        if (setUserRole && firebaseUser) await setUserRole("student");
-      } catch (err) {
-        console.warn("Failed to set student role after enrollment:", err);
-      }
+    setTimeout(() => {
       alert("Enrollment submitted successfully 🎶");
       setLoading(false);
     }, 1200);

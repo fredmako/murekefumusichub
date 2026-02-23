@@ -1,5 +1,6 @@
 import express from "express";
 import { supabase } from "../lib/supabaseClient.js";
+const supabaseAdmin = supabase;
 import { verifyFirebaseToken } from "../middleware/auth.js";
 
 const router = express.Router();
@@ -94,6 +95,7 @@ router.put("/users/:id", verifyFirebaseToken, async (req, res) => {
 router.put("/account", verifyFirebaseToken, async (req, res) => {
   try {
     const { displayName, phone, avatarUrl, email } = req.body;
+    console.log('[update-account] Incoming payload:', { displayName, phone, avatarUrl, email });
     const firebaseUid = req.firebaseDecoded?.uid || req.body.firebaseUid;
     if (!firebaseUid)
       return res.status(400).json({ message: "firebaseUid is required" });
@@ -113,13 +115,14 @@ router.put("/account", verifyFirebaseToken, async (req, res) => {
     };
     if (Object.keys(payload).length === 0)
       return res.status(400).json({ message: "No updatable fields provided" });
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("users")
       .update(payload)
       .eq("id", user.id)
       .select()
       .single();
     if (error) throw error;
+    console.log('[update-account] Updated user row returned from supabase:', data);
     return res.json({ message: "Account updated", user: data });
   } catch (err) {
     console.error("[update-account] Error:", err);

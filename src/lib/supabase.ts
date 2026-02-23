@@ -5,15 +5,8 @@ import { createClient } from "@supabase/supabase-js";
 // Default to the provided project id if environment variable is not set
 // `import.meta.env` is provided by Vite; TypeScript may not know custom keys
 // so cast `import.meta` to `any` to access them safely here.
-const supabaseUrl =
-  (import.meta as any).murekefu_music_hub_SUPABASE_URL ||
-  (import.meta as any).VITE_SUPABASE_URL ||
-  "https://zombaemkymdaxfxbxeci.supabase.co";
-const supabaseAnonKey =
-  (import.meta as any).murekefu_music_hub_SUPABASE_ANON_KEY ||
-  (import.meta as any).VITE_SUPABASE_ANON_KEY ||
-  "sb_publishable_sUVPfXJo9B_EWUcWoC4tbQ_JVAYy_yJ";
-
+const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL;
+const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY;
 const missing = !supabaseUrl || !supabaseAnonKey;
 
 if (missing) {

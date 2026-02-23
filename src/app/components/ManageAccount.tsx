@@ -86,10 +86,16 @@ export function ManageAccount() {
         // Prefer Supabase record if it exists. First try to fetch by firebase UID
         let id: string | null = null;
         try {
-          const existingRes = await fetch(`${base}/users/by-firebase/${uid}`, {
-            method: "GET",
-            headers: { "Content-Type": "application/json" },
-          });
+          const existingRes = await fetch(
+            `${base}/users/by-firebase/${uid}?_ts=${Date.now()}`,
+            {
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json",
+                "Cache-Control": "no-cache",
+              },
+            },
+          );
           if (existingRes.ok) {
             const existingData = await existingRes.json();
             id = existingData?.id;
@@ -123,9 +129,12 @@ export function ManageAccount() {
             console.log(
               "[ManageAccount] No Supabase user found; calling sync-user to create using Firebase data",
             );
-            const syncRes = await fetch(`${base}/sync-user`, {
+            const syncRes = await fetch(`${base}/sync-user?_ts=${Date.now()}`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                "Cache-Control": "no-cache",
+              },
               body: JSON.stringify({
                 firebaseUid: uid,
                 email: firebaseUser?.email,
@@ -176,8 +185,11 @@ export function ManageAccount() {
         // If we obtained id from existing fetch but didn't populate user (shouldn't happen), fetch user by id
         let userRes;
         if (id && !user) {
-          userRes = await fetch(`${base}/users/${id}`, {
-            headers: { "Content-Type": "application/json" },
+          userRes = await fetch(`${base}/users/${id}?_ts=${Date.now()}`, {
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "no-cache",
+            },
           });
         }
         if (userRes) {
@@ -189,46 +201,12 @@ export function ManageAccount() {
           const data = await userRes.json();
           console.log("[ManageAccount] User data fetched from server:", data);
           setSupabaseId(data.id);
-          setLoading(false);
-          return;
           setUser({ ...data, roles: data.roles || [] } as User);
           setDisplayName(data.display_name || "");
           setPhone(data.phone || "");
           setAvatarUrl(data.avatar_url || null);
         }
-        if (!userRes.ok) {
-          const err = await userRes.json().catch(() => ({}));
-          console.error("[ManageAccount] fetch user by id failed:", err);
-          throw new Error(err?.message || "fetch user failed");
-        }
-
-        const data = await userRes.json();
-        console.log("[ManageAccount] User data fetched from server:", data);
-        setSupabaseId(data.id);
-        setUser({
-          ...data,
-          roles: data.roles || [],
-        } as User);
-        setDisplayName(data.display_name || "");
-        setPhone(data.phone || "");
-        setAvatarUrl(data.avatar_url || null);
-        // Initialize request status from server response
-        if (
-          data.roles &&
-          Array.isArray(data.roles) &&
-          data.roles.includes("composer")
-        ) {
-          setRequestStatus("approved");
-        } else if (data.composer_request) {
-          setRequestStatus("pending");
-        } else {
-          setRequestStatus("none");
-        }
-        console.log("[ManageAccount] Form state initialized:", {
-          displayName: data.display_name,
-          phone: data.phone,
-          avatarUrl: data.avatar_url,
-        });
+        setLoading(false);
       } catch (err) {
         console.error("[ManageAccount] Error fetching user:", err);
         toast.error("Failed to load profile");
@@ -243,6 +221,7 @@ export function ManageAccount() {
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
     setAvatarFile(f);
+    // Only create blob URL for LOCAL preview while editing
     if (f) setAvatarUrl(URL.createObjectURL(f));
   };
 
@@ -264,20 +243,24 @@ export function ManageAccount() {
         avatarUrl,
       });
 
-      let finalAvatarUrl = avatarUrl;
+      // IMPORTANT: Start with the real database URL, not blob URL
+      let finalAvatarUrl = user?.avatar_url || null;
 
       if (avatarFile) {
         try {
           console.log("[handleSaveProfile] Uploading avatar...");
-          finalAvatarUrl = await storageService.uploadFile(
+          const uploadedUrl = await storageService.uploadFile(
             "avatars",
             avatarFile,
             supabaseId,
           );
-          console.log("[handleSaveProfile] Avatar uploaded:", finalAvatarUrl);
+          console.log("[handleSaveProfile] Avatar uploaded:", uploadedUrl);
+          // Use the REAL storage URL, not blob URL
+          finalAvatarUrl = uploadedUrl;
         } catch (uploadErr) {
           console.warn("Avatar upload failed (client)", uploadErr);
-          // Continue without avatar
+          // Keep the existing avatar URL if upload fails
+          finalAvatarUrl = user?.avatar_url || null;
         }
       }
       // Send update to server endpoint
@@ -308,6 +291,10 @@ export function ManageAccount() {
 
         const resultData = await res.json();
         console.log("[handleSaveProfile] Server response:", resultData);
+        console.log("[handleSaveProfile] Avatar URL being sent to server:", {
+          finalAvatarUrl,
+          avatarUrlFromState: user?.avatar_url,
+        });
       } catch (srvErr) {
         console.error("[handleSaveProfile] Server endpoint error:", srvErr);
         throw srvErr;
@@ -316,14 +303,58 @@ export function ManageAccount() {
       setAvatarFile(null);
       setIsEditing(false);
 
-      // Update local state
-      if (user) {
-        setUser({
-          ...user,
-          display_name: displayName || null,
-          phone: phone || null,
-          avatar_url: finalAvatarUrl || null,
+      // Refetch user data from server to get the real persisted avatar URL
+      try {
+        const base =
+          (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
+        const refetchRes = await fetch(`${base}/users/${supabaseId}`, {
+          headers: { "Content-Type": "application/json" },
         });
+        if (refetchRes.ok) {
+          const freshData = await refetchRes.json();
+          console.log("[handleSaveProfile] Refetched user data:", freshData);
+          console.log(
+            "[handleSaveProfile] avatar_url from server:",
+            freshData.avatar_url,
+          );
+          console.log(
+            "[handleSaveProfile] all keys in freshData:",
+            Object.keys(freshData),
+          );
+          setUser({
+            ...freshData,
+            roles: freshData.roles || [],
+          } as User);
+          setDisplayName(freshData.display_name || "");
+          setPhone(freshData.phone || "");
+          setAvatarUrl(freshData.avatar_url || null);
+        } else {
+          // Fallback: Update with local state
+          if (user) {
+            setUser({
+              ...user,
+              display_name: displayName || null,
+              phone: phone || null,
+              avatar_url: finalAvatarUrl || null,
+            });
+          }
+          setAvatarUrl(finalAvatarUrl || null);
+        }
+      } catch (refetchErr) {
+        console.warn(
+          "[handleSaveProfile] Refetch failed, using local state:",
+          refetchErr,
+        );
+        // Fallback: Update with local state
+        if (user) {
+          setUser({
+            ...user,
+            display_name: displayName || null,
+            phone: phone || null,
+            avatar_url: finalAvatarUrl || null,
+          });
+        }
+        setAvatarUrl(finalAvatarUrl || null);
       }
 
       toast.success("✅ Profile updated successfully");
@@ -687,8 +718,10 @@ export function ManageAccount() {
                         "[ManageAccount] Cancel button clicked, resetting form",
                       );
                       setIsEditing(false);
+                      // Reset to original values from database
                       setDisplayName(user?.display_name || "");
                       setPhone(user?.phone || "");
+                      // Important: Use database URL, not blob URL
                       setAvatarUrl(user?.avatar_url || null);
                       setAvatarFile(null);
                     }}

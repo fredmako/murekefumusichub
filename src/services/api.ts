@@ -61,8 +61,9 @@ export async function apiRequest<T>(
 export const authService = {
   /**
    * Sync user with backend after Firebase authentication
+   * All users default to 'user' role. Request additional roles via ManageAccount.
    */
-  async syncUser(firebaseUser: FirebaseUser, role?: string | null) {
+  async syncUser(firebaseUser: FirebaseUser) {
     try {
       // Prefer server-side sync to avoid client RLS issues
       // Check if the user already exists in Supabase first
@@ -80,7 +81,7 @@ export const authService = {
 
       let serverResult: any = null;
       if (!existingUser) {
-        // Create new user via server-side endpoint which uses a service role key
+        // Create new user via server-side endpoint with default 'user' role
         try {
           const result: any = await apiRequest("/sync-user", {
             method: "POST",
@@ -90,7 +91,7 @@ export const authService = {
               displayName: firebaseUser.displayName,
               phone: firebaseUser.phoneNumber,
               avatarUrl: firebaseUser.photoURL,
-              role,
+              role: "user",
             }),
           });
 
@@ -554,7 +555,8 @@ export const reportService = {
 // ============================================
 export const storageService = {
   /**
-   * Upload file to Supabase Storage
+   * Upload file to Supabase Storage via server endpoint
+   * Uses server-side upload with service role to bypass RLS policies
    */
   async uploadFile(
     bucket: "compositions" | "thumbnails" | "avatars",
@@ -562,45 +564,42 @@ export const storageService = {
     userId: string,
   ): Promise<string> {
     try {
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${userId}/${Date.now()}.${fileExt}`;
-
-      const { data, error } = await supabase.storage
-        .from(bucket)
-        .upload(fileName, file, {
-          cacheControl: "3600",
-          upsert: false,
-        });
-
-      if (error) {
-        console.error(`Error uploading to storage bucket ${bucket}:`, error);
-        throw new Error(
-          `Storage upload failed for bucket ${bucket}: ${error.message || String(error)}`,
-        );
+      const token = await getIdToken();
+      if (!token) {
+        throw new Error("No authentication token available");
       }
 
-      if (!data || !data.path) {
-        throw new Error("Storage upload returned no path");
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const url = `${API_BASE_URL.replace(/\/+$/, "")}/upload/${bucket}`;
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        let errorMessage = `Upload failed with status ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch (e) {
+          // Use default error message
+        }
+        throw new Error(errorMessage);
       }
 
-      // Attempt to build a public URL; supabase client versions vary in the returned field name
-      try {
-        const getUrlRes: any = supabase.storage
-          .from(bucket)
-          .getPublicUrl(data.path);
-        const publicUrl =
-          getUrlRes?.data?.publicUrl ||
-          getUrlRes?.publicURL ||
-          getUrlRes?.data?.publicURL ||
-          "";
-        return publicUrl || data.path;
-      } catch (e) {
-        console.warn(
-          "Could not derive public URL from storage client, returning path instead",
-          e,
-        );
-        return data.path;
+      const result: any = await response.json();
+
+      if (!result.success || !result.url) {
+        throw new Error("Server upload returned no URL");
       }
+
+      return result.url;
     } catch (error) {
       console.error("Error uploading file:", error);
       throw error;

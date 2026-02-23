@@ -54,7 +54,7 @@ export function BuyerDashboard({
   onRemoveFromCart,
 }: BuyerDashboardProps) {
   const navigate = useNavigate();
-  const { firebaseUser, setUserRole } = useAuth();
+  const { firebaseUser } = useAuth();
   const [activeTab, setActiveTab] = useState("library");
   const [loading, setLoading] = useState(true);
   const [purchasedCompositions, setPurchasedCompositions] = useState<any[]>([]);
@@ -111,18 +111,11 @@ export function BuyerDashboard({
   );
 
   const handleCheckout = () => {
-    (async () => {
-      try {
-        if (setUserRole && firebaseUser) await setUserRole("buyer");
-      } catch (err) {
-        console.warn("Failed to set buyer role after purchase:", err);
-      }
-      toast.success(
-        "Purchase successful! Your compositions are now in your library.",
-      );
-      onClearCart();
-      setActiveTab("library");
-    })();
+    toast.success(
+      "Purchase successful! Your compositions are now in your library.",
+    );
+    onClearCart();
+    setActiveTab("library");
   };
 
   const handleRemoveItem = (compositionId: string) => {

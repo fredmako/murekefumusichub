@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Button } from "../components/ui/button";
 import { X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -8,14 +8,11 @@ type ShowBannerProps = {
 
 const ShowBanner: React.FC<ShowBannerProps> = ({ onAccept }) => {
   const navigate = useNavigate();
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
+  const [visible, setVisible] = useState(() => {
+    // Initialize based on localStorage on first render
     const accepted = localStorage.getItem("privacyAccepted");
-    if (!accepted) {
-      setVisible(true);
-    }
-  }, []);
+    return !accepted; // Show banner if NOT accepted
+  });
 
   const handleAccept = () => {
     localStorage.setItem("privacyAccepted", "true");
@@ -24,6 +21,7 @@ const ShowBanner: React.FC<ShowBannerProps> = ({ onAccept }) => {
   };
 
   const handleClose = () => {
+    localStorage.setItem("privacyAccepted", "false");
     setVisible(false);
   };
 
@@ -33,17 +31,16 @@ const ShowBanner: React.FC<ShowBannerProps> = ({ onAccept }) => {
     <div className="fixed bottom-0 left-0 right-0 z-50 animate-slideUp">
       <div className="bg-gray-900 text-white px-6 py-4 shadow-lg">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-
           {/* Text */}
           <p className="text-sm md:text-base text-center md:text-left">
-            We use cookies and data to improve your experience.
-            Read our{" "}
+            We use cookies and data to improve your experience. Read our{" "}
             <span
               onClick={() => navigate("/privacy-policy")}
               className="underline cursor-pointer hover:text-purple-400"
             >
               Privacy Policy
-            </span>.
+            </span>
+            .
           </p>
 
           {/* Buttons */}

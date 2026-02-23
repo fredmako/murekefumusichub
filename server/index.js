@@ -1,6 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
+import multer from "multer";
 import { supabase } from "./lib/supabaseClient.js";
 import admin from "./lib/firebaseAdmin.js";
 import { verifyFirebaseToken, adminOnly } from "./middleware/auth.js";
@@ -11,6 +12,7 @@ import usersRouter from "./routes/users.js";
 import navbarRouter from "./routes/navbar.js";
 import purchasesRouter from "./routes/purchases.js";
 import categoriesRouter from "./routes/categories.js";
+import uploadsRouter from "./routes/uploads.js";
 
 // Load environment variables from .env file
 dotenv.config();
@@ -20,6 +22,12 @@ const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(express.json());
+
+// Configure multer for file uploads (20MB limit)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+});
 
 // Configure CORS
 // Allow configuring allowed origin via environment variable `ALLOWED_ORIGIN`.
@@ -72,6 +80,7 @@ app.use("/api/user", navbarRouter);
 app.use("/api/compositions", compositionsRouter);
 app.use("/api/purchases", purchasesRouter);
 app.use("/api/categories", categoriesRouter);
+app.use("/api/upload", upload.single("file"), uploadsRouter);
 
 /**
  * Health check endpoint
