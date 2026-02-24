@@ -9,16 +9,41 @@ router.get("/roles/:firebaseUid", async (req, res) => {
     const { firebaseUid } = req.params;
     if (!firebaseUid)
       return res.status(400).json({ error: "Firebase UID is required" });
-    const { data, error } = await supabase
+
+    // Get user by firebase UID
+    const { data: userData, error: userError } = await supabase
       .from("users")
-      .select(`id, firebase_uid, email, user_roles ( roles (name) )`)
+      .select("id, firebase_uid, email")
       .eq("firebase_uid", firebaseUid)
       .maybeSingle();
-    if (error) throw error;
-    if (!data) return res.json([]);
-    const roleNames =
-      data.user_roles?.map((r) => r.roles?.name).filter(Boolean) ?? [];
-    return res.json(roleNames || []);
+
+    if (userError) throw userError;
+    if (!userData) return res.json([]);
+
+    const roles = [];
+
+    // Check if user is a composer
+    const { data: composerData } = await supabase
+      .from("composers")
+      .select("id")
+      .eq("user_id", userData.id)
+      .maybeSingle();
+
+    if (composerData) {
+      roles.push("composer");
+    }
+
+    // Check if user is admin via email
+    const bypassList = (process.env.ADMIN_IDENTIFIERS || "")
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (userData.email && bypassList.includes(userData.email.toLowerCase())) {
+      roles.push("admin");
+    }
+
+    return res.json(roles);
   } catch (err) {
     console.error("[navbar-user-roles] Error:", err);
     return res.status(500).json({ error: err.message });

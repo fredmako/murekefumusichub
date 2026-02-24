@@ -194,10 +194,21 @@ export async function getUserFiles(bucket?: StorageBucket): Promise<any[]> {
   }
 
   try {
+    // First get the user's Supabase UUID
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("firebase_uid", user.uid)
+      .maybeSingle();
+
+    if (userError || !userData) {
+      throw new Error("User profile not found");
+    }
+
     let query = supabase
       .from("file_uploads")
       .select("*")
-      .eq("user_id", user.uid);
+      .eq("user_id", userData.id);
 
     if (bucket) {
       query = query.eq("bucket", bucket);

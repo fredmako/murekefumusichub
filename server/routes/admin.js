@@ -102,7 +102,7 @@ router.get("/composer-requests", async (req, res) => {
     const { data, error } = await supabase
       .from("role_requests")
       .select(
-        `id, user_id, requested_role, status, requested_at, users!inner(id, email, display_name, roles:user_roles(roles(name)))`,
+        `id, user_id, requested_role, status, requested_at, users!role_requests_user_id_fkey(id, email, display_name, roles:user_roles(roles(name)))`,
       )
       .eq("requested_role", "composer")
       .order("requested_at", { ascending: false });
@@ -144,6 +144,12 @@ router.get("/stats", async (req, res) => {
       (sum, p) => sum + (parseFloat(p.price_paid) || 0),
       0,
     );
+    console.log("[admin-stats] Stats fetched:", {
+      totalUsers,
+      totalCompositions,
+      purchasesCount: purchases?.length,
+      totalRevenue,
+    });
     return res.json({
       totalUsers: totalUsers || 0,
       totalCompositions: totalCompositions || 0,
@@ -152,6 +158,46 @@ router.get("/stats", async (req, res) => {
     });
   } catch (err) {
     console.error("[admin-stats] Error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Debug endpoint to check all compositions in database
+router.get("/debug/compositions", async (req, res) => {
+  try {
+    console.log("[debug-compositions] Querying compositions...");
+
+    // Query without RLS restrictions
+    const {
+      data: allCompositions,
+      error,
+      count,
+    } = await supabase
+      .from("compositions")
+      .select("id, title, composer_id, deleted, created_at", {
+        count: "exact",
+      });
+
+    console.log("[debug-compositions] Query result:", {
+      error,
+      count,
+      compositions: allCompositions?.length || 0,
+      sample: allCompositions?.slice(0, 3),
+    });
+
+    if (error) {
+      return res.status(500).json({
+        error: error.message,
+        details: error,
+      });
+    }
+
+    return res.json({
+      total: count || 0,
+      data: allCompositions || [],
+    });
+  } catch (err) {
+    console.error("[debug-compositions] Error:", err);
     return res.status(500).json({ error: err.message });
   }
 });

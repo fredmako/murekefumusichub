@@ -38,7 +38,6 @@ interface User {
   firebase_uid: string;
   email: string;
   display_name: string | null;
-  phone: string | null;
   avatar_url: string | null;
   roles: string[];
   composer_request?: boolean;
@@ -63,9 +62,28 @@ export function ManageAccount() {
 
   // Form state
   const [displayName, setDisplayName] = useState<string>("");
-  const [phone, setPhone] = useState<string>("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+
+  // Redirect based on user role
+  useEffect(() => {
+    if (!loading && appUser) {
+      // Check if user is a composer - redirect to composer dashboard
+      if (appUser.isComposer) {
+        setTimeout(() => navigate("/composer"), 500);
+        return;
+      }
+
+      // Check if user is an admin - redirect to admin dashboard
+      if (appUser.roles?.includes("admin")) {
+        setTimeout(() => navigate("/admin"), 500);
+        return;
+      }
+
+      // Otherwise default to buyer dashboard or stay on manage account
+      // Users can stay on manage account if they want to set up profile first
+    }
+  }, [loading, appUser, navigate]);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -110,7 +128,6 @@ export function ManageAccount() {
               roles: existingData.roles || [],
             } as User);
             setDisplayName(existingData.display_name || "");
-            setPhone(existingData.phone || "");
             setAvatarUrl(existingData.avatar_url || null);
             // initialize request status
             if (
@@ -139,7 +156,6 @@ export function ManageAccount() {
                 firebaseUid: uid,
                 email: firebaseUser?.email,
                 displayName: firebaseUser?.displayName,
-                phone: firebaseUser?.phoneNumber,
                 avatarUrl: firebaseUser?.photoURL,
               }),
             });
@@ -161,7 +177,6 @@ export function ManageAccount() {
             setDisplayName(
               syncData.display_name || firebaseUser?.displayName || "",
             );
-            setPhone(syncData.phone || firebaseUser?.phoneNumber || "");
             setAvatarUrl(syncData.avatar_url || firebaseUser?.photoURL || null);
             if (
               syncData.roles &&
@@ -203,7 +218,6 @@ export function ManageAccount() {
           setSupabaseId(data.id);
           setUser({ ...data, roles: data.roles || [] } as User);
           setDisplayName(data.display_name || "");
-          setPhone(data.phone || "");
           setAvatarUrl(data.avatar_url || null);
         }
         setLoading(false);
@@ -239,7 +253,6 @@ export function ManageAccount() {
       );
       console.log("[handleSaveProfile] Data:", {
         displayName,
-        phone,
         avatarUrl,
       });
 
@@ -280,7 +293,6 @@ export function ManageAccount() {
             firebaseUid: firebaseUser?.uid,
             email: firebaseUser?.email,
             displayName,
-            phone,
             avatarUrl: finalAvatarUrl, // always Supabase URL or null
           }),
         });
@@ -328,7 +340,6 @@ export function ManageAccount() {
             roles: freshData.roles || [],
           } as User);
           setDisplayName(freshData.display_name || "");
-          setPhone(freshData.phone || "");
           setAvatarUrl(freshData.avatar_url || null);
         } else {
           // Fallback: Update with local state
@@ -336,7 +347,6 @@ export function ManageAccount() {
             setUser({
               ...user,
               display_name: displayName || null,
-              phone: phone || null,
               avatar_url: finalAvatarUrl || null,
             });
           }
@@ -352,7 +362,6 @@ export function ManageAccount() {
           setUser({
             ...user,
             display_name: displayName || null,
-            phone: phone || null,
             avatar_url: finalAvatarUrl || null,
           });
         }
@@ -561,18 +570,6 @@ export function ManageAccount() {
                       </p>
                     </div>
 
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">
-                        <div className="w-1 h-4 bg-purple-500 rounded-full"></div>
-                        Phone
-                      </div>
-                      <p className="text-lg font-medium text-gray-900 pl-3">
-                        {user?.phone || (
-                          <span className="text-gray-400 italic">Not set</span>
-                        )}
-                      </p>
-                    </div>
-
                     <div className="space-y-2 sm:col-span-2">
                       <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">
                         <div className="w-1 h-4 bg-pink-500 rounded-full"></div>
@@ -681,22 +678,6 @@ export function ManageAccount() {
                       className="h-12 text-base"
                     />
                   </div>
-
-                  <div className="space-y-3">
-                    <Label
-                      htmlFor="phone"
-                      className="text-sm font-semibold text-gray-700"
-                    >
-                      Phone Number
-                    </Label>
-                    <Input
-                      id="phone"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="e.g., +254 712 345 678"
-                      className="h-12 text-base"
-                    />
-                  </div>
                 </div>
 
                 {/* Action Buttons */}
@@ -722,7 +703,6 @@ export function ManageAccount() {
                       setIsEditing(false);
                       // Reset to original values from database
                       setDisplayName(user?.display_name || "");
-                      setPhone(user?.phone || "");
                       // Important: Use database URL, not blob URL
                       setAvatarUrl(user?.avatar_url || null);
                       setAvatarFile(null);

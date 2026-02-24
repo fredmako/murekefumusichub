@@ -150,7 +150,6 @@ router.post("/sync-user", async (req, res) => {
         .update({
           email,
           display_name: displayName || null,
-          phone: phone || null,
           avatar_url: avatarUrl || null,
         })
         .eq("id", existingUser.id)
@@ -165,9 +164,7 @@ router.post("/sync-user", async (req, res) => {
           firebase_uid: firebaseUid,
           email,
           display_name: displayName || null,
-          phone: phone || null,
           avatar_url: avatarUrl || null,
-          is_active: true,
           created_at: new Date().toISOString(),
         })
         .select()
@@ -224,19 +221,40 @@ router.post("/sync-user", async (req, res) => {
       }
     }
 
-    const { data: userWithRoles } = await supabase
+    const { data: userData } = await supabase
       .from("users")
-      .select(
-        `id, firebase_uid, email, display_name, phone, avatar_url, is_active, created_at, user_roles ( roles ( name ) )`,
-      )
+      .select(`id, firebase_uid, email, display_name, avatar_url, created_at`)
       .eq("id", userId)
       .maybeSingle();
-    const roles = (userWithRoles?.user_roles || [])
-      .map((ur) => ur.roles?.name)
-      .filter(Boolean);
+
+    // Determine roles: first check `admin_emails` table, then `composers` by user_id
+    const roles = [];
+
+    // Check if user is admin via admin_emails table in Supabase
+    try {
+      const { data: adminEmail } = await supabase
+        .from("admin_emails")
+        .select("id")
+        .eq("email", userData.email)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (adminEmail) {
+        roles.push("admin");
+      } else {
+        // Not an admin; check if user has composer record
+        const { data: composer } = await supabase
+          .from("composers")
+          .select("id")
+          .eq("user_id", userData.id)
+          .maybeSingle();
+        if (composer) roles.push("composer");
+      }
+    } catch (e) {
+      console.warn("[sync-user] role detection failed:", e?.message || e);
+    }
 
     return res.status(isNewUser ? 201 : 200).json({
-      ...userWithRoles,
+      ...userData,
       roles,
       message: isNewUser
         ? "User created and synced successfully"

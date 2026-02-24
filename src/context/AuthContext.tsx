@@ -18,6 +18,7 @@ import {
 } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { auth } from "../lib/firebase"; // <-- import auth from firebase.ts
+import { supabase } from "../lib/supabase"; // <-- import supabase
 import { navbarService } from "@/services/navbarService";
 import { authService } from "@/services/api";
 
@@ -26,6 +27,8 @@ interface AppUser {
   email: string | null;
   displayName: string | null;
   roles: string[];
+  isComposer?: boolean;
+  supabaseId?: string; // UUID from Supabase users table
 }
 
 interface AuthContextType {
@@ -82,6 +85,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // Check if user is a composer by querying composers table
+  const checkComposerStatus = async (
+    supabaseUserId: string,
+  ): Promise<boolean> => {
+    try {
+      const { data, error } = await supabase
+        .from("composers")
+        .select("id")
+        .eq("user_id", supabaseUserId)
+        .maybeSingle();
+
+      if (error) {
+        console.warn("Failed to check composer status:", error);
+        return false;
+      }
+      return !!data;
+    } catch (err) {
+      console.warn("Error checking composer status:", err);
+      return false;
+    }
+  };
+
   // Centralized sign-in with email/password
   const signInWithEmail = async (email: string, password: string) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
@@ -90,15 +115,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // Sync to backend and fetch roles (all users default to 'user' role)
     const synced = await authService.syncUser(user);
+
+    // Check composer status
+    const isComposer = synced?.id
+      ? await checkComposerStatus(synced.id)
+      : false;
+
     setAppUser({
       uid: user.uid,
       email: user.email,
       displayName: user.displayName,
       roles: synced?.roles || [],
+      isComposer,
+      supabaseId: synced?.id,
     });
 
     setIsFirstLogin(true);
-    navigate("/manage-account");
   };
 
   // Centralized sign-up
@@ -108,15 +140,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setFirebaseUser(user);
 
     const synced = await authService.syncUser(user);
+
+    const isComposer = synced?.id
+      ? await checkComposerStatus(synced.id)
+      : false;
+
     setAppUser({
       uid: user.uid,
       email: user.email,
       displayName: user.displayName,
       roles: synced?.roles || [],
+      isComposer,
+      supabaseId: synced?.id,
     });
 
     setIsFirstLogin(true);
-    navigate("/manage-account");
   };
 
   // Centralized Google sign-in
@@ -128,15 +166,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setFirebaseUser(user);
 
       const synced = await authService.syncUser(user);
+
+      const isComposer = synced?.id
+        ? await checkComposerStatus(synced.id)
+        : false;
+
       setAppUser({
         uid: user.uid,
         email: user.email,
         displayName: user.displayName,
         roles: synced?.roles || [],
+        isComposer,
+        supabaseId: synced?.id,
       });
 
       setIsFirstLogin(true);
-      navigate("/manage-account");
     } catch (err: any) {
       // If popup blocked, try redirect
       if (
@@ -157,11 +201,49 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (user) {
         try {
-          // Fetch complete Supabase user profile (includes display_name, phone, avatar_url, etc.)
-          const supabaseUser = await fetchSupabaseUserProfile(user.uid);
+          // First, try to fetch complete Supabase user profile
+          let supabaseUser = await fetchSupabaseUserProfile(user.uid);
+
+          // If user doesn't exist in Supabase, sync them first
+          if (!supabaseUser) {
+            console.log(
+              "[AuthContext] User not found in Supabase, syncing with backend...",
+            );
+            const base =
+              (import.meta as any).VITE_API_BASE_URL ||
+              "http://localhost:3001/api";
+            const syncRes = await fetch(`${base}/sync-user`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                firebaseUid: user.uid,
+                email: user.email,
+                displayName: user.displayName,
+                avatarUrl: user.photoURL,
+              }),
+            });
+
+            if (syncRes.ok) {
+              supabaseUser = await syncRes.json();
+              console.log(
+                "[AuthContext] User synced successfully:",
+                supabaseUser,
+              );
+            } else {
+              const errData = await syncRes.json().catch(() => ({}));
+              console.warn("[AuthContext] Sync failed:", errData);
+            }
+          }
 
           // Fetch roles from server
           const roles = (await navbarService.fetchUserRoles(user.uid)) || [];
+
+          // Check if user is a composer
+          const isComposer = supabaseUser
+            ? await checkComposerStatus(supabaseUser.id)
+            : false;
 
           // Use Supabase displayName if available, otherwise fall back to Firebase displayName
           setAppUser({
@@ -169,6 +251,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             email: supabaseUser?.email || user.email,
             displayName: supabaseUser?.display_name || user.displayName,
             roles,
+            isComposer,
+            supabaseId: supabaseUser?.id,
           });
         } catch (err) {
           console.warn(

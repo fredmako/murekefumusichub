@@ -119,15 +119,7 @@ export const authService = {
       // Fetch complete user data with roles
       const { data: userData, error: fetchError } = await supabase
         .from("users")
-        .select(
-          `
-          *,
-          user_roles(
-            role_id,
-            roles(name)
-          )
-        `,
-        )
+        .select("id, firebase_uid, email, display_name, avatar_url, created_at")
         .eq("id", userId)
         .maybeSingle();
 
@@ -152,14 +144,28 @@ export const authService = {
         throw new Error("User data not found after sync");
       }
 
+      // Determine roles: check composers table (admin check is done on backend)
+      const roles: string[] = [];
+
+      // Check if user has composer record
+      const { data: composer } = await supabase
+        .from("composers")
+        .select("id")
+        .eq("user_id", userData.id)
+        .maybeSingle();
+      if (composer) roles.push("composer");
+
+      // Include admin role if in the serverResult (backend already checked)
+      if (serverResult?.roles?.includes("admin")) {
+        roles.push("admin");
+      }
+
       return {
         id: userData.id,
         firebaseUid: userData.firebase_uid,
         email: userData.email,
         displayName: userData.display_name,
-        roles: (userData.user_roles || [])
-          .map((ur: any) => ur.roles?.name)
-          .filter(Boolean),
+        roles: roles.length > 0 ? roles : serverResult?.roles || [],
       };
     } catch (error) {
       console.error("Error syncing user:", error);
@@ -175,9 +181,9 @@ export const authService = {
     try {
       if (!firebaseUid) return null;
 
-      const { data, error } = await supabase
+      const { data: userData, error } = await supabase
         .from("users")
-        .select("user_roles(roles(name))")
+        .select("id")
         .eq("firebase_uid", firebaseUid)
         .maybeSingle();
 
@@ -186,12 +192,19 @@ export const authService = {
         return null;
       }
 
-      if (!data || !data.user_roles) return null;
+      if (!userData) return null;
 
-      const roles = (data.user_roles as any[])
-        .map((ur) => ur.roles?.name)
-        .filter(Boolean);
-      return roles.length > 0 ? (roles[0] as string) : null;
+      // Check if user has composer role
+      const { data: composer } = await supabase
+        .from("composers")
+        .select("id")
+        .eq("user_id", userData.id)
+        .maybeSingle();
+      if (composer) return "composer";
+
+      // For admin, we rely on backend verification via ADMIN_IDENTIFIERS
+      // Not checking here to avoid circular dependencies
+      return null;
     } catch (err) {
       console.warn("getUserRole failed:", err);
       return null;

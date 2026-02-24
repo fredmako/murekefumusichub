@@ -5,13 +5,23 @@ import { ReactNode } from "node_modules/react-resizable-panels/dist/declarations
 export type UserRole = "buyer" | "composer" | "admin";
 
 export interface Composition {
-  voiceParts: any;
-  difficulty: ReactNode;
+  voiceParts?: any;
+  difficulty?: ReactNode;
   id: string;
   title: string;
   composerName: string;
   price: number;
   category?: string;
+  description?: string;
+  duration?: string;
+  language?: string;
+  accompaniment?: string;
+  pdfUrl?: string;
+  createdAt?: string;
+  stats?: {
+    views: number;
+    purchases: number;
+  };
 }
 
 export interface CartItem {

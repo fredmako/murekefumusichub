@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { User } from "firebase/auth";
 import {
   Plus,
   DollarSign,
@@ -36,7 +37,6 @@ import {
 } from "@/app/components/ui/dialog";
 import { Badge } from "@/app/components/ui/badge";
 import { UploadComposition } from "@/app/components/UploadComposition";
-import { User } from "@/app/App";
 import { auth } from "@/lib/firebase";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -75,75 +75,97 @@ export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
     loading: true,
   });
 
-  useEffect(() => {
-    const fetchComposerData = async () => {
-      try {
-        const firebaseUserLocal = firebaseUser || auth.currentUser;
-        if (!firebaseUserLocal) {
-          toast.error("Not authenticated");
-          return;
-        }
-
-        // Get composer record by firebase UID
-        const { data: composerData, error: composerError } = await supabase
-          .from("composers")
-          .select("id")
-          .eq("user_id", firebaseUserLocal.uid)
-          .single();
-
-        if (composerError || !composerData) {
-          toast.error("Composer profile not found");
-          setStats((prev) => ({ ...prev, loading: false }));
-          return;
-        }
-
-        // Get composer's compositions with stats
-        const { data: compositions, error: compError } = await supabase
-          .from("compositions")
-          .select(
-            `
-            id,
-            title,
-            description,
-            price,
-            created_at,
-            is_published,
-            composition_stats(views, purchases)
-          `,
-          )
-          .eq("composer_id", composerData.id)
-          .eq("deleted", false);
-
-        if (compError) throw compError;
-
-        // Get total sales and revenue
-        const { data: purchases, error: purchaseError } = await supabase
-          .from("purchases")
-          .select("price_paid")
-          .in("composition_id", compositions?.map((c) => c.id) || [])
-          .eq("is_active", true);
-
-        if (purchaseError) throw purchaseError;
-
-        const totalRevenue =
-          purchases?.reduce((sum, p) => sum + (p.price_paid || 0), 0) || 0;
-        const totalSales = purchases?.length || 0;
-
-        setStats({
-          composerCompositions: compositions || [],
-          totalRevenue,
-          totalSales,
-          loading: false,
-        });
-      } catch (error) {
-        console.error("Error fetching composer data:", error);
-        toast.error("Failed to load dashboard");
-        setStats((prev) => ({ ...prev, loading: false }));
+  // Function to fetch composer data
+  const fetchComposerData = async () => {
+    try {
+      const firebaseUserLocal = firebaseUser || auth.currentUser;
+      if (!firebaseUserLocal) {
+        toast.error("Not authenticated");
+        return;
       }
-    };
 
+      // Step 1: Get user's UUID from Firebase UID
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("id")
+        .eq("firebase_uid", firebaseUserLocal.uid)
+        .maybeSingle();
+
+      if (userError || !userData) {
+        toast.error("User profile not found");
+        setStats((prev) => ({ ...prev, loading: false }));
+        return;
+      }
+
+      // Step 2: Get composer record by user UUID
+      const { data: composerData, error: composerError } = await supabase
+        .from("composers")
+        .select("id")
+        .eq("user_id", userData.id)
+        .single();
+
+      if (composerError || !composerData) {
+        toast.error("Composer profile not found");
+        setStats((prev) => ({ ...prev, loading: false }));
+        return;
+      }
+
+      // Get composer's compositions with stats
+      const { data: compositions, error: compError } = await supabase
+        .from("compositions")
+        .select(
+          `
+          id,
+          title,
+          description,
+          price,
+          created_at,
+          is_published,
+          composition_stats(views, purchases)
+        `,
+        )
+        .eq("composer_id", composerData.id)
+        .eq("deleted", false);
+
+      if (compError) throw compError;
+
+      // Get total sales and revenue
+      const { data: purchases, error: purchaseError } = await supabase
+        .from("purchases")
+        .select("price_paid")
+        .in("composition_id", compositions?.map((c) => c.id) || [])
+        .eq("is_active", true);
+
+      if (purchaseError) throw purchaseError;
+
+      const totalRevenue =
+        purchases?.reduce((sum, p) => sum + (p.price_paid || 0), 0) || 0;
+      const totalSales = purchases?.length || 0;
+
+      setStats({
+        composerCompositions: compositions || [],
+        totalRevenue,
+        totalSales,
+        loading: false,
+      });
+    } catch (error) {
+      console.error("Error fetching composer data:", error);
+      toast.error("Failed to load dashboard");
+      setStats((prev) => ({ ...prev, loading: false }));
+    }
+  };
+
+  // Fetch data on component mount
+  useEffect(() => {
     fetchComposerData();
-  }, []);
+  }, [firebaseUser]);
+
+  // Refetch data when upload dialog closes (after successful upload)
+  useEffect(() => {
+    if (!isUploadOpen) {
+      fetchComposerData();
+    }
+  }, [isUploadOpen]);
 
   // Redirect to home on logout
   useEffect(() => {
@@ -153,18 +175,7 @@ export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
     }
   }, [firebaseUser]);
 
-  const { composerCompositions, totalRevenue, totalSales } = stats;
-
-  // Get composition stats
-  const compositionStats = composerCompositions.map((comp) => {
-    const sales = mockPurchases.filter((p) => p.compositionId === comp.id);
-    const revenue = sales.reduce((sum, sale) => sum + sale.price, 0);
-    return {
-      ...comp,
-      salesCount: sales.length,
-      revenue,
-    };
-  });
+  const { composerCompositions, totalRevenue, totalSales, loading } = stats;
 
   return (
     <div>
@@ -258,7 +269,12 @@ export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {compositionStats.length === 0 ? (
+          {loading ? (
+            <div className="text-center py-12">
+              <Loader className="size-8 text-gray-400 mx-auto mb-4 animate-spin" />
+              <p className="text-gray-500">Loading your compositions...</p>
+            </div>
+          ) : composerCompositions.length === 0 ? (
             <div className="text-center py-12">
               <Music className="size-12 text-gray-300 mx-auto mb-4" />
               <p className="text-gray-500 mb-4">
@@ -274,53 +290,63 @@ export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Title</TableHead>
-                  <TableHead>Difficulty</TableHead>
                   <TableHead>Price</TableHead>
-                  <TableHead className="text-right">Sales</TableHead>
-                  <TableHead className="text-right">Revenue</TableHead>
+                  <TableHead className="text-right">Views</TableHead>
+                  <TableHead className="text-right">Purchases</TableHead>
                   <TableHead>Date Added</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {compositionStats.map((comp) => (
-                  <TableRow key={comp.id}>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium">{comp.title}</p>
-                        <p className="text-sm text-gray-500">
-                          {comp.voiceParts.join(", ")}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{comp.difficulty}</Badge>
-                    </TableCell>
-                    <TableCell>${comp.price.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">
-                      {comp.salesCount}
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      ${comp.revenue.toFixed(2)}
-                    </TableCell>
-                    <TableCell>
-                      {new Date(comp.dateAdded).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button variant="ghost" size="icon">
-                          <Eye className="size-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon">
-                          <Edit className="size-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon">
-                          <Trash2 className="size-4 text-red-600" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {composerCompositions.map((comp) => {
+                  const compStats = comp.composition_stats?.[0] || {
+                    views: 0,
+                    purchases: 0,
+                  };
+                  return (
+                    <TableRow key={comp.id}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{comp.title}</p>
+                          <p className="text-sm text-gray-500">
+                            {comp.description?.substring(0, 50)}...
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>${comp.price.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">
+                        {compStats.views}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {compStats.purchases}
+                      </TableCell>
+                      <TableCell>
+                        {new Date(comp.created_at).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={comp.is_published ? "default" : "secondary"}
+                        >
+                          {comp.is_published ? "Published" : "Draft"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button variant="ghost" size="icon" title="View">
+                            <Eye className="size-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" title="Edit">
+                            <Edit className="size-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" title="Delete">
+                            <Trash2 className="size-4 text-red-600" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}

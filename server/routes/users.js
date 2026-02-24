@@ -28,16 +28,29 @@ router.get("/users/:id", async (req, res) => {
 
     const { data, error } = await supabase
       .from("users")
-      .select(
-        `id, firebase_uid, email, display_name, phone, avatar_url, is_active, created_at, user_roles ( roles ( name ) )`,
-      )
+      .select(`id, firebase_uid, email, display_name, avatar_url, created_at`)
       .eq("id", id)
       .maybeSingle();
     if (error) throw error;
     if (!data) return res.status(404).json({ message: "User not found" });
-    const roles = (data.user_roles || [])
-      .map((r) => r.roles?.name)
-      .filter(Boolean);
+
+    // Determine roles: check composers table + admin email list
+    const roles = [];
+
+    // Check if user has composer record
+    const { data: composer } = await supabase
+      .from("composers")
+      .select("id")
+      .eq("user_id", data.id)
+      .maybeSingle();
+    if (composer) roles.push("composer");
+
+    // Check if user is admin (via email)
+    const adminEmails = (process.env.ADMIN_IDENTIFIERS || "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase());
+    if (adminEmails.includes(data.email?.toLowerCase())) roles.push("admin");
+
     return res.json({ ...data, roles });
   } catch (err) {
     console.error("[get-user] Error:", err);
@@ -56,18 +69,30 @@ router.get("/users/by-firebase/:firebaseUid", async (req, res) => {
 
     const { data, error } = await supabase
       .from("users")
-      .select(
-        `id, firebase_uid, email, display_name, phone, avatar_url, is_active, created_at, user_roles ( roles ( name ) )`,
-      )
+      .select(`id, firebase_uid, email, display_name, avatar_url, created_at`)
       .eq("firebase_uid", firebaseUid)
       .maybeSingle();
 
     if (error) throw error;
     if (!data) return res.status(404).json({ message: "User not found" });
 
-    const roles = (data.user_roles || [])
-      .map((r) => r.roles?.name)
-      .filter(Boolean);
+    // Determine roles: check composers table + admin email list
+    const roles = [];
+
+    // Check if user has composer record
+    const { data: composer } = await supabase
+      .from("composers")
+      .select("id")
+      .eq("user_id", data.id)
+      .maybeSingle();
+    if (composer) roles.push("composer");
+
+    // Check if user is admin (via email)
+    const adminEmails = (process.env.ADMIN_IDENTIFIERS || "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase());
+    if (adminEmails.includes(data.email?.toLowerCase())) roles.push("admin");
+
     return res.json({ ...data, roles });
   } catch (err) {
     console.error("[get-user-by-firebase] Error:", err);

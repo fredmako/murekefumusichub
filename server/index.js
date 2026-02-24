@@ -168,7 +168,6 @@ app.post("/api/sync-user", async (req, res) => {
         .update({
           email,
           display_name: displayName || null,
-          phone: phone || null,
           avatar_url: avatarUrl || null,
         })
         .eq("id", existingUser.id)
@@ -190,9 +189,7 @@ app.post("/api/sync-user", async (req, res) => {
           firebase_uid: firebaseUid,
           email,
           display_name: displayName || null,
-          phone: phone || null,
           avatar_url: avatarUrl || null,
-          is_active: true,
           created_at: new Date().toISOString(),
         })
         .select()
@@ -236,15 +233,22 @@ app.post("/api/sync-user", async (req, res) => {
     }
 
     // Fetch user's assigned roles to return to caller
-    const { data: userWithRoles } = await supabase
-      .from("users")
-      .select("user_roles ( roles ( name ) )")
-      .eq("id", userId)
-      .maybeSingle();
+    // Determine roles: check composers table + admin email list
+    const roles = [];
 
-    const roles = (userWithRoles?.user_roles || [])
-      .map((ur) => ur.roles?.name)
-      .filter(Boolean);
+    // Check if user has composer record
+    const { data: composer } = await supabase
+      .from("composers")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (composer) roles.push("composer");
+
+    // Check if user is admin (via email)
+    const adminEmails = (process.env.ADMIN_IDENTIFIERS || "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase());
+    if (adminEmails.includes(userEmail?.toLowerCase())) roles.push("admin");
 
     return res.status(isNewUser ? 201 : 200).json({
       id: userId,
@@ -294,7 +298,6 @@ app.post("/sync-user", async (req, res) => {
         .update({
           email,
           display_name: displayName || null,
-          phone: phone || null,
           avatar_url: avatarUrl || null,
         })
         .eq("id", existingUser.id)
@@ -309,9 +312,7 @@ app.post("/sync-user", async (req, res) => {
           firebase_uid: firebaseUid,
           email,
           display_name: displayName || null,
-          phone: phone || null,
           avatar_url: avatarUrl || null,
-          is_active: true,
           created_at: new Date().toISOString(),
         })
         .select()
@@ -354,16 +355,23 @@ app.post("/sync-user", async (req, res) => {
       }
     }
 
-    // For alias endpoint, also return roles
-    const { data: aliasUserWithRoles } = await supabase
-      .from("users")
-      .select("user_roles ( roles ( name ) )")
-      .eq("id", userId)
-      .maybeSingle();
+    // For alias endpoint, also determine roles
+    const aliasRoles = [];
 
-    const aliasRoles = (aliasUserWithRoles?.user_roles || [])
-      .map((ur) => ur.roles?.name)
-      .filter(Boolean);
+    // Check if user has composer record
+    const { data: aliasComposer } = await supabase
+      .from("composers")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (aliasComposer) aliasRoles.push("composer");
+
+    // Check if user is admin (via email)
+    const aliasAdminEmails = (process.env.ADMIN_IDENTIFIERS || "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase());
+    if (aliasAdminEmails.includes(email?.toLowerCase()))
+      aliasRoles.push("admin");
 
     return res.status(isNewUser ? 201 : 200).json({
       id: userId,
@@ -958,33 +966,45 @@ app.get("/api/user/roles/:firebaseUid", async (req, res) => {
       return res.status(400).json({ error: "Firebase UID is required" });
     }
 
-    const { data, error } = await supabase
+    // Get user by firebase UID
+    const { data: userData, error: userError } = await supabase
       .from("users")
-      .select(
-        `
-        id,
-        firebase_uid,
-        email,
-        user_roles (
-          roles (name)
-        )
-      `,
-      )
+      .select("id, firebase_uid, email")
       .eq("firebase_uid", firebaseUid)
       .maybeSingle();
 
-    if (error) throw error;
+    if (userError) throw userError;
 
-    if (!data) {
+    if (!userData) {
       return res.json([]);
     }
 
-    const roleNames =
-      data.user_roles?.map((r) => r.roles?.name).filter(Boolean) ?? [];
+    const roles = [];
 
-    return res.json(roleNames || []);
+    // Check if user is a composer
+    const { data: composerData } = await supabase
+      .from("composers")
+      .select("id")
+      .eq("user_id", userData.id)
+      .maybeSingle();
+
+    if (composerData) {
+      roles.push("composer");
+    }
+
+    // Check if user is admin via email
+    const bypassList = (process.env.ADMIN_IDENTIFIERS || "")
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (userData.email && bypassList.includes(userData.email.toLowerCase())) {
+      roles.push("admin");
+    }
+
+    return res.json(roles);
   } catch (err) {
-    console.error("[navbar-user-roles] Error:", err);
+    console.error("[get-user-roles] Error:", err);
     return res.status(500).json({ error: err.message });
   }
 });
@@ -1108,9 +1128,7 @@ app.get("/api/users/:id", async (req, res) => {
 
     const { data, error } = await supabase
       .from("users")
-      .select(
-        `id, firebase_uid, email, display_name, phone, avatar_url, is_active, created_at, user_roles ( roles ( name ) )`,
-      )
+      .select(`id, firebase_uid, email, display_name, avatar_url, created_at`)
       .eq("id", id)
       .maybeSingle();
 
@@ -1118,10 +1136,22 @@ app.get("/api/users/:id", async (req, res) => {
 
     if (!data) return res.status(404).json({ message: "User not found" });
 
-    // Normalize roles
-    const roles = (data.user_roles || [])
-      .map((r) => r.roles?.name)
-      .filter(Boolean);
+    // Determine roles: check composers table + admin email list
+    const roles = [];
+
+    // Check if user has composer record
+    const { data: composer } = await supabase
+      .from("composers")
+      .select("id")
+      .eq("user_id", data.id)
+      .maybeSingle();
+    if (composer) roles.push("composer");
+
+    // Check if user is admin (via email)
+    const adminEmails = (process.env.ADMIN_IDENTIFIERS || "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase());
+    if (adminEmails.includes(data.email?.toLowerCase())) roles.push("admin");
 
     return res.json({ ...data, roles });
   } catch (err) {
@@ -1177,7 +1207,7 @@ app.put("/api/users/:id", verifyFirebaseToken, async (req, res) => {
  */
 app.put("/api/account", verifyFirebaseToken, async (req, res) => {
   try {
-    const { displayName, phone, avatarUrl, email } = req.body;
+    const { displayName, avatarUrl, email } = req.body;
     const firebaseUid = req.firebaseDecoded?.uid || req.body.firebaseUid;
 
     if (!firebaseUid)
@@ -1195,7 +1225,6 @@ app.put("/api/account", verifyFirebaseToken, async (req, res) => {
       ...(displayName !== undefined
         ? { display_name: displayName || null }
         : {}),
-      ...(phone !== undefined ? { phone: phone || null } : {}),
       ...(avatarUrl !== undefined ? { avatar_url: avatarUrl || null } : {}),
       ...(email !== undefined ? { email: email || null } : {}),
     };
