@@ -38,6 +38,7 @@ router.get("/users", async (req, res) => {
 
 router.get("/compositions", async (req, res) => {
   try {
+    // compose without deep composer->users join; frontend can fetch user info separately if needed
     const { data, error } = await supabase
       .from("compositions")
       .select(
@@ -45,8 +46,7 @@ router.get("/compositions", async (req, res) => {
         *,
         composers (
           id,
-          user_id,
-          users ( display_name, email )
+          user_id
         )
       `,
       )

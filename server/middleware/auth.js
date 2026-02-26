@@ -83,8 +83,32 @@ export async function adminOnly(req, res, next) {
     const uid = req.firebaseDecoded?.uid;
     if (!uid) return res.status(401).json({ message: "Unauthorized" });
 
-    // For now, use email-based admin verification (development mode)
-    // In production, implement proper admin table
+    // For now, use email-based admin verification (checks table first)
+    // In production this can be replaced with a more robust role system.
+    try {
+      const email =
+        req.firebaseDecoded && req.firebaseDecoded.email
+          ? String(req.firebaseDecoded.email)
+          : null;
+      if (email) {
+        const { data: adminEmail } = await supabase
+          .from("admin_emails")
+          .select("id")
+          .eq("email", email)
+          .eq("is_active", true)
+          .maybeSingle();
+        if (adminEmail) {
+          console.log("[adminOnly] Admin access granted via admin_emails for:",
+            email,
+          );
+          return next();
+        }
+      }
+    } catch (e) {
+      console.warn("[adminOnly] admin_emails lookup failed:", e?.message || e);
+    }
+
+    // Legacy bypass list (development only, requires ALLOW_FIREBASE_VERIFY_BYPASS)
     if (process.env.ALLOW_FIREBASE_VERIFY_BYPASS === "true") {
       try {
         const bypassList = (process.env.ADMIN_IDENTIFIERS || "")

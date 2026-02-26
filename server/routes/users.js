@@ -28,7 +28,8 @@ router.get("/users/:id", async (req, res) => {
 
     const { data, error } = await supabase
       .from("users")
-      .select(`id, firebase_uid, email, display_name, avatar_url, created_at`)
+      // include composer_request so clients can know if there's a pending request
+      .select(`id, firebase_uid, email, display_name, avatar_url, created_at, composer_request`)
       .eq("id", id)
       .maybeSingle();
     if (error) throw error;
@@ -69,7 +70,8 @@ router.get("/users/by-firebase/:firebaseUid", async (req, res) => {
 
     const { data, error } = await supabase
       .from("users")
-      .select(`id, firebase_uid, email, display_name, avatar_url, created_at`)
+      // include composer_request for client status
+      .select(`id, firebase_uid, email, display_name, avatar_url, created_at, composer_request`)
       .eq("firebase_uid", firebaseUid)
       .maybeSingle();
 

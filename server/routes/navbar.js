@@ -22,25 +22,62 @@ router.get("/roles/:firebaseUid", async (req, res) => {
 
     const roles = [];
 
-    // Check if user is a composer
-    const { data: composerData } = await supabase
-      .from("composers")
-      .select("id")
-      .eq("user_id", userData.id)
-      .maybeSingle();
-
-    if (composerData) {
-      roles.push("composer");
+    // Check if user already has any roles assigned in user_roles
+    try {
+      const { data: userRoleRows } = await supabase
+        .from("user_roles")
+        .select(`roles(name)`) // join to roles table
+        .eq("user_id", userData.id);
+      if (userRoleRows && userRoleRows.length > 0) {
+        userRoleRows.forEach((r) => {
+          if (r.roles && r.roles.name) roles.push(r.roles.name);
+        });
+      }
+    } catch (e) {
+      console.warn("[navbar-user-roles] failed to fetch user_roles:", e?.message || e);
     }
 
-    // Check if user is admin via email
-    const bypassList = (process.env.ADMIN_IDENTIFIERS || "")
-      .split(",")
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean);
+    // Check if user is a composer (in case composers table is used separately from user_roles)
+    try {
+      const { data: composerData } = await supabase
+        .from("composers")
+        .select("id")
+        .eq("user_id", userData.id)
+        .maybeSingle();
 
-    if (userData.email && bypassList.includes(userData.email.toLowerCase())) {
-      roles.push("admin");
+      if (composerData && !roles.includes("composer")) {
+        roles.push("composer");
+      }
+    } catch (e) {
+      console.warn("[navbar-user-roles] composer check failed:", e?.message || e);
+    }
+
+    // Check if user is admin via admin_emails table (preferred) or fallback to bypass list for dev
+    try {
+      const { data: adminEmail } = await supabase
+        .from("admin_emails")
+        .select("id")
+        .eq("email", userData.email)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (adminEmail && !roles.includes("admin")) {
+        roles.push("admin");
+      } else {
+        // fallback to legacy bypass list (used in dev envs)
+        const bypassList = (process.env.ADMIN_IDENTIFIERS || "")
+          .split(",")
+          .map((s) => s.trim().toLowerCase())
+          .filter(Boolean);
+        if (
+          userData.email &&
+          bypassList.includes(userData.email.toLowerCase()) &&
+          !roles.includes("admin")
+        ) {
+          roles.push("admin");
+        }
+      }
+    } catch (e) {
+      console.warn("[navbar-user-roles] admin_emails check failed:", e?.message || e);
     }
 
     return res.json(roles);

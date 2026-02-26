@@ -330,6 +330,19 @@ router.post("/request-role", verifyFirebaseToken, async (req, res) => {
       .select()
       .single();
     if (createErr) throw createErr;
+
+    // mark users.composer_request so other sessions can detect pending state
+    if (requestedRole === "composer") {
+      try {
+        await supabase
+          .from("users")
+          .update({ composer_request: true })
+          .eq("id", uid);
+      } catch (e) {
+        console.warn("[request-role] failed to set composer_request flag:", e?.message || e);
+      }
+    }
+
     return res.status(201).json({
       message: `${requestedRole} request submitted successfully. Awaiting admin approval.`,
       requestId: newRequest.id,

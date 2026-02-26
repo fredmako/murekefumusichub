@@ -26,7 +26,7 @@ router.get("/", verifyFirebaseToken, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Fetch purchases with composition details
+    // Fetch purchases with composition and related info (avoid deep composer→users join which may not exist)
     const { data: purchases, error: purchasesError } = await supabase
       .from("purchases")
       .select(
@@ -34,7 +34,7 @@ router.get("/", verifyFirebaseToken, async (req, res) => {
         *,
         compositions(
           *,
-          composers(users(display_name)),
+          composers(user_id),
           categories(name)
         )
       `,
