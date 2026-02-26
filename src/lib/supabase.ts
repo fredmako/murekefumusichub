@@ -197,7 +197,8 @@ CREATE TABLE IF NOT EXISTS users (
   phone TEXT,
   avatar_url TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  is_active BOOLEAN DEFAULT TRUE
+  is_active BOOLEAN DEFAULT TRUE,
+  composer_request BOOLEAN DEFAULT FALSE -- flag used when user requests composer access
 );
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 

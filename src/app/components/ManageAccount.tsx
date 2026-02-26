@@ -129,18 +129,7 @@ export function ManageAccount() {
             } as User);
             setDisplayName(existingData.display_name || "");
             setAvatarUrl(existingData.avatar_url || null);
-            // initialize request status
-            if (
-              existingData.roles &&
-              Array.isArray(existingData.roles) &&
-              existingData.roles.includes("composer")
-            ) {
-              setRequestStatus("approved");
-            } else if (existingData.composer_request) {
-              setRequestStatus("pending");
-            } else {
-              setRequestStatus("none");
-            }
+            // status will be recalculated by effect watching `user`
           } else if (existingRes.status === 404) {
             // No Supabase user exists; fall back to syncing with Firebase/Google data
             console.log(
@@ -178,12 +167,7 @@ export function ManageAccount() {
               syncData.display_name || firebaseUser?.displayName || "",
             );
             setAvatarUrl(syncData.avatar_url || firebaseUser?.photoURL || null);
-            if (
-              syncData.roles &&
-              Array.isArray(syncData.roles) &&
-              syncData.roles.includes("composer")
-            )
-              setRequestStatus("approved");
+            // we don't know composer_request for brand new user until they request one
           } else {
             const err = await existingRes.json().catch(() => ({}));
             console.error("[ManageAccount] Error checking Supabase user:", err);
@@ -214,23 +198,31 @@ export function ManageAccount() {
             throw new Error(err?.message || "fetch user failed");
           }
           const data = await userRes.json();
-          console.log("[ManageAccount] User data fetched from server:", data);
-          setSupabaseId(data.id);
-          setUser({ ...data, roles: data.roles || [] } as User);
-          setDisplayName(data.display_name || "");
-          setAvatarUrl(data.avatar_url || null);
         }
+        // finished loading
         setLoading(false);
-      } catch (err) {
-        console.error("[ManageAccount] Error fetching user:", err);
-        toast.error("Failed to load profile");
-      } finally {
+      } catch (err: any) {
+        console.error("[ManageAccount] failed to fetch user:", err);
+        toast.error("Failed to load user data");
         setLoading(false);
       }
     };
 
     fetchUser();
   }, [appUser, firebaseUser]);
+
+  // whenever the user object is updated (either by fetch or action), compute request status
+  useEffect(() => {
+    if (!user) return;
+    if (user.roles && Array.isArray(user.roles) && user.roles.includes("composer")) {
+      setRequestStatus("approved");
+    } else if (user.composer_request) {
+      setRequestStatus("pending");
+    } else {
+      setRequestStatus("none");
+    }
+  }, [user]);
+
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
@@ -430,7 +422,13 @@ export function ManageAccount() {
         `✅ ${roleType.charAt(0).toUpperCase() + roleType.slice(1)} request submitted!\nAwaiting admin approval.`,
       );
       setShowRoleModal(false);
-      if (roleType === "composer") setRequestStatus("pending");
+      if (roleType === "composer") {
+        setRequestStatus("pending");
+        // reflect on local user object as well
+        setUser((u) =>
+          u ? { ...u, composer_request: true } : u,
+        );
+      }
     } catch (err: any) {
       console.error(
         `[handleRequestRole] Error requesting ${showRoleModal}:`,
@@ -443,10 +441,11 @@ export function ManageAccount() {
   };
 
   // Poll for role changes (detect when admin approves composer role)
+  // also refresh user record periodically to pick up composer_request updates made in other tabs
   useEffect(() => {
     let timer: any;
     let mounted = true;
-    async function checkRoles() {
+    async function checkRolesAndUser() {
       if (!firebaseUser) return;
       try {
         const roles = await navbarService.fetchUserRoles(firebaseUser.uid);
@@ -457,11 +456,31 @@ export function ManageAccount() {
       } catch (e) {
         // ignore polling errors
       }
+      // also refresh supabase user record to pick up composer_request flag
+      try {
+        const base =
+          (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
+        const resp = await fetch(
+          `${base}/users/by-firebase/${firebaseUser.uid}?_ts=${Date.now()}`,
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+        if (resp.ok) {
+          const u = await resp.json();
+          setUser((prev) => ({
+            ...prev,
+            ...u,
+            roles: u.roles || prev?.roles || [],
+          }));
+        }
+      } catch (e) {
+        // ignore
+      }
     }
 
-    // initial check and interval
-    checkRoles();
-    timer = setInterval(checkRoles, 10000);
+    checkRolesAndUser();
+    timer = setInterval(checkRolesAndUser, 10000);
     return () => {
       mounted = false;
       if (timer) clearInterval(timer);
@@ -656,6 +675,7 @@ export function ManageAccount() {
                       accept="image/*"
                       onChange={handleAvatarChange}
                       className="hidden"
+                      title="Upload a new profile photo"
                     />
                     📷 Upload New Photo
                   </Label>
