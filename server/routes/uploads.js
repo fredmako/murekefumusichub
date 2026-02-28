@@ -34,7 +34,7 @@ router.post("/:bucket", verifyFirebaseToken, async (req, res) => {
     const { data: userData, error: userError } = await supabaseAdmin
       .from("users")
       .select("id")
-      .eq("firebase_uid", firebaseUid)
+      .eq("auth_uid", firebaseUid)
       .single();
 
     if (userError || !userData) {

@@ -3,18 +3,18 @@ import { supabase } from "../lib/supabaseClient.js";
 
 const router = express.Router();
 
-// GET /api/user/roles/:firebaseUid
-router.get("/roles/:firebaseUid", async (req, res) => {
+// GET /api/user/roles/:authUid - Get user roles by Supabase auth UID
+router.get("/roles/:authUid", async (req, res) => {
   try {
-    const { firebaseUid } = req.params;
-    if (!firebaseUid)
-      return res.status(400).json({ error: "Firebase UID is required" });
+    const { authUid } = req.params;
+    if (!authUid)
+      return res.status(400).json({ error: "Auth UID is required" });
 
-    // Get user by firebase UID
+    // Get user by auth_uid (must be a valid UUID)
     const { data: userData, error: userError } = await supabase
       .from("users")
-      .select("id, firebase_uid, email")
-      .eq("firebase_uid", firebaseUid)
+      .select("id, auth_uid, email")
+      .eq("auth_uid", authUid)
       .maybeSingle();
 
     if (userError) throw userError;
@@ -34,7 +34,10 @@ router.get("/roles/:firebaseUid", async (req, res) => {
         });
       }
     } catch (e) {
-      console.warn("[navbar-user-roles] failed to fetch user_roles:", e?.message || e);
+      console.warn(
+        "[navbar-user-roles] failed to fetch user_roles:",
+        e?.message || e,
+      );
     }
 
     // Check if user is a composer (in case composers table is used separately from user_roles)
@@ -49,7 +52,10 @@ router.get("/roles/:firebaseUid", async (req, res) => {
         roles.push("composer");
       }
     } catch (e) {
-      console.warn("[navbar-user-roles] composer check failed:", e?.message || e);
+      console.warn(
+        "[navbar-user-roles] composer check failed:",
+        e?.message || e,
+      );
     }
 
     // Check if user is admin via admin_emails table (preferred) or fallback to bypass list for dev
@@ -77,7 +83,10 @@ router.get("/roles/:firebaseUid", async (req, res) => {
         }
       }
     } catch (e) {
-      console.warn("[navbar-user-roles] admin_emails check failed:", e?.message || e);
+      console.warn(
+        "[navbar-user-roles] admin_emails check failed:",
+        e?.message || e,
+      );
     }
 
     return res.json(roles);

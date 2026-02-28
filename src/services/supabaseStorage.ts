@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { auth } from "@/lib/firebase";
+// use supabase auth session rather than firebase
 
 export type StorageBucket = "compositions" | "thumbnails" | "avatars";
 
@@ -22,16 +22,21 @@ export async function uploadFile(
   file: File,
   options: UploadOptions,
 ): Promise<UploadResult> {
-  const user = auth.currentUser;
-  if (!user) {
+  // get current supabase session user
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+  if (sessionError || !session?.user) {
     throw new Error("User must be authenticated to upload files");
   }
+  const authUid = session.user.id;
 
   try {
-    // Create a unique file path: bucket/firebase-uid/timestamp-filename
+    // Create a unique file path: bucket/{authUid}/timestamp-filename
     const timestamp = Date.now();
     const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, "-");
-    const filePath = `${user.uid}/${timestamp}-${sanitizedFileName}`;
+    const filePath = `${authUid}/${timestamp}-${sanitizedFileName}`;
 
     // Upload file to Supabase Storage
     const { data, error } = await supabase.storage
@@ -60,7 +65,7 @@ export async function uploadFile(
           await supabase
             .from("users")
             .select("id")
-            .eq("firebase_uid", user.uid)
+            .eq("auth_uid", authUid)
             .single()
         ).data?.id,
         file_name: file.name,
@@ -149,14 +154,18 @@ export async function deleteFile(
   bucket: StorageBucket,
   filePath: string,
 ): Promise<void> {
-  const user = auth.currentUser;
-  if (!user) {
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+  if (sessionError || !session?.user) {
     throw new Error("User must be authenticated to delete files");
   }
+  const authUid = session.user.id;
 
   try {
     // Only allow users to delete their own files
-    if (!filePath.startsWith(user.uid)) {
+    if (!filePath.startsWith(authUid)) {
       throw new Error("You do not have permission to delete this file");
     }
 
@@ -188,17 +197,21 @@ export async function deleteFile(
  * Get user's uploaded files
  */
 export async function getUserFiles(bucket?: StorageBucket): Promise<any[]> {
-  const user = auth.currentUser;
-  if (!user) {
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+  if (sessionError || !session?.user) {
     throw new Error("User must be authenticated");
   }
+  const authUid = session.user.id;
 
   try {
     // First get the user's Supabase UUID
     const { data: userData, error: userError } = await supabase
       .from("users")
       .select("id")
-      .eq("firebase_uid", user.uid)
+      .eq("auth_uid", authUid)
       .maybeSingle();
 
     if (userError || !userData) {
@@ -234,8 +247,11 @@ export async function getSignedUrl(
   filePath: string,
   expiresIn: number = 3600,
 ): Promise<string> {
-  const user = auth.currentUser;
-  if (!user) {
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+  if (sessionError || !session?.user) {
     throw new Error("User must be authenticated");
   }
 

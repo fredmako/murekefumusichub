@@ -6,299 +6,436 @@ import React, {
   useState,
   ReactNode,
 } from "react";
-import {
-  User,
-  onAuthStateChanged,
-  signOut as firebaseSignOut,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  GoogleAuthProvider,
-  signInWithPopup,
-  signInWithRedirect,
-} from "firebase/auth";
 import { useNavigate } from "react-router-dom";
-import { auth } from "../lib/firebase"; // <-- import auth from firebase.ts
-import { supabase } from "../lib/supabase"; // <-- import supabase
-import { navbarService } from "@/services/navbarService";
-import { authService } from "@/services/api";
+import { supabase } from "../lib/supabase";
 
-interface AppUser {
-  uid: string;
+export interface AppUser {
+  id: string;
+  auth_uid: string;
   email: string | null;
-  displayName: string | null;
+  display_name: string | null;
+  avatar_url: string | null; // ✅ ADD THIS
   roles: string[];
   isComposer?: boolean;
-  supabaseId?: string; // UUID from Supabase users table
 }
 
 interface AuthContextType {
-  firebaseUser: User | null;
   appUser: AppUser | null;
+  isLoading: boolean;
   signOut: (redirect?: boolean) => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   refreshRoles: () => Promise<void>;
+  getAuthToken: () => Promise<string | null>;
+  resetPassword: (email: string) => Promise<void>;
+  updatePassword: (password: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const navigate = useNavigate();
-  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
-  const [isFirstLogin, setIsFirstLogin] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Refresh roles from server and update appUser
-  const refreshRoles = async () => {
+  /**
+   * Sync user profile: fetch from Supabase users table and check roles
+   */
+  const syncUserProfile = async (authUid: string) => {
     try {
-      if (!firebaseUser) return;
-      const roles =
-        (await navbarService.fetchUserRoles(firebaseUser.uid)) || [];
-      setAppUser((prev) => ({
-        uid: firebaseUser.uid,
-        email: firebaseUser.email,
-        displayName: firebaseUser.displayName,
+      // Try to fetch existing user row by auth_uid
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("id, auth_uid, email, display_name, avatar_url")
+        .eq("auth_uid", authUid)
+        .maybeSingle();
+
+      if (userError) throw userError;
+
+      let finalUser = userData;
+
+      // If no user row exists, ask the server to ensure the user (avoids client-side insert conflicts)
+      if (!finalUser) {
+        try {
+          const { data: authUser, error: authErr } =
+            await supabase.auth.getUser();
+          if (authErr) throw authErr;
+
+          const email = authUser?.user?.email ?? null;
+          const displayName =
+            (authUser?.user?.user_metadata as any)?.name ?? null;
+          const avatarUrl =
+            (authUser?.user?.user_metadata as any)?.picture ?? null;
+
+          const base =
+            (import.meta as any).VITE_API_BASE_URL ||
+            "http://localhost:3001/api";
+
+          // Call server endpoint to ensure a users row exists (server uses service role key)
+          try {
+            const resp = await fetch(`${base}/users/ensure`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                auth_uid: authUid,
+                email,
+                display_name: displayName,
+                avatar_url: avatarUrl,
+              }),
+            });
+
+            if (!resp.ok) {
+              // log non-ok but continue to try to read existing row (handles 409 conflicts)
+              console.warn(
+                "[syncUserProfile] ensure-user returned status:",
+                resp.status,
+              );
+            }
+          } catch (fetchErr) {
+            console.warn(
+              "[syncUserProfile] failed to call ensure-user endpoint:",
+              fetchErr,
+            );
+          }
+
+          // Whether the ensure created a row or it already existed, fetch the user row by auth_uid
+          try {
+            const { data: createdUser, error: fetchUserErr } = await supabase
+              .from("users")
+              .select("id, auth_uid, email, display_name, avatar_url")
+              .eq("auth_uid", authUid)
+              .maybeSingle();
+
+            if (fetchUserErr) {
+              console.warn(
+                "[syncUserProfile] failed to fetch user row after ensure:",
+                fetchUserErr,
+              );
+            } else {
+              finalUser = createdUser || undefined;
+            }
+          } catch (e) {
+            console.warn(
+              "[syncUserProfile] error fetching user after ensure:",
+              e?.message || e,
+            );
+          }
+        } catch (e) {
+          console.warn(
+            "[syncUserProfile] auth lookup/create failed:",
+            e?.message || e,
+          );
+        }
+      }
+
+      if (!finalUser) {
+        console.warn(
+          "[syncUserProfile] User profile not found and could not be created for auth_uid:",
+          authUid,
+        );
+        return;
+      }
+
+      // Check if user is a composer
+      const { data: composerData } = await supabase
+        .from("composers")
+        .select("id")
+        .eq("user_id", finalUser.id)
+        .maybeSingle();
+
+      const isComposer = !!composerData;
+      const roles: string[] = isComposer ? ["composer"] : [];
+
+      setAppUser({
+        id: finalUser.id,
+        auth_uid: finalUser.auth_uid,
+        email: finalUser.email,
+        display_name: finalUser.display_name,
+        avatar_url: finalUser.avatar_url,
         roles,
-      }));
-      return roles;
+        isComposer,
+      });
     } catch (err) {
-      console.warn("refreshRoles failed:", err);
-      return [] as string[];
+      console.warn("[syncUserProfile] error:", err);
     }
   };
 
-  // Fetch complete user profile from Supabase by Firebase UID
-  const fetchSupabaseUserProfile = async (firebaseUid: string) => {
+  /**
+   * Get current session token
+   */
+  const getAuthToken = async (): Promise<string | null> => {
     try {
-      const base =
-        (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
-      const response = await fetch(`${base}/users/by-firebase/${firebaseUid}`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      });
-      if (!response.ok) throw new Error("User not found in Supabase");
-      return await response.json();
+      const { data, error } = await supabase.auth.getSession();
+      if (error || !data.session) return null;
+      return data.session.access_token;
     } catch (err) {
-      console.warn("Failed to fetch Supabase user profile:", err);
+      console.error("[getAuthToken] error:", err);
       return null;
     }
   };
 
-  // Check if user is a composer by querying composers table
-  const checkComposerStatus = async (
-    supabaseUserId: string,
-  ): Promise<boolean> => {
+  /**
+   * Refresh roles from Supabase
+   */
+  const refreshRoles = async () => {
     try {
-      const { data, error } = await supabase
+      if (!appUser) return;
+
+      // Check if user is a composer
+      const { data: composerData } = await supabase
         .from("composers")
         .select("id")
-        .eq("user_id", supabaseUserId)
+        .eq("user_id", appUser.id)
         .maybeSingle();
 
-      if (error) {
-        console.warn("Failed to check composer status:", error);
-        return false;
-      }
-      return !!data;
+      const isComposer = !!composerData;
+      const roles: string[] = isComposer ? ["composer"] : [];
+
+      setAppUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              roles,
+              isComposer,
+            }
+          : null,
+      );
     } catch (err) {
-      console.warn("Error checking composer status:", err);
-      return false;
+      console.warn("[refreshRoles] error:", err);
     }
   };
 
-  // Centralized sign-in with email/password
+  /**
+   * Sign in with email/password
+   */
   const signInWithEmail = async (email: string, password: string) => {
-    const cred = await signInWithEmailAndPassword(auth, email, password);
-    const user = cred.user;
-    setFirebaseUser(user);
-
-    // Sync to backend and fetch roles (all users default to 'user' role)
-    const synced = await authService.syncUser(user);
-
-    // Check composer status
-    const isComposer = synced?.id
-      ? await checkComposerStatus(synced.id)
-      : false;
-
-    setAppUser({
-      uid: user.uid,
-      email: user.email,
-      displayName: user.displayName,
-      roles: synced?.roles || [],
-      isComposer,
-      supabaseId: synced?.id,
-    });
-
-    setIsFirstLogin(true);
-  };
-
-  // Centralized sign-up
-  const signUpWithEmail = async (email: string, password: string) => {
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    const user = cred.user;
-    setFirebaseUser(user);
-
-    const synced = await authService.syncUser(user);
-
-    const isComposer = synced?.id
-      ? await checkComposerStatus(synced.id)
-      : false;
-
-    setAppUser({
-      uid: user.uid,
-      email: user.email,
-      displayName: user.displayName,
-      roles: synced?.roles || [],
-      isComposer,
-      supabaseId: synced?.id,
-    });
-
-    setIsFirstLogin(true);
-  };
-
-  // Centralized Google sign-in
-  const signInWithGoogle = async () => {
     try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      setFirebaseUser(user);
-
-      const synced = await authService.syncUser(user);
-
-      const isComposer = synced?.id
-        ? await checkComposerStatus(synced.id)
-        : false;
-
-      setAppUser({
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-        roles: synced?.roles || [],
-        isComposer,
-        supabaseId: synced?.id,
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       });
 
-      setIsFirstLogin(true);
+      if (error || !data.user) throw error;
+
+      // Sync user profile from Supabase users table
+      await syncUserProfile(data.user.id);
     } catch (err: any) {
-      // If popup blocked, try redirect
+      console.error("[signInWithEmail] error:", err);
+      // handle unconfirmed email gracefully
       if (
-        err?.code === "auth/popup-blocked" ||
-        err?.code === "auth/cancelled-popup-request"
+        err.name === "AuthApiError" &&
+        err.status === 400 &&
+        typeof err.message === "string" &&
+        err.message.toLowerCase().includes("email not confirmed")
       ) {
-        const provider = new GoogleAuthProvider();
-        await signInWithRedirect(auth, provider);
-      } else {
-        throw err;
+        throw new Error(
+          "Email not confirmed. Please check your inbox and click the confirmation link before signing in.",
+        );
       }
-    }
-  };
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setFirebaseUser(user);
-
-      if (user) {
-        try {
-          // First, try to fetch complete Supabase user profile
-          let supabaseUser = await fetchSupabaseUserProfile(user.uid);
-
-          // If user doesn't exist in Supabase, sync them first
-          if (!supabaseUser) {
-            console.log(
-              "[AuthContext] User not found in Supabase, syncing with backend...",
-            );
-            const base =
-              (import.meta as any).VITE_API_BASE_URL ||
-              "http://localhost:3001/api";
-            const syncRes = await fetch(`${base}/sync-user`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                firebaseUid: user.uid,
-                email: user.email,
-                displayName: user.displayName,
-                avatarUrl: user.photoURL,
-              }),
-            });
-
-            if (syncRes.ok) {
-              supabaseUser = await syncRes.json();
-              console.log(
-                "[AuthContext] User synced successfully:",
-                supabaseUser,
-              );
-            } else {
-              const errData = await syncRes.json().catch(() => ({}));
-              console.warn("[AuthContext] Sync failed:", errData);
-            }
-          }
-
-          // Fetch roles from server
-          const roles = (await navbarService.fetchUserRoles(user.uid)) || [];
-
-          // Check if user is a composer
-          const isComposer = supabaseUser
-            ? await checkComposerStatus(supabaseUser.id)
-            : false;
-
-          // Use Supabase displayName if available, otherwise fall back to Firebase displayName
-          setAppUser({
-            uid: user.uid,
-            email: supabaseUser?.email || user.email,
-            displayName: supabaseUser?.display_name || user.displayName,
-            roles,
-            isComposer,
-            supabaseId: supabaseUser?.id,
-          });
-        } catch (err) {
-          console.warn(
-            "Failed to fetch user profile from server, using Firebase data:",
-            err,
-          );
-          // Fallback to Firebase data if Supabase fetch fails
-          setAppUser({
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName,
-            roles: [],
-          });
-        }
-      } else {
-        setAppUser(null);
-        setIsFirstLogin(false);
-      }
-    });
-
-    return () => unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const signOut = async (redirect = true) => {
-    try {
-      await firebaseSignOut(auth);
-      setFirebaseUser(null);
-      setAppUser(null);
-      if (redirect) navigate("/");
-    } catch (err) {
-      console.error("Sign out failed:", err);
       throw err;
     }
   };
 
+  /**
+   * Sign up with email/password
+   */
+  const signUpWithEmail = async (email: string, password: string) => {
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (error || !data.user) throw error;
+
+      // User created but may not be confirmed yet, try to get session
+      if (data.session) {
+        await syncUserProfile(data.user.id);
+      } else {
+        // Email confirmation required - user will verify and then login
+        console.log("[signUpWithEmail] Email confirmation required");
+      }
+    } catch (err: any) {
+      console.error("[signUpWithEmail] error:", err);
+      throw err;
+    }
+  };
+
+  /**
+   * Sign in with Google via Supabase OAuth
+   */
+  const signInWithGoogle = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("[signInWithGoogle] error:", err);
+      throw err;
+    }
+  };
+
+  /**
+   * Send password reset email
+   */
+  const resetPassword = async (email: string) => {
+    try {
+      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) throw error;
+      // data contains user info maybe
+    } catch (err: any) {
+      console.error("[resetPassword] error:", err);
+      throw err;
+    }
+  };
+
+  const updatePassword = async (password: string) => {
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("[updatePassword] error:", err);
+      throw err;
+    }
+  };
+
+  /**
+   * Sign out
+   */
+  const signOut = async (redirect = true) => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+
+      setAppUser(null);
+      if (redirect) navigate("/login", { replace: true });
+    } catch (err: any) {
+      console.error("[signOut] error:", err);
+      throw err;
+    }
+  };
+
+  /**
+   * Initialize auth state on mount
+   */
+  useEffect(() => {
+    let mounted = true;
+    let subscriptionUnsubscribe: (() => void) | null = null;
+
+    const initAuth = async () => {
+      try {
+        // Retry getSession with exponential backoff to handle navigator lock timeouts
+        let retries = 0;
+        const maxRetries = 3;
+        let lastError: any = null;
+
+        while (retries < maxRetries) {
+          try {
+            const { data, error } = await supabase.auth.getSession();
+
+            if (error) {
+              lastError = error;
+              retries++;
+              if (retries < maxRetries) {
+                await new Promise((resolve) =>
+                  setTimeout(resolve, Math.pow(2, retries) * 500),
+                );
+                continue;
+              }
+              throw error;
+            }
+
+            if (data.session && data.session.user) {
+              if (mounted) {
+                await syncUserProfile(data.session.user.id);
+              }
+            } else if (mounted) {
+              setAppUser(null);
+            }
+            break; // Success, exit retry loop
+          } catch (err: any) {
+            lastError = err;
+            // Check if it's a navigator lock timeout error
+            if (
+              err?.name === "NavigatorLockAcquireTimeoutError" &&
+              retries < maxRetries
+            ) {
+              retries++;
+              await new Promise((resolve) =>
+                setTimeout(resolve, Math.pow(2, retries) * 500),
+              );
+            } else {
+              throw err;
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[initAuth] error:", err);
+        if (mounted) setAppUser(null);
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    };
+
+    const setupAuthListener = async () => {
+      // Small delay to avoid competing with getSession lock acquisition
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      if (!mounted) return;
+
+      try {
+        const { data } = await supabase.auth.onAuthStateChange(
+          async (event, session) => {
+            if (mounted) {
+              if (session && session.user) {
+                await syncUserProfile(session.user.id);
+              } else {
+                setAppUser(null);
+              }
+            }
+          },
+        );
+
+        if (mounted) {
+          subscriptionUnsubscribe = data?.subscription?.unsubscribe ?? null;
+        }
+      } catch (err) {
+        console.warn("[setupAuthListener] error:", err);
+      }
+    };
+
+    // Run initialization and setup listener
+    Promise.all([initAuth(), setupAuthListener()]).catch((err) =>
+      console.warn("[initAuth] setup error:", err),
+    );
+
+    return () => {
+      mounted = false;
+      subscriptionUnsubscribe?.();
+    };
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
-        firebaseUser,
         appUser,
+        isLoading,
         signOut,
         signInWithEmail,
         signUpWithEmail,
         signInWithGoogle,
         refreshRoles,
+        getAuthToken,
+        resetPassword,
+        updatePassword,
       }}
     >
       {children}
@@ -308,6 +445,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth must be used within an AuthProvider");
+  if (context === undefined) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
   return context;
 };

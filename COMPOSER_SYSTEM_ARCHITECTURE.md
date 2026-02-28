@@ -121,11 +121,15 @@ System automatically:
 ### 2. Composer Login Flow
 
 ```
-User logs in (Firebase auth)
+User logs in using Google Sign‑In (GIS ID token)
   ↓
-Backend syncs user to Supabase
+Frontend sends token to backend in Authorization header
   ↓
-Frontend checks composers table
+Server verifies token and extracts `sub` (Google user ID)
+  ↓
+Backend syncs/creates user in Supabase using `google_sub` column
+  ↓
+Frontend fetches roles/composer-status as before
   ↓
 If composer found (isComposer = true):
   → Redirect to /composer dashboard
@@ -146,7 +150,7 @@ Upload form submitted with:
   ↓
 Backend:
   1. Upload PDF to Supabase Storage (compositions bucket)
-  2. Get Supabase user ID from Firebase UID
+  2. Get Supabase user ID from Google `sub` / stored `google_sub`
   3. Get composer ID from composers table
   4. Insert composition record with composer_id
   5. Create composition_stats entry

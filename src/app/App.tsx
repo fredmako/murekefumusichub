@@ -4,9 +4,8 @@ import { PrivacyPolicy } from "./components/PrivacyPolicy";
 import { Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { CartItem } from "./types";
-import { AuthProvider } from "../context/AuthContext";
 import { ManageAccount } from "./components/ManageAccount";
-
+import AuthCallback from "@/app/pages/AuthCallback";
 import { ContactUs } from "./components/ContactUs";
 /* -----------------------------
    Lazy-loaded Pages
@@ -54,6 +53,12 @@ const ComposerDashboard = React.lazy(() =>
 const AdminDashboard = React.lazy(() =>
   import("./components/AdminPanel").then((m) => ({
     default: (m as any).AdminPanel ?? (m as any).default,
+  })),
+);
+
+const SetNewPassword = React.lazy(() =>
+  import("./components/SetNewPassword").then((m) => ({
+    default: (m as any).SetNewPassword ?? (m as any).default,
   })),
 );
 
@@ -134,73 +139,72 @@ export default function App() {
 
   return (
     <AppErrorBoundary>
-      <AuthProvider>
-        <div className="min-h-screen bg-gray-50">
-          <Navbar cart={cart} onRemoveFromCart={handleRemoveFromCart} />
+      <div className="min-h-screen bg-gray-50">
+        <Navbar cart={cart} onRemoveFromCart={handleRemoveFromCart} />
 
-          <Suspense fallback={<div className="p-8">Loading...</div>}>
-            <Routes>
-              {/* Public Pages */}
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/marketplace" element={<Marketplace />} />
-              <Route path="/about" element={<AboutPage />} />
-              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-              <Route path="/manage-account" element={<ManageAccount />} />
+        <Suspense fallback={<div className="p-8">Loading...</div>}>
+          <Routes>
+            {/* Public Pages */}
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/reset-password" element={<SetNewPassword />} />
+            <Route path="/marketplace" element={<Marketplace />} />
+            <Route path="/about" element={<AboutPage />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+            <Route path="/manage-account" element={<ManageAccount />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
+            {/* Dashboards */}
+            <Route
+              path="/buyer"
+              element={
+                <DashboardWrapper
+                  Component={BuyerDashboard}
+                  cart={cart}
+                  onRemoveFromCart={handleRemoveFromCart}
+                />
+              }
+            />
+            <Route path="/contact" element={<ContactUs />} />
+            <Route
+              path="/composer"
+              element={
+                <DashboardWrapper
+                  Component={ComposerDashboard}
+                  cart={cart}
+                  onRemoveFromCart={handleRemoveFromCart}
+                />
+              }
+            />
+            <Route path="/enroll" element={<MusicEnrollmentPage />} />
+            <Route
+              path="/admin"
+              element={
+                <DashboardWrapper
+                  Component={AdminDashboard}
+                  cart={cart}
+                  onRemoveFromCart={handleRemoveFromCart}
+                />
+              }
+            />
 
-              {/* Dashboards */}
-              <Route
-                path="/buyer"
-                element={
-                  <DashboardWrapper
-                    Component={BuyerDashboard}
-                    cart={cart}
-                    onRemoveFromCart={handleRemoveFromCart}
-                  />
-                }
-              />
-              <Route path="/contact" element={<ContactUs />} />
-              <Route
-                path="/composer"
-                element={
-                  <DashboardWrapper
-                    Component={ComposerDashboard}
-                    cart={cart}
-                    onRemoveFromCart={handleRemoveFromCart}
-                  />
-                }
-              />
-              <Route path="/enroll" element={<MusicEnrollmentPage />} />
-              <Route
-                path="/admin"
-                element={
-                  <DashboardWrapper
-                    Component={AdminDashboard}
-                    cart={cart}
-                    onRemoveFromCart={handleRemoveFromCart}
-                  />
-                }
-              />
+            {/* Redirects */}
+            <Route path="/home" element={<Navigate to="/" replace />} />
 
-              {/* Redirects */}
-              <Route path="/home" element={<Navigate to="/" replace />} />
-
-              {/* 404 */}
-              <Route
-                path="*"
-                element={
-                  <div className="p-12 text-center text-gray-600">
-                    <h1 className="text-2xl font-bold mb-2">
-                      404 — Page Not Found
-                    </h1>
-                    <p>The page you’re looking for doesn’t exist.</p>
-                  </div>
-                }
-              />
-            </Routes>
-          </Suspense>
-        </div>
-      </AuthProvider>
+            {/* 404 */}
+            <Route
+              path="*"
+              element={
+                <div className="p-12 text-center text-gray-600">
+                  <h1 className="text-2xl font-bold mb-2">
+                    404 — Page Not Found
+                  </h1>
+                  <p>The page you’re looking for doesn’t exist.</p>
+                </div>
+              }
+            />
+          </Routes>
+        </Suspense>
+      </div>
     </AppErrorBoundary>
   );
 }

@@ -28,8 +28,8 @@ router.get("/users/:id", async (req, res) => {
 
     const { data, error } = await supabase
       .from("users")
-      // include composer_request so clients can know if there's a pending request
-      .select(`id, firebase_uid, email, display_name, avatar_url, created_at, composer_request`)
+      // select user profile
+      .select(`id, auth_uid, email, display_name, avatar_url, created_at`)
       .eq("id", id)
       .maybeSingle();
     if (error) throw error;
@@ -70,9 +70,9 @@ router.get("/users/by-firebase/:firebaseUid", async (req, res) => {
 
     const { data, error } = await supabase
       .from("users")
-      // include composer_request for client status
-      .select(`id, firebase_uid, email, display_name, avatar_url, created_at, composer_request`)
-      .eq("firebase_uid", firebaseUid)
+      // select user profile
+      .select(`id, auth_uid, email, display_name, avatar_url, created_at`)
+      .eq("auth_uid", firebaseUid)
       .maybeSingle();
 
     if (error) throw error;
@@ -176,7 +176,7 @@ router.put("/account", verifyFirebaseToken, async (req, res) => {
     const { data: user } = await supabase
       .from("users")
       .select("id")
-      .eq("firebase_uid", firebaseUid)
+      .eq("auth_uid", firebaseUid)
       .maybeSingle();
     if (!user) return res.status(404).json({ message: "User not found" });
     const payload = {

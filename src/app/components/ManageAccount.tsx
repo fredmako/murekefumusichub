@@ -1,4 +1,5 @@
-import { useAuth } from "@/context/AuthContext";
+// src/app/components/ManageAccount.tsx
+import { useAuth, AppUser } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -33,22 +34,13 @@ import { toast } from "sonner";
 import { storageService } from "@/services/api";
 import { navbarService } from "@/services/navbarService";
 
-interface User {
-  id: string;
-  firebase_uid: string;
-  email: string;
-  display_name: string | null;
-  avatar_url: string | null;
-  roles: string[];
-  composer_request?: boolean;
-}
-
 export function ManageAccount() {
-  const { firebaseUser, signOut, appUser } = useAuth();
+  const { appUser, signOut, getAuthToken, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
 
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<User | null>(null);
+  // local UI/action loading (separate from auth provider loading)
+  const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [supabaseId, setSupabaseId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -65,214 +57,93 @@ export function ManageAccount() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
 
-  // Redirect based on user role
+  // Combined loading for initial render
+  const initialLoading = authLoading && !user;
+
+  // Redirect based on user role once auth has resolved
   useEffect(() => {
-    if (!loading && appUser) {
-      // Check if user is a composer - redirect to composer dashboard
+    if (!authLoading && !loading && appUser) {
       if (appUser.isComposer) {
+        // lightweight delay for UX (keeps existing behaviour)
         setTimeout(() => navigate("/composer"), 500);
         return;
       }
-
-      // Check if user is an admin - redirect to admin dashboard
       if (appUser.roles?.includes("admin")) {
         setTimeout(() => navigate("/admin"), 500);
         return;
       }
-
-      // Otherwise default to buyer dashboard or stay on manage account
-      // Users can stay on manage account if they want to set up profile first
     }
-  }, [loading, appUser, navigate]);
+  }, [authLoading, loading, appUser, navigate]);
 
+  // keep local `user` in sync with context `appUser`
   useEffect(() => {
-    const fetchUser = async () => {
-      const uid = appUser?.uid || firebaseUser?.uid;
+    if (appUser) {
+      setUser(appUser);
+      setSupabaseId(appUser.id);
+      setDisplayName(appUser.display_name || "");
+      setAvatarUrl(appUser.avatar_url || null);
+    } else {
+      setUser(null);
+      setSupabaseId(null);
+      setDisplayName("");
+      setAvatarUrl(null);
+    }
+  }, [appUser]);
 
-      if (!uid) {
-        console.log("[ManageAccount] No user UID found");
-        setLoading(false);
-        return;
-      }
-
-      console.log("[ManageAccount] Fetching user data for UID:", uid);
-
-      try {
-        const base =
-          (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
-
-        // Prefer Supabase record if it exists. First try to fetch by firebase UID
-        let id: string | null = null;
-        try {
-          const existingRes = await fetch(
-            `${base}/users/by-firebase/${uid}?_ts=${Date.now()}`,
-            {
-              method: "GET",
-              headers: {
-                "Content-Type": "application/json",
-                "Cache-Control": "no-cache",
-              },
-            },
-          );
-          if (existingRes.ok) {
-            const existingData = await existingRes.json();
-            id = existingData?.id;
-            // use the existing data directly
-            console.log(
-              "[ManageAccount] Found Supabase user by firebase uid:",
-              existingData,
-            );
-            setSupabaseId(existingData.id);
-            setUser({
-              ...existingData,
-              roles: existingData.roles || [],
-            } as User);
-            setDisplayName(existingData.display_name || "");
-            setAvatarUrl(existingData.avatar_url || null);
-            // status will be recalculated by effect watching `user`
-          } else if (existingRes.status === 404) {
-            // No Supabase user exists; fall back to syncing with Firebase/Google data
-            console.log(
-              "[ManageAccount] No Supabase user found; calling sync-user to create using Firebase data",
-            );
-            const syncRes = await fetch(`${base}/sync-user?_ts=${Date.now()}`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Cache-Control": "no-cache",
-              },
-              body: JSON.stringify({
-                firebaseUid: uid,
-                email: firebaseUser?.email,
-                displayName: firebaseUser?.displayName,
-                avatarUrl: firebaseUser?.photoURL,
-              }),
-            });
-
-            if (!syncRes.ok) {
-              const err = await syncRes.json().catch(() => ({}));
-              console.error("[ManageAccount] sync-user failed:", err);
-              throw new Error(err?.message || "sync-user failed");
-            }
-
-            const syncData = await syncRes.json();
-            id = syncData?.id;
-            if (!id)
-              throw new Error("Failed to obtain Supabase user id after sync");
-
-            // use returned server data when available
-            setSupabaseId(syncData.id);
-            setUser({ ...syncData, roles: syncData.roles || [] } as User);
-            setDisplayName(
-              syncData.display_name || firebaseUser?.displayName || "",
-            );
-            setAvatarUrl(syncData.avatar_url || firebaseUser?.photoURL || null);
-            // we don't know composer_request for brand new user until they request one
-          } else {
-            const err = await existingRes.json().catch(() => ({}));
-            console.error("[ManageAccount] Error checking Supabase user:", err);
-            throw new Error(err?.message || "Failed to check Supabase user");
-          }
-        } catch (innerErr) {
-          console.error(
-            "[ManageAccount] Error resolving user from backend:",
-            innerErr,
-          );
-          throw innerErr;
-        }
-
-        // If we obtained id from existing fetch but didn't populate user (shouldn't happen), fetch user by id
-        let userRes;
-        if (id && !user) {
-          userRes = await fetch(`${base}/users/${id}?_ts=${Date.now()}`, {
-            headers: {
-              "Content-Type": "application/json",
-              "Cache-Control": "no-cache",
-            },
-          });
-        }
-        if (userRes) {
-          if (!userRes.ok) {
-            const err = await userRes.json().catch(() => ({}));
-            console.error("[ManageAccount] fetch user by id failed:", err);
-            throw new Error(err?.message || "fetch user failed");
-          }
-          const data = await userRes.json();
-        }
-        // finished loading
-        setLoading(false);
-      } catch (err: any) {
-        console.error("[ManageAccount] failed to fetch user:", err);
-        toast.error("Failed to load user data");
-        setLoading(false);
-      }
-    };
-
-    fetchUser();
-  }, [appUser, firebaseUser]);
-
-  // whenever the user object is updated (either by fetch or action), compute request status
+  // compute request status whenever user object changes
   useEffect(() => {
-    if (!user) return;
-    if (user.roles && Array.isArray(user.roles) && user.roles.includes("composer")) {
+    if (!user) {
+      setRequestStatus("none");
+      return;
+    }
+    if (
+      user.roles &&
+      Array.isArray(user.roles) &&
+      user.roles.includes("composer")
+    ) {
       setRequestStatus("approved");
-    } else if (user.composer_request) {
+    } else if ((user as any).composer_request) {
       setRequestStatus("pending");
     } else {
       setRequestStatus("none");
     }
   }, [user]);
 
-
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
     setAvatarFile(f);
-    // Only create blob URL for LOCAL preview while editing
-    if (f) setAvatarUrl(URL.createObjectURL(f));
+    if (f) setAvatarUrl(URL.createObjectURL(f)); // local preview only
   };
 
   const handleSaveProfile = async () => {
-    if (!supabaseId) {
+    if (!supabaseId || !appUser) {
       toast.error("User ID not found");
       return;
     }
 
     setLoading(true);
     try {
-      console.log(
-        "[handleSaveProfile] Starting profile update for user:",
-        supabaseId,
-      );
-      console.log("[handleSaveProfile] Data:", {
-        displayName,
-        avatarUrl,
-      });
-
-      // Only use blob URL for preview while editing, never for saving
       let finalAvatarUrl = user?.avatar_url || null;
 
-      // 1. Upload avatar if a new file is selected
+      // 1) upload avatar if new file selected
       if (avatarFile) {
         try {
-          console.log("[handleSaveProfile] Uploading avatar...");
           const uploadedUrl = await storageService.uploadFile(
             "avatars",
             avatarFile,
             supabaseId,
           );
-          console.log("[handleSaveProfile] Avatar uploaded:", uploadedUrl);
-          // Use the REAL storage URL, not blob URL
           finalAvatarUrl = uploadedUrl;
         } catch (uploadErr) {
-          console.warn("Avatar upload failed (client)", uploadErr);
-          // Keep the existing avatar URL if upload fails
+          console.warn("[handleSaveProfile] avatar upload failed:", uploadErr);
+          // keep previous avatar if upload fails
           finalAvatarUrl = user?.avatar_url || null;
         }
       }
 
-      // 2. Send update to server endpoint, always using the Supabase URL (never blob)
+      // 2) send update to backend
       try {
-        const token = await firebaseUser?.getIdToken();
+        const token = await getAuthToken();
         const base =
           (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
         const res = await fetch(`${base}/account`, {
@@ -282,34 +153,24 @@ export function ManageAccount() {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify({
-            firebaseUid: firebaseUser?.uid,
-            email: firebaseUser?.email,
+            auth_uid: appUser.auth_uid,
+            email: appUser.email,
             displayName,
-            avatarUrl: finalAvatarUrl, // always Supabase URL or null
+            avatarUrl: finalAvatarUrl,
           }),
         });
 
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
-          console.error("[handleSaveProfile] Server error:", errData);
+          console.error("[handleSaveProfile] server responded error:", errData);
           throw new Error(errData?.message || "Server update failed");
         }
-
-        const resultData = await res.json();
-        console.log("[handleSaveProfile] Server response:", resultData);
-        console.log("[handleSaveProfile] Avatar URL being sent to server:", {
-          finalAvatarUrl,
-          avatarUrlFromState: user?.avatar_url,
-        });
       } catch (srvErr) {
-        console.error("[handleSaveProfile] Server endpoint error:", srvErr);
+        console.error("[handleSaveProfile] server endpoint error:", srvErr);
         throw srvErr;
       }
 
-      setAvatarFile(null);
-      setIsEditing(false);
-
-      // 3. Refetch user data from server to get the real persisted avatar URL
+      // 3) refetch user row from your API to get persisted values
       try {
         const base =
           (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
@@ -318,50 +179,45 @@ export function ManageAccount() {
         });
         if (refetchRes.ok) {
           const freshData = await refetchRes.json();
-          console.log("[handleSaveProfile] Refetched user data:", freshData);
-          console.log(
-            "[handleSaveProfile] avatar_url from server:",
-            freshData.avatar_url,
-          );
-          console.log(
-            "[handleSaveProfile] all keys in freshData:",
-            Object.keys(freshData),
-          );
           setUser({
             ...freshData,
             roles: freshData.roles || [],
-          } as User);
+          });
           setDisplayName(freshData.display_name || "");
           setAvatarUrl(freshData.avatar_url || null);
         } else {
-          // Fallback: Update with local state
-          if (user) {
-            setUser({
-              ...user,
-              display_name: displayName || null,
-              avatar_url: finalAvatarUrl || null,
-            });
-          }
+          // fallback local state update
+          setUser((u) =>
+            u
+              ? {
+                  ...u,
+                  display_name: displayName || null,
+                  avatar_url: finalAvatarUrl || null,
+                }
+              : u,
+          );
           setAvatarUrl(finalAvatarUrl || null);
         }
       } catch (refetchErr) {
         console.warn(
-          "[handleSaveProfile] Refetch failed, using local state:",
+          "[handleSaveProfile] refetch failed, using local state:",
           refetchErr,
         );
-        // Fallback: Update with local state
-        if (user) {
-          setUser({
-            ...user,
-            display_name: displayName || null,
-            avatar_url: finalAvatarUrl || null,
-          });
-        }
+        setUser((u) =>
+          u
+            ? {
+                ...u,
+                display_name: displayName || null,
+                avatar_url: finalAvatarUrl || null,
+              }
+            : u,
+        );
         setAvatarUrl(finalAvatarUrl || null);
       }
 
+      setAvatarFile(null);
+      setIsEditing(false);
       toast.success("✅ Profile updated successfully");
-      console.log("[handleSaveProfile] Profile update completed successfully");
     } catch (err: any) {
       console.error("[handleSaveProfile] Error:", err);
       toast.error(err?.message || "Failed to save profile");
@@ -371,40 +227,28 @@ export function ManageAccount() {
   };
 
   const handleRequestRole = async (roleType: "composer" | "admin") => {
-    if (!supabaseId || !firebaseUser) return;
+    if (!supabaseId || !appUser) return;
 
     setRoleLoading(true);
     try {
-      const token = await firebaseUser.getIdToken();
+      const token = await getAuthToken();
       const base =
         (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
-
-      console.log(
-        "[handleRequestRole] Sending request to:",
-        `${base}/request-role`,
-      );
-      console.log("[handleRequestRole] Payload:", {
-        firebaseUid: firebaseUser.uid,
-        requestedRole: roleType,
-        userId: supabaseId,
-      });
 
       const res = await fetch(`${base}/request-role`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
-          firebaseUid: firebaseUser.uid,
+          auth_uid: appUser.auth_uid,
           requestedRole: roleType,
           userId: supabaseId,
         }),
       });
 
-      console.log("[handleRequestRole] Response status:", res.status);
-
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         if (res.status === 409) {
@@ -419,36 +263,32 @@ export function ManageAccount() {
       }
 
       toast.success(
-        `✅ ${roleType.charAt(0).toUpperCase() + roleType.slice(1)} request submitted!\nAwaiting admin approval.`,
+        `✅ ${roleType.charAt(0).toUpperCase() + roleType.slice(1)} request submitted! Awaiting admin approval.`,
       );
       setShowRoleModal(false);
+
       if (roleType === "composer") {
         setRequestStatus("pending");
-        // reflect on local user object as well
-        setUser((u) =>
-          u ? { ...u, composer_request: true } : u,
-        );
+        setUser((u) => (u ? { ...u, composer_request: true } : u));
       }
     } catch (err: any) {
-      console.error(
-        `[handleRequestRole] Error requesting ${showRoleModal}:`,
-        err,
-      );
-      toast.error(err?.message || `Failed to request ${showRoleModal} access`);
+      console.error("[handleRequestRole] error:", err);
+      toast.error(err?.message || `Failed to request ${roleType} access`);
     } finally {
       setRoleLoading(false);
     }
   };
 
-  // Poll for role changes (detect when admin approves composer role)
-  // also refresh user record periodically to pick up composer_request updates made in other tabs
+  // Poll for role changes and refresh user record periodically
   useEffect(() => {
     let timer: any;
     let mounted = true;
+
     async function checkRolesAndUser() {
-      if (!firebaseUser) return;
+      if (!appUser) return;
+      const authUid = appUser.auth_uid;
       try {
-        const roles = await navbarService.fetchUserRoles(firebaseUser.uid);
+        const roles = await navbarService.fetchUserRoles(authUid);
         if (!mounted) return;
         if (Array.isArray(roles) && roles.includes("composer")) {
           setRequestStatus("approved");
@@ -456,17 +296,25 @@ export function ManageAccount() {
       } catch (e) {
         // ignore polling errors
       }
-      // also refresh supabase user record to pick up composer_request flag
+
+      // refresh user record from server to pick up composer_request flag
       try {
         const base =
           (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
-        const resp = await fetch(
-          `${base}/users/by-firebase/${firebaseUser.uid}?_ts=${Date.now()}`,
-          {
+        let resp: Response | undefined;
+        if (supabaseId) {
+          resp = await fetch(`${base}/users/${supabaseId}?_ts=${Date.now()}`, {
             headers: { "Content-Type": "application/json" },
-          },
-        );
-        if (resp.ok) {
+          });
+        } else if (authUid) {
+          resp = await fetch(
+            `${base}/users/by-auth-uid/${authUid}?_ts=${Date.now()}`,
+            {
+              headers: { "Content-Type": "application/json" },
+            },
+          );
+        }
+        if (resp && resp.ok) {
           const u = await resp.json();
           setUser((prev) => ({
             ...prev,
@@ -485,29 +333,47 @@ export function ManageAccount() {
       mounted = false;
       if (timer) clearInterval(timer);
     };
-  }, [firebaseUser]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appUser, supabaseId]);
 
   const handleDeleteAccount = async () => {
-    if (!firebaseUser) return;
+    if (!appUser) return;
 
     try {
       setLoading(true);
-      await firebaseUser.delete();
-      await signOut();
-      toast.success("Account deleted successfully");
-      navigate("/");
-    } catch (error: any) {
-      if (error.code === "auth/requires-recent-login") {
-        toast.error("Please log in again before deleting your account.");
-      } else {
-        toast.error("Failed to delete account");
+      const token = await getAuthToken();
+      const base =
+        (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
+
+      const res = await fetch(`${base}/account`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          userId: appUser.id,
+          auth_uid: appUser.auth_uid,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.message || "Failed to delete account");
       }
+
+      await signOut(false);
+      toast.success("Account deleted successfully");
+      navigate("/", { replace: true });
+    } catch (error: any) {
+      console.error("[handleDeleteAccount] error:", error);
+      toast.error(error?.message || "Failed to delete account");
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 flex items-center justify-center p-4">
         <div className="text-center">
@@ -518,8 +384,8 @@ export function ManageAccount() {
     );
   }
 
-  const isComposer = user?.roles.includes("composer");
-  const isAdmin = user?.roles.includes("admin");
+  const isComposer = !!user?.roles?.includes("composer");
+  const isAdmin = !!user?.roles?.includes("admin");
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 py-12 px-4">
@@ -544,16 +410,14 @@ export function ManageAccount() {
           </CardHeader>
 
           <CardContent className="pt-8 pb-8">
-            {/* Profile View */}
             {!isEditing ? (
               <div className="space-y-8">
-                {/* Avatar and Basic Info Grid */}
                 <div className="grid md:grid-cols-[auto_1fr] gap-8 items-start">
-                  {/* Avatar Section */}
                   <div className="flex flex-col items-center space-y-3">
                     <div className="relative group">
                       <div className="w-40 h-40 bg-gradient-to-br from-blue-400 via-purple-400 to-pink-400 rounded-3xl overflow-hidden flex items-center justify-center shadow-xl ring-4 ring-white">
                         {user?.avatar_url ? (
+                          // display the URL that comes from server
                           <img
                             src={user.avatar_url}
                             alt="avatar"
@@ -575,7 +439,6 @@ export function ManageAccount() {
                     </div>
                   </div>
 
-                  {/* Info Grid */}
                   <div className="grid sm:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">
@@ -626,14 +489,9 @@ export function ManageAccount() {
                   </div>
                 </div>
 
-                {/* Edit Button */}
                 <div className="border-t pt-6">
                   <Button
                     onClick={() => {
-                      console.log(
-                        "[ManageAccount] Edit button clicked, current displayName:",
-                        displayName,
-                      );
                       setIsEditing(true);
                     }}
                     className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 w-full sm:w-auto px-8 shadow-lg"
@@ -645,9 +503,7 @@ export function ManageAccount() {
                 </div>
               </div>
             ) : (
-              /* Profile Edit Form */
               <div className="space-y-8">
-                {/* Avatar Upload Section */}
                 <div className="flex flex-col items-center space-y-4">
                   <div className="relative group cursor-pointer">
                     <div className="w-40 h-40 bg-gradient-to-br from-blue-400 via-purple-400 to-pink-400 rounded-3xl overflow-hidden flex items-center justify-center shadow-xl ring-4 ring-purple-100 transition-all group-hover:ring-purple-300">
@@ -681,7 +537,6 @@ export function ManageAccount() {
                   </Label>
                 </div>
 
-                {/* Form Fields */}
                 <div className="grid sm:grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <Label
@@ -700,7 +555,6 @@ export function ManageAccount() {
                   </div>
                 </div>
 
-                {/* Action Buttons */}
                 <div className="border-t pt-6 flex flex-col sm:flex-row gap-3">
                   <Button
                     onClick={handleSaveProfile}
@@ -717,13 +571,8 @@ export function ManageAccount() {
                   </Button>
                   <Button
                     onClick={() => {
-                      console.log(
-                        "[ManageAccount] Cancel button clicked, resetting form",
-                      );
                       setIsEditing(false);
-                      // Reset to original values from database
                       setDisplayName(user?.display_name || "");
-                      // Important: Use database URL, not blob URL
                       setAvatarUrl(user?.avatar_url || null);
                       setAvatarFile(null);
                     }}
@@ -752,7 +601,6 @@ export function ManageAccount() {
 
           <CardContent className="pt-6 pb-6">
             <div className="grid sm:grid-cols-2 gap-4">
-              {/* Composer Role */}
               <div className="p-6 border-2 rounded-xl transition-all hover:shadow-md">
                 <div className="flex items-start gap-4">
                   <div className="w-12 h-12 bg-gradient-to-br from-orange-100 to-pink-100 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -771,11 +619,9 @@ export function ManageAccount() {
                           <CheckCircle className="w-5 h-5 flex-shrink-0" />
                           <span className="text-sm">Active</span>
                         </div>
-                        {/* Show redirect button for newly approved users */}
                         {requestStatus === "approved" && !isComposer && (
                           <Button
                             onClick={() => {
-                              // navigate to composer dashboard and clear status locally
                               window.location.href = "/composer";
                             }}
                             className="ml-3 bg-green-600 hover:bg-green-700"
@@ -806,7 +652,6 @@ export function ManageAccount() {
                 </div>
               </div>
 
-              {/* Admin Role */}
               <div className="p-6 border-2 rounded-xl transition-all hover:shadow-md">
                 <div className="flex items-start gap-4">
                   <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-purple-100 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -941,3 +786,5 @@ export function ManageAccount() {
     </div>
   );
 }
+
+export default ManageAccount;

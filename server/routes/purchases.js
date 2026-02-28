@@ -14,11 +14,11 @@ router.get("/", verifyFirebaseToken, async (req, res) => {
         .json({ message: "firebaseUid is required (from token)" });
     }
 
-    // First resolve firebase UID to supabase user id
+    // First resolve auth UID to supabase user id
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("id")
-      .eq("firebase_uid", firebaseUid)
+      .eq("auth_uid", firebaseUid)
       .maybeSingle();
 
     if (userError) throw userError;
@@ -68,11 +68,11 @@ router.post("/", verifyFirebaseToken, async (req, res) => {
       });
     }
 
-    // Resolve firebase UID to supabase user id
+    // Resolve auth UID to supabase user id
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("id")
-      .eq("firebase_uid", firebaseUid)
+      .eq("auth_uid", firebaseUid)
       .maybeSingle();
 
     if (userError) throw userError;
@@ -138,11 +138,11 @@ router.get("/recommendations", verifyFirebaseToken, async (req, res) => {
       return res.status(400).json({ message: "firebaseUid is required" });
     }
 
-    // Resolve firebase UID to supabase user id
+    // Resolve auth UID to supabase user id
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("id")
-      .eq("firebase_uid", firebaseUid)
+      .eq("auth_uid", firebaseUid)
       .maybeSingle();
 
     if (userError) throw userError;
@@ -181,11 +181,11 @@ router.put("/preferences", verifyFirebaseToken, async (req, res) => {
       });
     }
 
-    // Resolve firebase UID to supabase user id
+    // Resolve auth UID to supabase user id
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("id")
-      .eq("firebase_uid", firebaseUid)
+      .eq("auth_uid", firebaseUid)
       .maybeSingle();
 
     if (userError) throw userError;

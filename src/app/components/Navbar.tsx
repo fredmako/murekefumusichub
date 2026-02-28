@@ -39,7 +39,8 @@ interface NavbarProps {
 }
 
 export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
-  const { firebaseUser, appUser, signOut } = useAuth();
+  // use appUser from your AuthContext (Supabase)
+  const { appUser, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -58,10 +59,6 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
 
   // Polling interval (ms) for admin notifications
   const NOTIF_POLL_INTERVAL = 15000;
-
-  // roles are fetched from server; do not derive admin from email heuristics
-
-  // roles are derived from AuthContext (appUser) and kept in sync there
 
   // Fetch admin notifications (role requests and composer requests)
   useEffect(() => {
@@ -193,6 +190,17 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     return dashboards;
   };
 
+  // helper: build avatar / initials
+  const avatarUrl = appUser?.avatar_url ?? null;
+  const displayName = appUser?.display_name ?? appUser?.email ?? "User";
+  const initials = (() => {
+    const name = displayName || "";
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 0) return "U";
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  })();
+
   return (
     <nav className="bg-white shadow-md border-b">
       <div className="container mx-auto px-4">
@@ -213,11 +221,9 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
               const isVisible =
                 item.showOn.includes("any") ||
                 item.showOn.includes(location.pathname);
-
               const hasRole =
                 item.roles.length === 0 ||
                 item.roles.some((role) => roles.includes(role));
-
               if (!isVisible || !hasRole) return null;
 
               return (
@@ -350,6 +356,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
+
             {/* ===== Cart (Buyer Only) ===== */}
             {roles.includes("buyer") && cart.length > 0 && onRemoveFromCart && (
               <Sheet>
@@ -426,17 +433,23 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="icon">
-                  <UserIcon className="size-5" />
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt={`${displayName} avatar`}
+                      className="w-5 h-5 rounded-full object-cover"
+                    />
+                  ) : (
+                    <UserIcon className="size-5" />
+                  )}
                 </Button>
               </DropdownMenuTrigger>
 
               <DropdownMenuContent align="end" className="w-56">
-                {firebaseUser ? (
+                {appUser ? (
                   <>
                     <DropdownMenuLabel>
-                      <p className="font-medium">
-                        {firebaseUser.displayName || firebaseUser.email}
-                      </p>
+                      <p className="font-medium">{displayName}</p>
                       <p className="text-xs text-gray-500">
                         {roles.length === 0 ? "user" : roles.join(", ")}
                       </p>
@@ -503,3 +516,5 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     </nav>
   );
 }
+
+export default Navbar;

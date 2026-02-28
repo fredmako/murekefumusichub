@@ -265,12 +265,7 @@ router.post("/users/:userId/promote-composer", async (req, res) => {
         updateReqErr,
       );
 
-    // Clear the old composer_request flag if it exists
-    const { error: clearErr } = await supabase
-      .from("users")
-      .update({ composer_request: false })
-      .eq("id", userId);
-    if (clearErr) throw clearErr;
+    // Note: composer_request flag no longer used; rely on composers table
 
     try {
       const { data: roleRow } = await supabase

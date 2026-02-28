@@ -12,9 +12,7 @@ import {
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { useNavigate } from "react-router-dom";
-import { onAuthStateChanged } from "firebase/auth";
 import { useAuth } from "../../context/AuthContext";
-import { auth } from "../../lib/firebase";
 import { navbarService } from "@/services/navbarService";
 import { toast } from "sonner";
 import logo from "./images/logo.jpg";
@@ -28,6 +26,7 @@ export function Login() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isForgot, setIsForgot] = useState(false);
   const navigate = useNavigate();
   const {
     appUser,
@@ -35,6 +34,7 @@ export function Login() {
     signUpWithEmail,
     signInWithGoogle,
     refreshRoles,
+    resetPassword,
   } = useAuth();
 
   /* ============================= */
@@ -57,34 +57,17 @@ export function Login() {
   /* AUTO REDIRECT IF LOGGED IN */
   /* ============================= */
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!user) return;
+    if (!appUser) return; // Not logged in
 
-      try {
-        // Ask server for current roles for this firebase UID
-        const roles = await navbarService.fetchUserRoles(user.uid);
+    try {
+      let role: UserRole = "buyer";
+      if (appUser.roles?.includes("admin")) role = "admin";
+      else if (appUser.roles?.includes("composer")) role = "composer";
 
-        let role: UserRole = "buyer";
-        if (roles.includes("admin")) role = "admin";
-        else if (roles.includes("composer")) role = "composer";
-
-        redirectToDashboard(role);
-      } catch (err) {
-        console.error(
-          "[Login] Failed to fetch roles on auth state change:",
-          err,
-        );
-        // Fallback to server-provided appUser roles if available, otherwise default to buyer
-        const effectiveRole = appUser?.roles?.includes("admin")
-          ? "admin"
-          : appUser?.roles?.includes("composer")
-            ? "composer"
-            : "buyer";
-        redirectToDashboard(effectiveRole as UserRole);
-      }
-    });
-
-    return () => unsubscribe();
+      redirectToDashboard(role);
+    } catch (err) {
+      console.error("[Login] Failed to redirect on auth state change:", err);
+    }
   }, [appUser]);
 
   /* ============================= */
@@ -93,34 +76,31 @@ export function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!email || !password) {
-      toast.error("Please enter email and password");
+    if (!email || (!password && !isForgot)) {
+      toast.error("Please enter email" + (isForgot ? "" : " and password"));
       return;
     }
 
     setIsLoading(true);
 
     try {
-      if (isSignUp) {
-        await signUpWithEmail(email, password, "user");
-        toast.success("Account created successfully!");
+      if (isForgot) {
+        await resetPassword(email);
+        toast.success("Password reset email sent. Check your inbox.");
+      } else if (isSignUp) {
+        await signUpWithEmail(email, password);
+        toast.success(
+          "Account created successfully! Please check your email and confirm before logging in.",
+        );
       } else {
-        await signInWithEmail(email, password, "user");
+        await signInWithEmail(email, password);
         toast.success("Login successful!");
       }
 
-      // Ensure roles are fresh, then redirect based on them
-      await refreshRoles();
-      const roles = appUser?.roles || [];
-      const effectiveRole: UserRole = roles.includes("admin")
-        ? "admin"
-        : roles.includes("composer")
-          ? "composer"
-          : roles.includes("buyer")
-            ? "buyer"
-            : "buyer";
-
-      redirectToDashboard(effectiveRole);
+      if (!isForgot) {
+        // Sync roles - the useEffect will handle redirect automatically when appUser updates
+        await refreshRoles();
+      }
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Authentication failed");
@@ -136,20 +116,9 @@ export function Login() {
     setIsLoading(true);
 
     try {
-      await signInWithGoogle("user");
+      await signInWithGoogle();
       toast.success("Google sign-in successful!");
-
-      await refreshRoles();
-      const roles = appUser?.roles || [];
-      const effectiveRole: UserRole = roles.includes("admin")
-        ? "admin"
-        : roles.includes("composer")
-          ? "composer"
-          : roles.includes("buyer")
-            ? "buyer"
-            : "buyer";
-
-      redirectToDashboard(effectiveRole);
+      // The useEffect will handle redirect automatically when appUser updates
     } catch (error: any) {
       // If the browser blocked the popup, signInWithGoogle already tries redirect
       console.error(error);
@@ -182,12 +151,18 @@ export function Login() {
           <Card className="shadow-xl">
             <CardHeader>
               <CardTitle className="text-2xl">
-                {isSignUp ? "Create Account" : "Sign In"}
+                {isForgot
+                  ? "Reset Password"
+                  : isSignUp
+                    ? "Create Account"
+                    : "Sign In"}
               </CardTitle>
               <CardDescription>
-                {isSignUp
-                  ? "Create a new account to get started"
-                  : "Enter your credentials"}
+                {isForgot
+                  ? "Enter your email to receive reset instructions"
+                  : isSignUp
+                    ? "Create a new account to get started"
+                    : "Enter your credentials"}
               </CardDescription>
             </CardHeader>
 
@@ -204,17 +179,19 @@ export function Login() {
                   />
                 </div>
 
-                <div>
-                  <Label>Password</Label>
-                  <Input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    minLength={6}
-                    disabled={isLoading}
-                  />
-                </div>
+                {!isForgot && (
+                  <div>
+                    <Label>Password</Label>
+                    <Input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={6}
+                      disabled={isLoading}
+                    />
+                  </div>
+                )}
 
                 <Button
                   type="submit"
@@ -225,9 +202,11 @@ export function Login() {
                   <LogIn className="size-5 mr-2" />
                   {isLoading
                     ? "Processing..."
-                    : isSignUp
-                      ? "Create Account"
-                      : "Sign In"}
+                    : isForgot
+                      ? "Send Reset Email"
+                      : isSignUp
+                        ? "Create Account"
+                        : "Sign In"}
                 </Button>
               </form>
 
@@ -244,16 +223,34 @@ export function Login() {
                 </Button>
               </div>
 
-              <div className="mt-4 text-center">
+              <div className="mt-4 flex justify-between items-center">
+                {!isForgot && !isSignUp && (
+                  <button
+                    type="button"
+                    onClick={() => setIsForgot(true)}
+                    className="text-sm text-blue-600 hover:underline"
+                    disabled={isLoading}
+                  >
+                    Forgot password?
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => setIsSignUp(!isSignUp)}
-                  className="text-sm text-blue-600 hover:underline"
+                  onClick={() => {
+                    if (isForgot) {
+                      setIsForgot(false);
+                    } else {
+                      setIsSignUp(!isSignUp);
+                    }
+                  }}
+                  className="text-sm text-blue-600 hover:underline ml-auto"
                   disabled={isLoading}
                 >
-                  {isSignUp
-                    ? "Already have an account? Sign in"
-                    : "Don't have an account? Sign up"}
+                  {isForgot
+                    ? "Back to login"
+                    : isSignUp
+                      ? "Already have an account? Sign in"
+                      : "Don't have an account? Sign up"}
                 </button>
               </div>
 
