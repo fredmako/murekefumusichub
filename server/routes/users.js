@@ -1,7 +1,7 @@
 import express from "express";
-import { supabase } from "../lib/supabaseClient.js";
-const supabaseAdmin = supabase;
-import { verifyFirebaseToken } from "../middleware/auth.js";
+import { supabaseAdmin } from "../lib/supabaseServer.js";
+import { verifySupabaseToken } from "../middleware/verifySupabaseToken.js";
+import { serverError } from "../utils/errors.js";
 
 const router = express.Router();
 
@@ -21,12 +21,12 @@ function isValidAvatarUrl(url) {
 }
 
 // GET /api/users/:id
-router.get("/users/:id", async (req, res) => {
+router.get("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     if (!id) return res.status(400).json({ message: "id is required" });
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("users")
       // select user profile
       .select(`id, auth_uid, email, display_name, avatar_url, created_at`)
@@ -39,40 +39,40 @@ router.get("/users/:id", async (req, res) => {
     const roles = [];
 
     // Check if user has composer record
-    const { data: composer } = await supabase
+    const { data: composer } = await supabaseAdmin
       .from("composers")
       .select("id")
       .eq("user_id", data.id)
       .maybeSingle();
     if (composer) roles.push("composer");
 
-    // Check if user is admin (via email)
-    const adminEmails = (process.env.ADMIN_IDENTIFIERS || "")
-      .split(",")
-      .map((e) => e.trim().toLowerCase());
-    if (adminEmails.includes(data.email?.toLowerCase())) roles.push("admin");
+    // Check if user is admin (via admin_emails table)
+    const { data: adminEmail } = await supabaseAdmin
+      .from("admin_emails")
+      .select("id")
+      .eq("email", data.email)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (adminEmail) roles.push("admin");
 
     return res.json({ ...data, roles });
   } catch (err) {
     console.error("[get-user] Error:", err);
-    return res
-      .status(500)
-      .json({ message: "Failed to fetch user", error: err.message });
+    return serverError(res, err);
   }
 });
 
-// GET /api/users/by-firebase/:firebaseUid
-router.get("/users/by-firebase/:firebaseUid", async (req, res) => {
+// GET /api/users/by-auth-uid/:authUid
+router.get("/by-auth-uid/:authUid", async (req, res) => {
   try {
-    const { firebaseUid } = req.params;
-    if (!firebaseUid)
-      return res.status(400).json({ message: "firebaseUid is required" });
+    const { authUid } = req.params;
+    if (!authUid) return res.status(400).json({ message: "authUid is required" });
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("users")
       // select user profile
       .select(`id, auth_uid, email, display_name, avatar_url, created_at`)
-      .eq("auth_uid", firebaseUid)
+      .eq("auth_uid", authUid)
       .maybeSingle();
 
     if (error) throw error;
@@ -82,30 +82,116 @@ router.get("/users/by-firebase/:firebaseUid", async (req, res) => {
     const roles = [];
 
     // Check if user has composer record
-    const { data: composer } = await supabase
+    const { data: composer } = await supabaseAdmin
       .from("composers")
       .select("id")
       .eq("user_id", data.id)
       .maybeSingle();
     if (composer) roles.push("composer");
 
-    // Check if user is admin (via email)
-    const adminEmails = (process.env.ADMIN_IDENTIFIERS || "")
-      .split(",")
-      .map((e) => e.trim().toLowerCase());
-    if (adminEmails.includes(data.email?.toLowerCase())) roles.push("admin");
+    // Check if user is admin (via admin_emails table)
+    const { data: adminEmail } = await supabaseAdmin
+      .from("admin_emails")
+      .select("id")
+      .eq("email", data.email)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (adminEmail) roles.push("admin");
 
     return res.json({ ...data, roles });
   } catch (err) {
-    console.error("[get-user-by-firebase] Error:", err);
-    return res
-      .status(500)
-      .json({ message: "Failed to fetch user", error: err.message });
+    console.error("[get-user-by-auth-uid] Error:", err);
+    return serverError(res, err);
+  }
+});
+
+// POST /api/users/ensure
+router.post("/ensure", async (req, res) => {
+  try {
+    const { auth_uid, email, display_name, avatar_url } = req.body;
+    if (!auth_uid) return res.status(400).json({ message: "auth_uid required" });
+    const normalizedEmail = email ? String(email).trim().toLowerCase() : null;
+
+    const { data: existing, error: existingErr } = await supabaseAdmin
+      .from("users")
+      .select("id, auth_uid, email, display_name, avatar_url")
+      .eq("auth_uid", auth_uid)
+      .maybeSingle();
+
+    if (existingErr) throw existingErr;
+    if (existing) return res.json(existing);
+
+    // Handle existing user rows by email to avoid unique constraint violations
+    if (normalizedEmail) {
+      const { data: emailMatch, error: emailErr } = await supabaseAdmin
+        .from("users")
+        .select("id, auth_uid, email, display_name, avatar_url")
+        .eq("email", normalizedEmail)
+        .maybeSingle();
+
+      if (emailErr) throw emailErr;
+
+      if (emailMatch) {
+        if (emailMatch.auth_uid && emailMatch.auth_uid !== auth_uid) {
+          return res.status(409).json({
+            message: "Email is already linked to another account",
+            user: emailMatch,
+          });
+        }
+
+        const { data: updated, error: updateErr } = await supabaseAdmin
+          .from("users")
+          .update({
+            auth_uid,
+            display_name: display_name || emailMatch.display_name || null,
+            avatar_url: avatar_url || emailMatch.avatar_url || null,
+          })
+          .eq("id", emailMatch.id)
+          .select("id, auth_uid, email, display_name, avatar_url")
+          .maybeSingle();
+
+        if (updateErr) throw updateErr;
+        return res.json(updated || emailMatch);
+      }
+    }
+
+    const { data: created, error: createErr } = await supabaseAdmin
+      .from("users")
+      .insert({
+        auth_uid,
+        email: normalizedEmail || null,
+        display_name: display_name || null,
+        avatar_url: avatar_url || null,
+      })
+      .select()
+      .maybeSingle();
+
+    if (createErr) {
+      // Race-safe fallback: if another request inserted concurrently, return that row.
+      if (createErr.code === "23505") {
+        const { data: conflictRow } = await supabaseAdmin
+          .from("users")
+          .select("id, auth_uid, email, display_name, avatar_url")
+          .or(
+            normalizedEmail
+              ? `auth_uid.eq.${auth_uid},email.eq.${normalizedEmail}`
+              : `auth_uid.eq.${auth_uid}`,
+          )
+          .limit(1)
+          .maybeSingle();
+
+        if (conflictRow) return res.json(conflictRow);
+      }
+      throw createErr;
+    }
+    return res.status(201).json(created);
+  } catch (err) {
+    return serverError(res, err);
   }
 });
 
 // PUT /api/users/:id
-router.put("/users/:id", verifyFirebaseToken, async (req, res) => {
+router.put("/:id", verifySupabaseToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { display_name, phone, avatar_url, email } = req.body;
@@ -129,7 +215,7 @@ router.put("/users/:id", verifyFirebaseToken, async (req, res) => {
     if (email !== undefined) payload.email = email || null;
     if (Object.keys(payload).length === 0)
       return res.status(400).json({ message: "No updatable fields provided" });
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("users")
       .update(payload)
       .eq("id", id)
@@ -139,73 +225,7 @@ router.put("/users/:id", verifyFirebaseToken, async (req, res) => {
     return res.json({ message: "User updated", user: data });
   } catch (err) {
     console.error("[update-user] Error:", err);
-    return res
-      .status(500)
-      .json({ message: "Failed to update user", error: err.message });
-  }
-});
-
-// PUT /api/account - authenticated user's account update
-router.put("/account", verifyFirebaseToken, async (req, res) => {
-  try {
-    const { displayName, phone, avatarUrl, email } = req.body;
-    console.log("[update-account] Incoming payload:", {
-      displayName,
-      phone,
-      avatarUrl,
-      email,
-    });
-
-    // Validate avatar URL - only accept Supabase URLs or null
-    if (avatarUrl !== undefined) {
-      if (!isValidAvatarUrl(avatarUrl)) {
-        console.warn(
-          "[update-account] Invalid avatar URL rejected:",
-          avatarUrl,
-        );
-        return res.status(400).json({
-          message:
-            "Invalid avatar URL. Only Supabase storage URLs are accepted.",
-        });
-      }
-    }
-
-    const firebaseUid = req.firebaseDecoded?.uid || req.body.firebaseUid;
-    if (!firebaseUid)
-      return res.status(400).json({ message: "firebaseUid is required" });
-    const { data: user } = await supabase
-      .from("users")
-      .select("id")
-      .eq("auth_uid", firebaseUid)
-      .maybeSingle();
-    if (!user) return res.status(404).json({ message: "User not found" });
-    const payload = {
-      ...(displayName !== undefined
-        ? { display_name: displayName || null }
-        : {}),
-      ...(phone !== undefined ? { phone: phone || null } : {}),
-      ...(avatarUrl !== undefined ? { avatar_url: avatarUrl || null } : {}),
-      ...(email !== undefined ? { email: email || null } : {}),
-    };
-    if (Object.keys(payload).length === 0)
-      return res.status(400).json({ message: "No updatable fields provided" });
-    const { data, error } = await supabaseAdmin
-      .from("users")
-      .update(payload)
-      .eq("id", user.id)
-      .select()
-      .single();
-    if (error) throw error;
-    console.log(
-      "[update-account] Updated user row returned from supabase:",
-      data,
-    );
-    return res.json({ message: "Account updated", user: data });
-  } catch (err) {
-    console.error("[update-account] Error:", err);
-    return res
-      .status(500)
-      .json({ message: "Failed to update account", error: err.message });
+    return serverError(res, err);
   }
 });
 

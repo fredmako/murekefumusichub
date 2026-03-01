@@ -38,6 +38,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const navigate = useNavigate();
   const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const API_BASE_URL =
+    (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
+
+  const fetchServerRoles = async (authUid: string): Promise<string[]> => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/user/roles/${authUid}`, {
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) return [];
+      const roles = await res.json();
+      return Array.isArray(roles) ? roles : [];
+    } catch (err) {
+      console.warn("[fetchServerRoles] error:", err);
+      return [];
+    }
+  };
 
   /**
    * Sync user profile: fetch from Supabase users table and check roles
@@ -137,15 +153,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      // Check if user is a composer
-      const { data: composerData } = await supabase
-        .from("composers")
-        .select("id")
-        .eq("user_id", finalUser.id)
-        .maybeSingle();
-
-      const isComposer = !!composerData;
-      const roles: string[] = isComposer ? ["composer"] : [];
+      let roles = await fetchServerRoles(authUid);
+      if (!Array.isArray(roles) || roles.length === 0) {
+        // Fallback for local/dev cases where roles endpoint is unavailable.
+        const { data: composerData } = await supabase
+          .from("composers")
+          .select("id")
+          .eq("user_id", finalUser.id)
+          .maybeSingle();
+        roles = composerData ? ["composer"] : [];
+      }
+      const isComposer = roles.includes("composer");
 
       setAppUser({
         id: finalUser.id,
@@ -181,16 +199,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const refreshRoles = async () => {
     try {
       if (!appUser) return;
-
-      // Check if user is a composer
-      const { data: composerData } = await supabase
-        .from("composers")
-        .select("id")
-        .eq("user_id", appUser.id)
-        .maybeSingle();
-
-      const isComposer = !!composerData;
-      const roles: string[] = isComposer ? ["composer"] : [];
+      let roles = await fetchServerRoles(appUser.auth_uid);
+      if (!Array.isArray(roles) || roles.length === 0) {
+        const { data: composerData } = await supabase
+          .from("composers")
+          .select("id")
+          .eq("user_id", appUser.id)
+          .maybeSingle();
+        roles = composerData ? ["composer"] : [];
+      }
+      const isComposer = roles.includes("composer");
 
       setAppUser((prev) =>
         prev
@@ -377,45 +395,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             }
           }
         }
-      } catch (err) {
-        console.error("[initAuth] error:", err);
+      } catch (err: any) {
+        if (err?.name === "NavigatorLockAcquireTimeoutError") {
+          console.warn(
+            "[initAuth] lock timeout; deferring to auth state listener:",
+            err,
+          );
+        } else {
+          console.error("[initAuth] error:", err);
+        }
         if (mounted) setAppUser(null);
       } finally {
         if (mounted) setIsLoading(false);
       }
     };
 
-    const setupAuthListener = async () => {
-      // Small delay to avoid competing with getSession lock acquisition
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      if (!mounted) return;
-
-      try {
-        const { data } = await supabase.auth.onAuthStateChange(
-          async (event, session) => {
-            if (mounted) {
-              if (session && session.user) {
-                await syncUserProfile(session.user.id);
-              } else {
-                setAppUser(null);
-              }
-            }
-          },
-        );
-
-        if (mounted) {
-          subscriptionUnsubscribe = data?.subscription?.unsubscribe ?? null;
+    const setupAuthListener = () => {
+      const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        if (!mounted) return;
+        if (session && session.user) {
+          await syncUserProfile(session.user.id);
+        } else {
+          setAppUser(null);
         }
-      } catch (err) {
-        console.warn("[setupAuthListener] error:", err);
-      }
+      });
+
+      subscriptionUnsubscribe = data?.subscription?.unsubscribe ?? null;
     };
 
-    // Run initialization and setup listener
-    Promise.all([initAuth(), setupAuthListener()]).catch((err) =>
-      console.warn("[initAuth] setup error:", err),
-    );
+    // Register listener first, then initialize session read.
+    setupAuthListener();
+    initAuth().catch((err) => console.warn("[initAuth] setup error:", err));
 
     return () => {
       mounted = false;

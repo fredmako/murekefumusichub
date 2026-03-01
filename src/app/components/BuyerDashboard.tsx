@@ -37,11 +37,10 @@ import {
 import { Separator } from "@/app/components/ui/separator";
 import { toast } from "sonner";
 import { purchaseService } from "@/services/api";
-import { User } from "firebase/auth";
 import { CartItem } from "../types";
 
 interface BuyerDashboardProps {
-  currentUser: User;
+  currentUser?: any;
   cart: CartItem[];
   onClearCart: () => void;
   onRemoveFromCart?: (compositionId: string) => void;
@@ -54,7 +53,7 @@ export function BuyerDashboard({
   onRemoveFromCart,
 }: BuyerDashboardProps) {
   const navigate = useNavigate();
-  const { firebaseUser } = useAuth();
+  const { appUser } = useAuth();
   const [activeTab, setActiveTab] = useState("library");
   const [loading, setLoading] = useState(true);
   const [purchasedCompositions, setPurchasedCompositions] = useState<any[]>([]);
@@ -64,16 +63,14 @@ export function BuyerDashboard({
     const fetchUserPurchases = async () => {
       try {
         setLoading(true);
-        if (!firebaseUser) {
+        if (!appUser) {
           toast.error("You must be signed in to view purchases");
           setLoading(false);
           return;
         }
 
-        // Fetch purchases via API (which handles firebase UID resolution)
-        const purchases = (await purchaseService.getByBuyer(
-          firebaseUser.uid,
-        )) as any[];
+        // Fetch purchases via API (auth UID is resolved from token server-side)
+        const purchases = (await purchaseService.getByBuyer(appUser.id)) as any[];
 
         const enriched = (purchases || []).map((p: any) => ({
           ...p,
@@ -95,14 +92,14 @@ export function BuyerDashboard({
     };
 
     fetchUserPurchases();
-  }, [firebaseUser]);
+  }, [appUser?.id]);
 
   // Redirect to home if user logs out
   useEffect(() => {
-    if (firebaseUser === null) {
+    if (appUser === null) {
       navigate("/", { replace: true });
     }
-  }, [firebaseUser, navigate]);
+  }, [appUser, navigate]);
 
   // Cart calculations
   const cartTotal = cart.reduce(

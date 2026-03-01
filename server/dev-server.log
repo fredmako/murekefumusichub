@@ -1,0 +1,143 @@
+
+> murekefu-sync-server@1.0.0 dev
+> nodemon index.js
+
+[33m[nodemon] 3.1.14[39m
+[33m[nodemon] to restart at any time, enter `rs`[39m
+[33m[nodemon] watching path(s): *.*[39m
+[33m[nodemon] watching extensions: js,mjs,cjs,json[39m
+[32m[nodemon] starting `node index.js`[39m
+[dotenv@17.3.1] injecting env (9) from .env -- tip: ⚡️ secrets for agents: https://dotenvx.com/as2
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  enable debug logging with { debug: true }
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+[server] listening on http://localhost:3001
+[verifySupabaseToken] JWT verification failed invalid token
+[api] POST /api/upload/compositions -> 401 (8ms)
+[api] OPTIONS /api/user/roles/0e5aa2ac-2bd6-4cca-b1fd-1d030ec7682b -> 204 (2ms)
+[api] GET /api/user/roles/0e5aa2ac-2bd6-4cca-b1fd-1d030ec7682b -> 304 (2499ms)
+[api] GET /api/user/roles/0e5aa2ac-2bd6-4cca-b1fd-1d030ec7682b -> 304 (1173ms)
+[api] OPTIONS /api/upload/compositions -> 204 (1ms)
+[verifySupabaseToken] JWT verification failed invalid algorithm
+[api] POST /api/upload/compositions -> 401 (8ms)
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node index.js`[39m
+[dotenv@17.3.1] injecting env (9) from .env -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+node:events:486
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at app.listen (C:\Users\pc\Desktop\choral\server\node_modules\express\lib\application.js:635:24)
+    at startServer (file:///C:/Users/pc/Desktop/choral/server/index.js:58:24)
+    at file:///C:/Users/pc/Desktop/choral/server/index.js:72:3
+    at ModuleJob.run (node:internal/modules/esm/module_job:413:25)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:654:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+Emitted 'error' event on Server instance at:
+    at emitErrorNT (node:net:1976:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v25.2.1
+[31m[nodemon] app crashed - waiting for file changes before starting...[39m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node index.js`[39m
+[dotenv@17.3.1] injecting env (9) from .env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚡️ secrets for agents: https://dotenvx.com/as2
+node:events:486
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at app.listen (C:\Users\pc\Desktop\choral\server\node_modules\express\lib\application.js:635:24)
+    at startServer (file:///C:/Users/pc/Desktop/choral/server/index.js:58:24)
+    at file:///C:/Users/pc/Desktop/choral/server/index.js:72:3
+    at ModuleJob.run (node:internal/modules/esm/module_job:413:25)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:654:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+Emitted 'error' event on Server instance at:
+    at emitErrorNT (node:net:1976:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v25.2.1
+[31m[nodemon] app crashed - waiting for file changes before starting...[39m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node index.js`[39m
+[dotenv@17.3.1] injecting env (9) from .env -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+[server] listening on http://localhost:3001
+[api] OPTIONS /api/user/roles/0e5aa2ac-2bd6-4cca-b1fd-1d030ec7682b -> 204 (10ms)
+[api] GET /api/user/roles/0e5aa2ac-2bd6-4cca-b1fd-1d030ec7682b -> 304 (4330ms)
+[api] GET /api/user/roles/0e5aa2ac-2bd6-4cca-b1fd-1d030ec7682b -> 304 (1176ms)
+[api] OPTIONS /api/users/ensure -> 204 (10ms)
+[api] POST /api/users/ensure -> 201 (1864ms)
+{
+  code: '23505',
+  details: 'Key (email)=(clintonbichanga95@gmail.com) already exists.',
+  hint: null,
+  message: 'duplicate key value violates unique constraint "users_email_key"'
+}
+[api] POST /api/users/ensure -> 500 (2137ms)
+[api] OPTIONS /api/user/roles/9af8d035-5687-45a8-b48b-1f02a6abaff2 -> 204 (1ms)
+[api] POST /api/users/ensure -> 200 (3364ms)
+[api] GET /api/user/roles/9af8d035-5687-45a8-b48b-1f02a6abaff2 -> 200 (1397ms)
+[api] GET /api/user/roles/9af8d035-5687-45a8-b48b-1f02a6abaff2 -> 304 (4217ms)
+[api] GET /api/user/roles/9af8d035-5687-45a8-b48b-1f02a6abaff2 -> 304 (2123ms)
+[31m[nodemon] app crashed - waiting for file changes before starting...[39m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node index.js`[39m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node index.js`[39m
+[dotenv@17.3.1] injecting env (9) from .env -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+node:events:486
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at app.listen (C:\Users\pc\Desktop\choral\server\node_modules\express\lib\application.js:635:24)
+    at startServer (file:///C:/Users/pc/Desktop/choral/server/index.js:58:24)
+    at file:///C:/Users/pc/Desktop/choral/server/index.js:72:3
+    at ModuleJob.run (node:internal/modules/esm/module_job:413:25)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:654:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+Emitted 'error' event on Server instance at:
+    at emitErrorNT (node:net:1976:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v25.2.1
+[31m[nodemon] app crashed - waiting for file changes before starting...[39m

@@ -39,8 +39,8 @@ interface User {
 }
 
 interface MarketplaceProps {
-  currentUser: User;
-  onAddToCart: (composition: Composition) => void;
+  currentUser?: User;
+  onAddToCart?: (composition: Composition) => void;
 }
 
 export function Marketplace({ currentUser, onAddToCart }: MarketplaceProps) {

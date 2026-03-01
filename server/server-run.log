@@ -1,0 +1,22 @@
+[dotenv@17.3.1] injecting env (9) from .env -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 🤖 agentic secret storage: https://dotenvx.com/as2
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 🛡️ auth for agents: https://vestauth.com
+[server] listening on http://localhost:3001
+[server] Unhandled error: SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)
+    at JSON.parse (<anonymous>)
+    at parse (C:\Users\pc\Desktop\choral\server\node_modules\body-parser\lib\types\json.js:92:19)
+    at C:\Users\pc\Desktop\choral\server\node_modules\body-parser\lib\read.js:128:18
+    at AsyncResource.runInAsyncScope (node:async_hooks:213:14)
+    at invokeCallback (C:\Users\pc\Desktop\choral\server\node_modules\raw-body\index.js:238:16)
+    at done (C:\Users\pc\Desktop\choral\server\node_modules\raw-body\index.js:227:7)
+    at IncomingMessage.onEnd (C:\Users\pc\Desktop\choral\server\node_modules\raw-body\index.js:287:7)
+    at IncomingMessage.emit (node:events:508:28)
+    at endReadableNT (node:internal/streams/readable:1701:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  expose: true,
+  statusCode: 400,
+  status: 400,
+  body: '{\\',
+  type: 'entity.parse.failed'
+}
+[api] POST /api/users/ensure -> 409 (3551ms)

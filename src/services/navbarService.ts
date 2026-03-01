@@ -2,9 +2,9 @@ import { toast } from "sonner";
 import { apiRequest } from "@/services/api";
 
 export const navbarService = {
-  async fetchUserRoles(firebaseUid: string) {
+  async fetchUserRoles(authUid: string) {
     try {
-      const roles = await apiRequest<any[]>(`/user/roles/${firebaseUid}`);
+      const roles = await apiRequest<any[]>(`/user/roles/${authUid}`);
       return roles || [];
     } catch (err: any) {
       console.warn("fetchUserRoles error:", err);
@@ -22,35 +22,39 @@ export const navbarService = {
     }
   },
 
-  async approveComposerRequest(userId: string) {
+  async approveRoleRequest(userId: string, requestedRole: "composer" | "admin") {
     try {
-      const result = await apiRequest<any>(
-        `/admin/users/${userId}/promote-composer`,
-        {
-          method: "POST",
-        },
+      const endpoint =
+        requestedRole === "admin"
+          ? `/admin/users/${userId}/promote-admin`
+          : `/admin/users/${userId}/promote-composer`;
+      const result = await apiRequest<any>(endpoint, { method: "POST" });
+      toast.success(
+        `${requestedRole === "admin" ? "Admin" : "Composer"} request approved`,
       );
-      toast.success("Composer request approved");
       return result;
     } catch (err: any) {
-      console.error("approveComposerRequest error:", err);
+      console.error("approveRoleRequest error:", err);
       toast.error(err.message || "Failed to approve request");
       throw err;
     }
   },
 
-  async rejectComposerRequest(userId: string) {
+  async rejectRoleRequest(userId: string, requestedRole: "composer" | "admin") {
     try {
       const result = await apiRequest<any>(
-        `/admin/composer-requests/${userId}/reject`,
+        `/admin/role-requests/${userId}/reject`,
         {
           method: "POST",
+          body: JSON.stringify({ requestedRole }),
         },
       );
-      toast.success("Composer request rejected");
+      toast.success(
+        `${requestedRole === "admin" ? "Admin" : "Composer"} request rejected`,
+      );
       return result;
     } catch (err: any) {
-      console.error("rejectComposerRequest error:", err);
+      console.error("rejectRoleRequest error:", err);
       toast.error(err.message || "Failed to reject request");
       throw err;
     }

@@ -1,24 +1,24 @@
 import express from "express";
-import { supabase } from "../lib/supabaseClient.js";
-import { verifyFirebaseToken } from "../middleware/auth.js";
+import { supabaseAdmin } from "../lib/supabaseServer.js";
+import { verifySupabaseToken } from "../middleware/verifySupabaseToken.js";
 
 const router = express.Router();
 
-// GET /api/purchases - get buyer's purchases by firebase UID or supabase user id
-router.get("/", verifyFirebaseToken, async (req, res) => {
+// GET /api/purchases - get buyer's purchases by auth UID
+router.get("/", verifySupabaseToken, async (req, res) => {
   try {
-    const firebaseUid = req.firebaseDecoded?.uid;
-    if (!firebaseUid) {
+    const authUid = req.authUid;
+    if (!authUid) {
       return res
         .status(400)
-        .json({ message: "firebaseUid is required (from token)" });
+        .json({ message: "authUid is required (from token)" });
     }
 
     // First resolve auth UID to supabase user id
-    const { data: user, error: userError } = await supabase
+    const { data: user, error: userError } = await supabaseAdmin
       .from("users")
       .select("id")
-      .eq("auth_uid", firebaseUid)
+      .eq("auth_uid", authUid)
       .maybeSingle();
 
     if (userError) throw userError;
@@ -27,7 +27,7 @@ router.get("/", verifyFirebaseToken, async (req, res) => {
     }
 
     // Fetch purchases with composition and related info (avoid deep composer→users join which may not exist)
-    const { data: purchases, error: purchasesError } = await supabase
+    const { data: purchases, error: purchasesError } = await supabaseAdmin
       .from("purchases")
       .select(
         `
@@ -56,23 +56,23 @@ router.get("/", verifyFirebaseToken, async (req, res) => {
 });
 
 // POST /api/purchases - create a purchase
-router.post("/", verifyFirebaseToken, async (req, res) => {
+router.post("/", verifySupabaseToken, async (req, res) => {
   try {
     const { composition_id, price_paid, payment_ref } = req.body;
-    const firebaseUid = req.firebaseDecoded?.uid;
+    const authUid = req.authUid;
 
-    if (!firebaseUid || !composition_id || !price_paid) {
+    if (!authUid || !composition_id || !price_paid) {
       return res.status(400).json({
         message:
-          "firebaseUid (from token), composition_id, and price_paid are required",
+          "authUid (from token), composition_id, and price_paid are required",
       });
     }
 
     // Resolve auth UID to supabase user id
-    const { data: user, error: userError } = await supabase
+    const { data: user, error: userError } = await supabaseAdmin
       .from("users")
       .select("id")
-      .eq("auth_uid", firebaseUid)
+      .eq("auth_uid", authUid)
       .maybeSingle();
 
     if (userError) throw userError;
@@ -81,7 +81,7 @@ router.post("/", verifyFirebaseToken, async (req, res) => {
     }
 
     // Create purchase using RPC function
-    const { data, error } = await supabase.rpc("purchase_composition", {
+    const { data, error } = await supabaseAdmin.rpc("purchase_composition", {
       p_buyer_id: user.id,
       p_composition_id: composition_id,
       p_price_paid: price_paid,
@@ -104,7 +104,7 @@ router.post("/", verifyFirebaseToken, async (req, res) => {
 });
 
 // DELETE /api/purchases/:id - discard/refund a purchase
-router.delete("/:id", verifyFirebaseToken, async (req, res) => {
+router.delete("/:id", verifySupabaseToken, async (req, res) => {
   try {
     const { id } = req.params;
     if (!id) {
@@ -112,7 +112,7 @@ router.delete("/:id", verifyFirebaseToken, async (req, res) => {
     }
 
     // Discard purchase using RPC function
-    const { error } = await supabase.rpc("discard_purchase", {
+    const { error } = await supabaseAdmin.rpc("discard_purchase", {
       p_purchase_id: id,
     });
 
@@ -129,20 +129,20 @@ router.delete("/:id", verifyFirebaseToken, async (req, res) => {
 });
 
 // GET /api/purchases/recommendations - get FYP recommendations
-router.get("/recommendations", verifyFirebaseToken, async (req, res) => {
+router.get("/recommendations", verifySupabaseToken, async (req, res) => {
   try {
     const { limit = 20 } = req.query;
-    const firebaseUid = req.firebaseDecoded?.uid;
+    const authUid = req.authUid;
 
-    if (!firebaseUid) {
-      return res.status(400).json({ message: "firebaseUid is required" });
+    if (!authUid) {
+      return res.status(400).json({ message: "authUid is required" });
     }
 
     // Resolve auth UID to supabase user id
-    const { data: user, error: userError } = await supabase
+    const { data: user, error: userError } = await supabaseAdmin
       .from("users")
       .select("id")
-      .eq("auth_uid", firebaseUid)
+      .eq("auth_uid", authUid)
       .maybeSingle();
 
     if (userError) throw userError;
@@ -151,7 +151,7 @@ router.get("/recommendations", verifyFirebaseToken, async (req, res) => {
     }
 
     // Get recommendations using RPC
-    const { data, error } = await supabase.rpc("get_fyp_recommendations", {
+    const { data, error } = await supabaseAdmin.rpc("get_fyp_recommendations", {
       p_buyer_id: user.id,
       p_limit: Number(limit),
     });
@@ -169,23 +169,23 @@ router.get("/recommendations", verifyFirebaseToken, async (req, res) => {
 });
 
 // PUT /api/purchases/preferences - update buyer preferences
-router.put("/preferences", verifyFirebaseToken, async (req, res) => {
+router.put("/preferences", verifySupabaseToken, async (req, res) => {
   try {
     const { category_id, weight } = req.body;
-    const firebaseUid = req.firebaseDecoded?.uid;
+    const authUid = req.authUid;
 
-    if (!firebaseUid || !category_id || weight === undefined) {
+    if (!authUid || !category_id || weight === undefined) {
       return res.status(400).json({
         message:
-          "firebaseUid (from token), category_id, and weight are required",
+          "authUid (from token), category_id, and weight are required",
       });
     }
 
     // Resolve auth UID to supabase user id
-    const { data: user, error: userError } = await supabase
+    const { data: user, error: userError } = await supabaseAdmin
       .from("users")
       .select("id")
-      .eq("auth_uid", firebaseUid)
+      .eq("auth_uid", authUid)
       .maybeSingle();
 
     if (userError) throw userError;
@@ -194,7 +194,7 @@ router.put("/preferences", verifyFirebaseToken, async (req, res) => {
     }
 
     // Update preferences
-    const { error } = await supabase.from("buyer_preferences").upsert({
+    const { error } = await supabaseAdmin.from("buyer_preferences").upsert({
       buyer_id: user.id,
       category_id,
       weight,

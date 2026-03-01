@@ -2,7 +2,7 @@
   "name": "murekefu-sync-server",
   "version": "1.0.0",
   "type": "module",
-  "description": "Server endpoint for syncing users from Firebase to Supabase",
+  "description": "Supabase-only API server",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -14,8 +14,9 @@
     "cors": "^2.8.5",
     "dotenv": "^17.3.1",
     "express": "^4.18.2",
-    "google-auth-library": "^9.11.0",
-    "multer": "^1.4.5-lts.1"
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "pdf-parse": "^2.4.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.14",

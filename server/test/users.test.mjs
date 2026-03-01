@@ -4,15 +4,15 @@ import { request } from "undici";
 import { startServer, stopServer } from "../index.js";
 
 // Start server, call endpoint, ensure JSON response
-test("GET /api/users/by-firebase/:firebaseUid responds with JSON", async (t) => {
+test("GET /api/users/by-auth-uid/:authUid responds with JSON", async (t) => {
   const server = startServer(0); // random available port
   const addr = server.address();
   const port = addr.port;
 
   try {
-    const firebaseUid = "test-uid-123";
+    const authUid = "test-auth-uid-123";
     const res = await request(
-      `http://127.0.0.1:${port}/api/users/by-firebase/${encodeURIComponent(firebaseUid)}`,
+      `http://127.0.0.1:${port}/api/users/by-auth-uid/${encodeURIComponent(authUid)}`,
     );
 
     // Accept 200/404/500 depending on backend availability; ensure content-type JSON

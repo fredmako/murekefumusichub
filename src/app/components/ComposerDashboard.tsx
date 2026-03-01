@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { User } from "firebase/auth";
 import {
   Plus,
   DollarSign,
@@ -37,12 +36,11 @@ import {
 } from "@/app/components/ui/dialog";
 import { Badge } from "@/app/components/ui/badge";
 import { UploadComposition } from "@/app/components/UploadComposition";
-import { auth } from "@/lib/firebase";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 
 interface ComposerDashboardProps {
-  currentUser: User;
+  currentUser?: any;
 }
 
 interface CompositionWithStats {
@@ -66,8 +64,9 @@ interface ComposerStats {
 }
 
 export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
-  const { firebaseUser } = useAuth();
+  const { appUser } = useAuth();
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const previousUploadOpen = useRef(false);
   const [stats, setStats] = useState<ComposerStats>({
     composerCompositions: [],
     totalRevenue: 0,
@@ -78,17 +77,16 @@ export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
   // Function to fetch composer data
   const fetchComposerData = async () => {
     try {
-      const firebaseUserLocal = firebaseUser || auth.currentUser;
-      if (!firebaseUserLocal) {
+      if (!appUser?.auth_uid) {
         toast.error("Not authenticated");
         return;
       }
 
-      // Step 1: Get user's UUID from Firebase UID
+      // Step 1: Get user's UUID from auth UID
       const { data: userData, error: userError } = await supabase
         .from("users")
         .select("id")
-        .eq("firebase_uid", firebaseUserLocal.uid)
+        .eq("auth_uid", appUser.auth_uid)
         .maybeSingle();
 
       if (userError || !userData) {
@@ -158,22 +156,23 @@ export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
   // Fetch data on component mount
   useEffect(() => {
     fetchComposerData();
-  }, [firebaseUser]);
+  }, [appUser?.auth_uid]);
 
-  // Refetch data when upload dialog closes (after successful upload)
+  // Refetch when upload dialog transitions from open -> closed.
   useEffect(() => {
-    if (!isUploadOpen) {
+    if (previousUploadOpen.current && !isUploadOpen) {
       fetchComposerData();
     }
+    previousUploadOpen.current = isUploadOpen;
   }, [isUploadOpen]);
 
   // Redirect to home on logout
   useEffect(() => {
-    if (firebaseUser === null) {
+    if (appUser === null) {
       // using window.location to ensure full app redirect
       window.location.href = "/";
     }
-  }, [firebaseUser]);
+  }, [appUser]);
 
   const { composerCompositions, totalRevenue, totalSales, loading } = stats;
 

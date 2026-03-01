@@ -3,7 +3,7 @@ import React, { Suspense, useState } from "react";
 import { PrivacyPolicy } from "./components/PrivacyPolicy";
 import { Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
-import { CartItem } from "./types";
+import { CartItem, Composition } from "./types";
 import { ManageAccount } from "./components/ManageAccount";
 import AuthCallback from "@/app/pages/AuthCallback";
 import { ContactUs } from "./components/ContactUs";
@@ -131,6 +131,20 @@ const DashboardWrapper = ({
 export default function App() {
   const [cart, setCart] = useState<CartItem[]>([]);
 
+  const handleAddToCart = (composition: Composition) => {
+    setCart((prev) => {
+      const existing = prev.find((item) => item.composition.id === composition.id);
+      if (existing) {
+        return prev.map((item) =>
+          item.composition.id === composition.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item,
+        );
+      }
+      return [...prev, { composition, quantity: 1 }];
+    });
+  };
+
   const handleRemoveFromCart = (compositionId: string) => {
     setCart((prev) =>
       prev.filter((item) => item.composition.id !== compositionId),
@@ -148,7 +162,10 @@ export default function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
             <Route path="/reset-password" element={<SetNewPassword />} />
-            <Route path="/marketplace" element={<Marketplace />} />
+            <Route
+              path="/marketplace"
+              element={<Marketplace onAddToCart={handleAddToCart} />}
+            />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
             <Route path="/manage-account" element={<ManageAccount />} />

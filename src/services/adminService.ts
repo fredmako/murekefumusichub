@@ -2,6 +2,38 @@ import { toast } from "sonner";
 import { apiRequest } from "./api";
 
 export const adminService = {
+  async fetchBootstrap() {
+    try {
+      const payload = await apiRequest<any>("/admin/bootstrap");
+      return (
+        payload || {
+          roles: [],
+          invites: [],
+          requests: [],
+          stats: {
+            totalUsers: 0,
+            totalCompositions: 0,
+            totalRevenue: 0,
+            totalTransactions: 0,
+          },
+        }
+      );
+    } catch (err: any) {
+      console.warn("fetchBootstrap error:", err);
+      return {
+        roles: [],
+        invites: [],
+        requests: [],
+        stats: {
+          totalUsers: 0,
+          totalCompositions: 0,
+          totalRevenue: 0,
+          totalTransactions: 0,
+        },
+      };
+    }
+  },
+
   async fetchRoles() {
     try {
       const roles = await apiRequest<any>("/admin/roles");
@@ -22,9 +54,12 @@ export const adminService = {
     }
   },
 
-  async fetchCompositions() {
+  async fetchCompositions(options?: { limit?: number }) {
     try {
-      const compositions = await apiRequest<any>("/admin/compositions");
+      const params = new URLSearchParams();
+      if (options?.limit) params.set("limit", String(options.limit));
+      const endpoint = `/admin/compositions${params.toString() ? `?${params.toString()}` : ""}`;
+      const compositions = await apiRequest<any>(endpoint);
       return compositions || [];
     } catch (err: any) {
       console.warn("fetchCompositions error:", err);
@@ -32,9 +67,12 @@ export const adminService = {
     }
   },
 
-  async fetchTransactions() {
+  async fetchTransactions(options?: { limit?: number }) {
     try {
-      const transactions = await apiRequest<any>("/admin/transactions");
+      const params = new URLSearchParams();
+      if (options?.limit) params.set("limit", String(options.limit));
+      const endpoint = `/admin/transactions${params.toString() ? `?${params.toString()}` : ""}`;
+      const transactions = await apiRequest<any>(endpoint);
       return transactions || [];
     } catch (err: any) {
       console.warn("fetchTransactions error:", err);
@@ -163,17 +201,44 @@ export const adminService = {
 
   async rejectRequest(userId: string) {
     try {
-      const result = await apiRequest<any>(
-        `/admin/composer-requests/${userId}/reject`,
-        {
-          method: "POST",
-        },
-      );
+      const result = await apiRequest<any>(`/admin/role-requests/${userId}/reject`, {
+        method: "POST",
+        body: JSON.stringify({ requestedRole: "composer" }),
+      });
       toast.success("Request rejected");
       return result;
     } catch (err: any) {
       console.error("rejectRequest error:", err);
       toast.error("Failed to reject request");
+      throw err;
+    }
+  },
+
+  async rejectRoleRequest(userId: string, requestedRole: "composer" | "admin") {
+    try {
+      const result = await apiRequest<any>(`/admin/role-requests/${userId}/reject`, {
+        method: "POST",
+        body: JSON.stringify({ requestedRole }),
+      });
+      toast.success(`${requestedRole} request rejected`);
+      return result;
+    } catch (err: any) {
+      console.error("rejectRoleRequest error:", err);
+      toast.error("Failed to reject request");
+      throw err;
+    }
+  },
+
+  async removeComposition(compositionId: string) {
+    try {
+      const result = await apiRequest<any>(`/compositions/${compositionId}`, {
+        method: "DELETE",
+      });
+      toast.success("Composition removed");
+      return result;
+    } catch (err: any) {
+      console.error("removeComposition error:", err);
+      toast.error(err.message || "Failed to remove composition");
       throw err;
     }
   },

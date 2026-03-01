@@ -31,7 +31,7 @@ export interface CartItem {
 
 export interface AppUser {
   id: string; // Supabase user ID
-  firebaseUid: string; // Firebase UID
+  authUid: string; // Supabase auth UID
   email: string | null;
   displayName: string | null;
   roles: UserRole[]; // ["buyer"], ["composer"], ["admin"]

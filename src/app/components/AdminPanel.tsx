@@ -48,23 +48,25 @@ import {
   DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { auth } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
 import { useAuth } from "../../context/AuthContext";
 import { adminService } from "@/services/adminService";
 
 /* --------- CONFIG --------- */
 const normalizeEmail = (e: string) => e?.toLowerCase().trim() ?? "";
+const rolePriority: Record<string, number> = {
+  buyer: 1,
+  composer: 2,
+  admin: 3,
+};
 
 /* --------- TYPES --------- */
-type RoleMap = Record<number, string>;
 type UserRoleMap = Record<string, string>; // user_id -> primaryRoleString
+type DataLoadLevel = "none" | "preview" | "full";
 
 export function AdminPanel() {
   const navigate = useNavigate();
 
-  // auth user (firebase)
-  const { firebaseUser, appUser } = useAuth();
+  const { appUser, isLoading: authLoading } = useAuth();
 
   // requests
   const [requests, setRequests] = useState<any[]>([]);
@@ -73,7 +75,6 @@ export function AdminPanel() {
   const [users, setUsers] = useState<any[]>([]);
   const [compositions, setCompositions] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
-  const [roles, setRoles] = useState<any[]>([]);
   const [userRoles, setUserRoles] = useState<any[]>([]);
   const [invites, setInvites] = useState<any[]>([]);
 
@@ -86,19 +87,37 @@ export function AdminPanel() {
   // UI
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
-  const [processing, setProcessing] = useState(false);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [compositionsLoading, setCompositionsLoading] = useState(false);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [processingAction, setProcessingAction] = useState<string | null>(null);
   const [newInviteEmail, setNewInviteEmail] = useState("");
+  const [usersLoaded, setUsersLoaded] = useState(false);
+  const [compositionsLoadLevel, setCompositionsLoadLevel] =
+    useState<DataLoadLevel>("none");
+  const [transactionsLoadLevel, setTransactionsLoadLevel] =
+    useState<DataLoadLevel>("none");
+  const isProcessing = Boolean(processingAction);
+
+  const runAction = async (key: string, fn: () => Promise<void>) => {
+    if (processingAction) return;
+    setProcessingAction(key);
+    try {
+      await fn();
+    } finally {
+      setProcessingAction(null);
+    }
+  };
 
   /* ---------------- guard admin access & initial load ---------------- */
   useEffect(() => {
-    // If not signed in at all, redirect to home
-    if (!firebaseUser) {
+    if (authLoading) return;
+
+    if (!appUser) {
       navigate("/", { replace: true });
       return;
     }
-
-    // Wait until appUser is loaded
-    if (appUser === null) return;
 
     if (!appUser?.roles || !appUser.roles.includes("admin")) {
       toast.error("Access denied.");
@@ -107,51 +126,88 @@ export function AdminPanel() {
     }
 
     // Initial load
-    fetchAll();
+    void fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firebaseUser, appUser]);
+  }, [authLoading, appUser?.auth_uid, appUser?.roles?.join(",")]);
 
   /* ---------------- fetch all admin data ---------------- */
   const fetchAll = async () => {
     setLoading(true);
     try {
-      await Promise.all([
-        fetchRoles(),
-        fetchUsers(),
-        fetchCompositions(),
-        fetchTransactions(),
-        fetchInvites(),
-        fetchRequests(),
-      ]);
-      await computeStats();
+      const bootstrap = await adminService.fetchBootstrap();
+      setInvites(bootstrap?.invites || []);
+      setRequests(bootstrap?.requests || []);
+
+      const stats = bootstrap?.stats || {};
+      setTotalUsers(stats.totalUsers || 0);
+      setTotalCompositions(stats.totalCompositions || 0);
+      setTotalRevenue(stats.totalRevenue || 0);
+      setTotalTransactions(stats.totalTransactions || 0);
     } catch (err: any) {
       console.error("AdminPanel fetchAll error:", err);
       toast.error("Failed to load admin data");
     } finally {
       setLoading(false);
     }
+
+    // Non-blocking fetches to improve first paint
+    void fetchUsers();
+    void fetchOverviewData();
+    void fetchExactStats();
   };
 
-  const fetchRoles = async () => {
-    const data = await adminService.fetchRoles();
-    setRoles(data || []);
+  const fetchUsers = async (force = false) => {
+    if (usersLoading) return;
+    if (!force && usersLoaded) return;
+    setUsersLoading(true);
+    try {
+      const data = await adminService.fetchUsers();
+      setUsers(data?.users || []);
+      setUserRoles(data?.userRoles || []);
+      setUsersLoaded(true);
+    } finally {
+      setUsersLoading(false);
+    }
   };
 
-  const fetchUsers = async () => {
-    const data = await adminService.fetchUsers();
-    console.log("[AdminPanel] Fetched users:", data);
-    setUsers(data?.users || []);
-    setUserRoles(data?.userRoles || []);
+  const fetchCompositions = async (full = false, force = false) => {
+    if (compositionsLoading) return;
+    const targetLevel: DataLoadLevel = full ? "full" : "preview";
+    if (!force) {
+      if (targetLevel === "preview" && compositionsLoadLevel !== "none") return;
+      if (targetLevel === "full" && compositionsLoadLevel === "full") return;
+    }
+
+    setCompositionsLoading(true);
+    try {
+      const data = await adminService.fetchCompositions({
+        limit: full ? 1000 : 60,
+      });
+      setCompositions(data || []);
+      setCompositionsLoadLevel(targetLevel);
+    } finally {
+      setCompositionsLoading(false);
+    }
   };
 
-  const fetchCompositions = async () => {
-    const data = await adminService.fetchCompositions();
-    setCompositions(data || []);
-  };
+  const fetchTransactions = async (full = false, force = false) => {
+    if (transactionsLoading) return;
+    const targetLevel: DataLoadLevel = full ? "full" : "preview";
+    if (!force) {
+      if (targetLevel === "preview" && transactionsLoadLevel !== "none") return;
+      if (targetLevel === "full" && transactionsLoadLevel === "full") return;
+    }
 
-  const fetchTransactions = async () => {
-    const data = await adminService.fetchTransactions();
-    setTransactions(data || []);
+    setTransactionsLoading(true);
+    try {
+      const data = await adminService.fetchTransactions({
+        limit: full ? 1000 : 60,
+      });
+      setTransactions(data || []);
+      setTransactionsLoadLevel(targetLevel);
+    } finally {
+      setTransactionsLoading(false);
+    }
   };
 
   const fetchInvites = async () => {
@@ -165,7 +221,7 @@ export function AdminPanel() {
   };
 
   /* ---------------- compute summary stats ---------------- */
-  const computeStats = async () => {
+  const fetchExactStats = async () => {
     try {
       const stats = await adminService.fetchStats();
       setTotalUsers(stats.totalUsers || 0);
@@ -173,38 +229,74 @@ export function AdminPanel() {
       setTotalRevenue(stats.totalRevenue || 0);
       setTotalTransactions(stats.totalTransactions || 0);
     } catch (err) {
-      console.error("computeStats error:", err);
+      console.error("fetchExactStats error:", err);
     }
   };
 
-  /* ---------------- utility: build role maps ---------------- */
-  const roleIdToName = useMemo((): RoleMap => {
-    const map: RoleMap = {};
-    roles.forEach((r: any) => {
-      map[r.id] = r.name;
-    });
-    return map;
-  }, [roles]);
+  const fetchOverviewData = async () => {
+    if (overviewLoading) return;
+    setOverviewLoading(true);
+    try {
+      await Promise.all([fetchCompositions(false), fetchTransactions(false)]);
+    } finally {
+      setOverviewLoading(false);
+    }
+  };
 
+  useEffect(() => {
+    if (loading) return;
+    if (activeTab === "overview") {
+      void fetchOverviewData();
+    }
+    if (activeTab === "users") {
+      void fetchUsers();
+    }
+    if (activeTab === "compositions") {
+      void fetchCompositions(true);
+    }
+    if (activeTab === "transactions") {
+      void fetchTransactions(true);
+    }
+    if (activeTab === "requests" && requests.length === 0) {
+      void fetchRequests();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, loading]);
+
+  /* ---------------- utility: build role maps ---------------- */
   const userIdToRole = useMemo((): UserRoleMap => {
     const map: UserRoleMap = {};
+    const applyRole = (userId: string, roleName: string) => {
+      if (!userId || !roleName) return;
+      const current = map[userId];
+      if (!current) {
+        map[userId] = roleName;
+        return;
+      }
+      const currentPriority = rolePriority[current] || 0;
+      const nextPriority = rolePriority[roleName] || 0;
+      if (nextPriority > currentPriority) {
+        map[userId] = roleName;
+      }
+    };
+
     // prefer users.role column if present
     users.forEach((u: any) => {
       // if there's a role field on user table, use it (string)
-      if (u.role) map[u.id] = u.role;
+      if (u.role) applyRole(u.id, u.role);
       // if roles array exists, choose priority: admin > composer > buyer
       if (Array.isArray(u.roles) && u.roles.length > 0) {
-        if (u.roles.includes("admin")) map[u.id] = "admin";
-        else if (u.roles.includes("composer")) map[u.id] = "composer";
-        else if (u.roles.includes("buyer")) map[u.id] = "buyer";
+        if (u.roles.includes("admin")) applyRole(u.id, "admin");
+        else if (u.roles.includes("composer")) applyRole(u.id, "composer");
+        else if (u.roles.includes("buyer")) applyRole(u.id, "buyer");
       }
     });
 
     // then override / supplement with user_roles mapping (if exists)
     userRoles.forEach((ur: any) => {
-      const roleName = roleIdToName[ur.role_id];
+      const roleName = ur?.roles?.name || ur?.role_name || null;
       if (roleName) {
-        map[ur.user_id] = roleName;
+        applyRole(ur.user_id, roleName);
       }
     });
 
@@ -214,7 +306,7 @@ export function AdminPanel() {
     });
 
     return map;
-  }, [users, userRoles, roleIdToName]);
+  }, [users, userRoles]);
 
   // Filter to show only pending requests in the admin panel
   const pendingRequests = useMemo(() => {
@@ -222,12 +314,6 @@ export function AdminPanel() {
       (r: any) => r.status === "pending" || !r.status,
     );
   }, [requests]);
-
-  // Debug: Log users whenever they change
-  useEffect(() => {
-    console.log("[AdminPanel] Users state updated:", users);
-    console.log("[AdminPanel] Users count:", users.length);
-  }, [users]);
 
   /* ---------------- actions ---------------- */
   async function addComposerInvite(email: string) {
@@ -237,91 +323,104 @@ export function AdminPanel() {
       return;
     }
 
-    setProcessing(true);
-    try {
-      await adminService.addComposerInvite(normalized, appUser?.uid || "");
+    await runAction("invite:add", async () => {
+      await adminService.addComposerInvite(normalized, appUser?.id || "");
       setNewInviteEmail("");
       await fetchInvites();
-    } catch (err) {
-      // Error handled in service
-    } finally {
-      setProcessing(false);
-    }
+    });
   }
 
   async function revokeInvite(email: string) {
-    setProcessing(true);
-    try {
-      const normalized = normalizeEmail(email);
+    const normalized = normalizeEmail(email);
+    await runAction(`invite:revoke:${normalized}`, async () => {
       await adminService.revokeInvite(normalized);
       await fetchInvites();
-    } catch (err) {
-      // Error handled in service
-    } finally {
-      setProcessing(false);
-    }
+    });
   }
 
   async function promoteUserToComposer(userId: string) {
-    setProcessing(true);
-    try {
+    await runAction(`user:promote-composer:${userId}`, async () => {
       await adminService.promoteUserToComposer(userId);
-      await fetchUsers();
-      await fetchRequests();
-    } catch (err) {
-      // Error handled in service
-    } finally {
-      setProcessing(false);
-    }
+      await Promise.all([fetchUsers(true), fetchRequests(), fetchExactStats()]);
+    });
   }
 
   async function promoteUserToAdmin(userId: string) {
-    setProcessing(true);
-    try {
+    await runAction(`user:promote-admin:${userId}`, async () => {
       await adminService.promoteUserToAdmin(userId);
-      await fetchUsers();
-    } catch (err) {
-      // Error handled in service
-    } finally {
-      setProcessing(false);
-    }
+      await Promise.all([fetchUsers(true), fetchRequests(), fetchExactStats()]);
+    });
   }
 
   async function suspendUser(userId: string) {
-    setProcessing(true);
-    try {
+    await runAction(`user:suspend:${userId}`, async () => {
       await adminService.suspendUser(userId);
-      await fetchUsers();
-    } catch (err) {
-      // Error handled in service
-    } finally {
-      setProcessing(false);
-    }
+      await fetchUsers(true);
+    });
   }
 
-  async function approveRequest(user: any) {
-    setProcessing(true);
-    try {
-      await promoteUserToComposer(user.id);
-      toast.success(`Approved composer request for ${user.email}`);
-      await fetchRequests();
-    } catch (err) {
-      // Error handled in service
-    } finally {
-      setProcessing(false);
+  async function approveRequest(request: any) {
+    const userId = request?.user_id || request?.id;
+    const requestedRole =
+      request?.requested_role === "admin" || request?.requestedRole === "admin"
+        ? "admin"
+        : "composer";
+
+    if (!userId) {
+      toast.error("Missing user id for request approval");
+      return;
     }
+
+    await runAction(`request:approve:${userId}:${requestedRole}`, async () => {
+      if (requestedRole === "admin") {
+        await adminService.promoteUserToAdmin(userId);
+      } else {
+        await adminService.promoteUserToComposer(userId);
+      }
+      toast.success(`Approved ${requestedRole} request for ${request?.email || "user"}`);
+      await Promise.all([fetchUsers(true), fetchRequests(), fetchExactStats()]);
+    });
   }
 
-  async function rejectRequest(userId: string) {
-    setProcessing(true);
-    try {
-      await adminService.rejectRequest(userId);
-      await fetchRequests();
-    } catch (err) {
-      // Error handled in service
-    } finally {
-      setProcessing(false);
+  async function rejectRequest(request: any) {
+    const userId =
+      typeof request === "string" ? request : request?.user_id || request?.id;
+    const requestedRole =
+      request?.requested_role === "admin" || request?.requestedRole === "admin"
+        ? "admin"
+        : "composer";
+
+    if (!userId) {
+      toast.error("Missing user id for request rejection");
+      return;
     }
+
+    await runAction(`request:reject:${userId}:${requestedRole}`, async () => {
+      await adminService.rejectRoleRequest(userId, requestedRole);
+      await Promise.all([fetchRequests(), fetchUsers(true)]);
+    });
+  }
+
+  async function removeComposition(composition: any) {
+    const compositionId = composition?.id;
+    if (!compositionId) {
+      toast.error("Missing composition id");
+      return;
+    }
+
+    await runAction(`composition:remove:${compositionId}`, async () => {
+      await adminService.removeComposition(compositionId);
+      await Promise.all([fetchCompositions(true, true), fetchExactStats()]);
+    });
+  }
+
+  function viewCompositionDetails(composition: any) {
+    const pdfUrl = composition?.pdf_url || composition?.pdfUrl || null;
+    if (pdfUrl) {
+      window.open(pdfUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+    toast.info("No PDF URL found for this composition");
   }
 
   /* ---------------- composer stats derived from compositions/purchases ---------------- */
@@ -482,11 +581,11 @@ export function AdminPanel() {
             placeholder="composer@example.com"
             value={newInviteEmail}
             onChange={(e) => setNewInviteEmail(e.target.value)}
-            disabled={processing}
+            disabled={isProcessing}
           />
           <Button
             onClick={() => addComposerInvite(newInviteEmail)}
-            disabled={processing}
+            disabled={isProcessing}
           >
             <Plus className="mr-2" /> Add Invite
           </Button>
@@ -518,7 +617,7 @@ export function AdminPanel() {
                         variant="ghost"
                         size="sm"
                         onClick={() => revokeInvite(inv.email || inv.id)}
-                        disabled={processing}
+                        disabled={isProcessing}
                       >
                         Revoke
                       </Button>
@@ -559,6 +658,13 @@ export function AdminPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {overviewLoading && composerStats.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-gray-500">
+                        Loading composer analytics...
+                      </TableCell>
+                    </TableRow>
+                  )}
                   {composerStats.slice(0, 10).map((c) => (
                     <TableRow key={c.id}>
                       <TableCell className="font-medium">
@@ -598,6 +704,13 @@ export function AdminPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {transactionsLoading && transactions.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-gray-500">
+                        Loading recent transactions...
+                      </TableCell>
+                    </TableRow>
+                  )}
                   {transactions.slice(0, 10).map((t) => (
                     <TableRow key={t.id}>
                       <TableCell>
@@ -643,6 +756,13 @@ export function AdminPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {usersLoading && users.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-gray-500">
+                        Loading users...
+                      </TableCell>
+                    </TableRow>
+                  )}
                   {users.map((u) => (
                     <TableRow key={u.id}>
                       <TableCell className="font-medium">
@@ -677,12 +797,14 @@ export function AdminPanel() {
 
                             <DropdownMenuItem
                               onClick={() => promoteUserToComposer(u.id)}
+                              disabled={isProcessing}
                             >
                               Promote to Composer
                             </DropdownMenuItem>
 
                             <DropdownMenuItem
                               onClick={() => promoteUserToAdmin(u.id)}
+                              disabled={isProcessing}
                             >
                               Promote to Admin
                             </DropdownMenuItem>
@@ -692,6 +814,7 @@ export function AdminPanel() {
                             <DropdownMenuItem
                               className="text-red-600"
                               onClick={() => suspendUser(u.id)}
+                              disabled={isProcessing}
                             >
                               <Ban className="size-4 mr-2" /> Suspend User
                             </DropdownMenuItem>
@@ -724,13 +847,16 @@ export function AdminPanel() {
                     <TableRow>
                       <TableHead>Email</TableHead>
                       <TableHead>Requested At</TableHead>
+                      <TableHead>Requested Role</TableHead>
                       <TableHead>Current Roles</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {pendingRequests.map((r) => (
-                      <TableRow key={r.id}>
+                      <TableRow
+                        key={`${r.request_id || r.id || r.user_id}:${r.requested_role || r.requestedRole || "composer"}`}
+                      >
                         <TableCell>{r.email}</TableCell>
                         <TableCell>
                           {new Date(
@@ -738,24 +864,33 @@ export function AdminPanel() {
                           ).toLocaleString()}
                         </TableCell>
                         <TableCell>
+                          {(r.requested_role || r.requestedRole || "composer")
+                            .toString()
+                            .charAt(0)
+                            .toUpperCase() +
+                            (r.requested_role || r.requestedRole || "composer")
+                              .toString()
+                              .slice(1)}
+                        </TableCell>
+                        <TableCell>
                           {Array.isArray(r.roles)
                             ? r.roles.join(", ")
-                            : r.roles || "buyer"}
+                            : r.roles || userIdToRole[r.user_id || r.id] || "buyer"}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
                             <Button
                               size="sm"
                               onClick={() => approveRequest(r)}
-                              disabled={processing}
+                              disabled={isProcessing}
                             >
                               <Check className="mr-2" /> Approve
                             </Button>
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => rejectRequest(r.id)}
-                              disabled={processing}
+                              onClick={() => rejectRequest(r)}
+                              disabled={isProcessing}
                             >
                               <X className="mr-2" /> Reject
                             </Button>
@@ -791,6 +926,13 @@ export function AdminPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {compositionsLoading && compositions.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-gray-500">
+                        Loading compositions...
+                      </TableCell>
+                    </TableRow>
+                  )}
                   {compositions.map((c) => (
                     <TableRow key={c.id}>
                       <TableCell>
@@ -819,11 +961,17 @@ export function AdminPanel() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => viewCompositionDetails(c)}
+                            >
                               <Eye className="size-4 mr-2" /> View Details
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-red-600">
+                            <DropdownMenuItem
+                              className="text-red-600"
+                              onClick={() => removeComposition(c)}
+                              disabled={isProcessing}
+                            >
                               <Ban className="size-4 mr-2" /> Remove Listing
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -856,6 +1004,13 @@ export function AdminPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {transactionsLoading && transactions.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-gray-500">
+                        Loading transactions...
+                      </TableCell>
+                    </TableRow>
+                  )}
                   {transactions.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell className="font-mono text-sm">

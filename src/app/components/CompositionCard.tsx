@@ -23,7 +23,7 @@ interface Composition {
 
 interface CompositionCardProps {
   composition: Composition;
-  onAddToCart: (composition: Composition) => void;
+  onAddToCart?: (composition: Composition) => void;
   showActions?: boolean;
 }
 
@@ -32,6 +32,8 @@ export function CompositionCard({
   onAddToCart,
   showActions = true,
 }: CompositionCardProps) {
+  const canAddToCart = typeof onAddToCart === "function";
+
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
       case "Easy":
@@ -97,7 +99,10 @@ export function CompositionCard({
           </p>
         </div>
         {showActions && (
-          <Button onClick={() => onAddToCart(composition)}>
+          <Button
+            onClick={() => onAddToCart?.(composition)}
+            disabled={!canAddToCart}
+          >
             <ShoppingCart className="size-4 mr-2" />
             Add to Cart
           </Button>

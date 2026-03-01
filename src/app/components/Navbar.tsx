@@ -1,9 +1,10 @@
 // src/app/components/Navbar.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { navbarService } from "@/services/navbarService";
 import { useLocation, NavLink, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { CartItem } from "@/app/types";
+import { toast } from "sonner";
 import {
   ShoppingCart,
   User as UserIcon,
@@ -56,6 +57,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   const [processingNotification, setProcessingNotification] = useState<
     string | null
   >(null);
+  const previousNotificationCount = useRef(0);
 
   // Polling interval (ms) for admin notifications
   const NOTIF_POLL_INTERVAL = 15000;
@@ -89,14 +91,33 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     };
   }, [roles]);
 
+  useEffect(() => {
+    if (!roles.includes("admin")) {
+      previousNotificationCount.current = 0;
+      return;
+    }
+
+    const previous = previousNotificationCount.current;
+    const current = notifications.length;
+    previousNotificationCount.current = current;
+
+    if (previous > 0 && current > previous) {
+      const added = current - previous;
+      toast.info(
+        `${added} new admin notification${added > 1 ? "s" : ""} received`,
+      );
+    }
+  }, [notifications, roles]);
+
   // Handle approve/reject actions
   const handleApproveRequest = async (
     notificationId: string,
     userId: string,
+    requestedRole: "composer" | "admin" = "composer",
   ) => {
     setProcessingNotification(notificationId);
     try {
-      await navbarService.approveComposerRequest(userId);
+      await navbarService.approveRoleRequest(userId, requestedRole);
       setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
     } catch (err) {
       console.error("Failed to approve request:", err);
@@ -108,10 +129,11 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   const handleRejectRequest = async (
     notificationId: string,
     userId: string,
+    requestedRole: "composer" | "admin" = "composer",
   ) => {
     setProcessingNotification(notificationId);
     try {
-      await navbarService.rejectComposerRequest(userId);
+      await navbarService.rejectRoleRequest(userId, requestedRole);
       setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
     } catch (err) {
       console.error("Failed to reject request:", err);
@@ -292,7 +314,14 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                           ) : (
                             <>
                               <span className="font-semibold block">
-                                Composer Access Request
+                                {(n.requestedRole || "composer")
+                                  .toString()
+                                  .charAt(0)
+                                  .toUpperCase() +
+                                  (n.requestedRole || "composer")
+                                    .toString()
+                                    .slice(1)}{" "}
+                                Access Request
                               </span>
                               <span className="text-xs text-gray-500">
                                 {n.displayName || n.email}
@@ -315,9 +344,18 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                               className="flex-1"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleApproveRequest(n.id, n.userId);
+                                handleApproveRequest(
+                                  n.id,
+                                  n.userId,
+                                  n.requestedRole === "admin"
+                                    ? "admin"
+                                    : "composer",
+                                );
                               }}
-                              disabled={processingNotification === n.id}
+                              disabled={
+                                processingNotification === n.id ||
+                                n.canApprove === false
+                              }
                             >
                               {processingNotification === n.id ? (
                                 <Loader className="size-4 mr-1 animate-spin" />
@@ -332,7 +370,13 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                               className="flex-1"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleRejectRequest(n.id, n.userId);
+                                handleRejectRequest(
+                                  n.id,
+                                  n.userId,
+                                  n.requestedRole === "admin"
+                                    ? "admin"
+                                    : "composer",
+                                );
                               }}
                               disabled={processingNotification === n.id}
                             >
@@ -344,6 +388,12 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                               Reject
                             </Button>
                           </div>
+                        )}
+                        {n.type === "request" && n.canApprove === false && (
+                          <p className="text-xs text-amber-700">
+                            User profile missing. You can reject this stale
+                            request.
+                          </p>
                         )}
                       </div>
                     </div>

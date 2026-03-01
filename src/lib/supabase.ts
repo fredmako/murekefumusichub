@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, processLock } from "@supabase/supabase-js";
 
 // Supabase configuration
 // These will be replaced with your actual Supabase credentials
@@ -41,13 +41,22 @@ function createMissingClientStub() {
 }
 
 export const supabase = !missing
-  ? createClient(supabaseUrl, supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+        // Avoid browser LockManager deadlocks causing NavigatorLockAcquireTimeoutError.
+        lock: processLock,
+        lockAcquireTimeout: 30000,
+      },
+    })
   : createMissingClientStub();
 
 // Types for database tables
 export interface User {
   id: string;
-  firebase_uid: string | null;
+  auth_uid: string | null;
   email: string;
   display_name: string | null;
   phone: string | null;
@@ -191,7 +200,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- Users table
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  firebase_uid TEXT UNIQUE,
+  auth_uid TEXT UNIQUE,
   email TEXT UNIQUE,
   display_name TEXT,
   phone TEXT,

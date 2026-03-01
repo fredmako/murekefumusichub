@@ -1,4 +1,4 @@
-// src/app/components/ManageAccount.tsx
+﻿// src/app/components/ManageAccount.tsx
 import { useAuth, AppUser } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/app/components/ui/button";
@@ -23,7 +23,9 @@ import {
 import {
   Trash2,
   Edit2,
+  Camera,
   Shield,
+  LayoutDashboard,
   CheckCircle,
   AlertCircle,
   Loader2,
@@ -32,8 +34,8 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { storageService } from "@/services/api";
-import { navbarService } from "@/services/navbarService";
 
+type RoleRequestState = "none" | "pending" | "approved" | "rejected";
 export function ManageAccount() {
   const { appUser, signOut, getAuthToken, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -48,9 +50,13 @@ export function ManageAccount() {
     false | "composer" | "admin"
   >(false);
   const [roleLoading, setRoleLoading] = useState(false);
-  const [requestStatus, setRequestStatus] = useState<
-    "none" | "pending" | "approved"
-  >("none");
+  const [requestStatus, setRequestStatus] = useState<{
+    composer: RoleRequestState;
+    admin: RoleRequestState;
+  }>({
+    composer: "none",
+    admin: "none",
+  });
 
   // Form state
   const [displayName, setDisplayName] = useState<string>("");
@@ -60,20 +66,13 @@ export function ManageAccount() {
   // Combined loading for initial render
   const initialLoading = authLoading && !user;
 
-  // Redirect based on user role once auth has resolved
+  // Keep manage-account accessible to all authenticated users.
+  // Do not auto-redirect by role; users may need to manage profile or request other roles.
   useEffect(() => {
-    if (!authLoading && !loading && appUser) {
-      if (appUser.isComposer) {
-        // lightweight delay for UX (keeps existing behaviour)
-        setTimeout(() => navigate("/composer"), 500);
-        return;
-      }
-      if (appUser.roles?.includes("admin")) {
-        setTimeout(() => navigate("/admin"), 500);
-        return;
-      }
+    if (!authLoading && !appUser) {
+      navigate("/login", { replace: true });
     }
-  }, [authLoading, loading, appUser, navigate]);
+  }, [authLoading, appUser, navigate]);
 
   // keep local `user` in sync with context `appUser`
   useEffect(() => {
@@ -90,29 +89,72 @@ export function ManageAccount() {
     }
   }, [appUser]);
 
-  // compute request status whenever user object changes
+  const fetchRoleRequestStatus = async (): Promise<{
+    roles: string[];
+    requests: { composer: RoleRequestState; admin: RoleRequestState };
+  } | null> => {
+    try {
+      const token = await getAuthToken();
+      const base =
+        (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
+      const res = await fetch(`${base}/request-role/status`, {
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return {
+        roles: Array.isArray(data?.roles) ? data.roles : [],
+        requests: {
+          composer:
+            data?.requests?.composer === "pending" ||
+            data?.requests?.composer === "approved" ||
+            data?.requests?.composer === "rejected"
+              ? data.requests.composer
+              : "none",
+          admin:
+            data?.requests?.admin === "pending" ||
+            data?.requests?.admin === "approved" ||
+            data?.requests?.admin === "rejected"
+              ? data.requests.admin
+              : "none",
+        },
+      };
+    } catch (err) {
+      console.warn("[fetchRoleRequestStatus] error:", err);
+      return null;
+    }
+  };
+
+  // Keep request status in sync with known role assignments immediately.
   useEffect(() => {
     if (!user) {
-      setRequestStatus("none");
+      setRequestStatus({ composer: "none", admin: "none" });
       return;
     }
-    if (
-      user.roles &&
-      Array.isArray(user.roles) &&
-      user.roles.includes("composer")
-    ) {
-      setRequestStatus("approved");
-    } else if ((user as any).composer_request) {
-      setRequestStatus("pending");
-    } else {
-      setRequestStatus("none");
-    }
+    setRequestStatus((prev) => ({
+      composer: user.roles?.includes("composer") ? "approved" : prev.composer,
+      admin: user.roles?.includes("admin") ? "approved" : prev.admin,
+    }));
   }, [user]);
+
+  const applyAvatarFile = (file: File | null) => {
+    setAvatarFile(file);
+    if (file) setAvatarUrl(URL.createObjectURL(file)); // local preview only
+  };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
-    setAvatarFile(f);
-    if (f) setAvatarUrl(URL.createObjectURL(f)); // local preview only
+    applyAvatarFile(f);
+    e.target.value = "";
+  };
+
+  const handleSelfieChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] ?? null;
+    applyAvatarFile(f);
+    e.target.value = "";
   };
 
   const handleSaveProfile = async () => {
@@ -217,7 +259,7 @@ export function ManageAccount() {
 
       setAvatarFile(null);
       setIsEditing(false);
-      toast.success("✅ Profile updated successfully");
+      toast.success("âœ… Profile updated successfully");
     } catch (err: any) {
       console.error("[handleSaveProfile] Error:", err);
       toast.error(err?.message || "Failed to save profile");
@@ -253,8 +295,15 @@ export function ManageAccount() {
       if (!res.ok) {
         if (res.status === 409) {
           toast.error(
-            `⏳ You already have a ${data.status} ${roleType} request`,
+            `â³ You already have a ${data.status} ${roleType} request`,
           );
+          if (
+            data?.status === "pending" ||
+            data?.status === "approved" ||
+            data?.status === "rejected"
+          ) {
+            setRequestStatus((prev) => ({ ...prev, [roleType]: data.status }));
+          }
         } else {
           toast.error(data.message || `Failed to request ${roleType} access`);
         }
@@ -263,13 +312,23 @@ export function ManageAccount() {
       }
 
       toast.success(
-        `✅ ${roleType.charAt(0).toUpperCase() + roleType.slice(1)} request submitted! Awaiting admin approval.`,
+        `âœ… ${roleType.charAt(0).toUpperCase() + roleType.slice(1)} request submitted! Awaiting admin approval.`,
       );
       setShowRoleModal(false);
 
-      if (roleType === "composer") {
-        setRequestStatus("pending");
-        setUser((u) => (u ? { ...u, composer_request: true } : u));
+      setRequestStatus((prev) => ({ ...prev, [roleType]: "pending" }));
+
+      const freshStatus = await fetchRoleRequestStatus();
+      if (freshStatus) {
+        setRequestStatus(freshStatus.requests);
+        setUser((prev) =>
+          prev
+            ? {
+                ...prev,
+                roles: freshStatus.roles || prev.roles || [],
+              }
+            : prev,
+        );
       }
     } catch (err: any) {
       console.error("[handleRequestRole] error:", err);
@@ -287,17 +346,20 @@ export function ManageAccount() {
     async function checkRolesAndUser() {
       if (!appUser) return;
       const authUid = appUser.auth_uid;
+      let serverRoles: string[] | null = null;
+
       try {
-        const roles = await navbarService.fetchUserRoles(authUid);
+        const statusData = await fetchRoleRequestStatus();
         if (!mounted) return;
-        if (Array.isArray(roles) && roles.includes("composer")) {
-          setRequestStatus("approved");
+        if (statusData) {
+          serverRoles = statusData.roles;
+          setRequestStatus(statusData.requests);
         }
       } catch (e) {
         // ignore polling errors
       }
 
-      // refresh user record from server to pick up composer_request flag
+      // refresh user record from server
       try {
         const base =
           (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
@@ -319,7 +381,7 @@ export function ManageAccount() {
           setUser((prev) => ({
             ...prev,
             ...u,
-            roles: u.roles || prev?.roles || [],
+            roles: serverRoles || u.roles || prev?.roles || [],
           }));
         }
       } catch (e) {
@@ -384,8 +446,28 @@ export function ManageAccount() {
     );
   }
 
-  const isComposer = !!user?.roles?.includes("composer");
-  const isAdmin = !!user?.roles?.includes("admin");
+  const userRoles = Array.isArray(user?.roles)
+    ? [...new Set(user.roles)]
+    : ([] as string[]);
+  const isComposer = userRoles.includes("composer");
+  const isAdmin = userRoles.includes("admin");
+
+  const composerRequestStatus: RoleRequestState =
+    isComposer ? "approved" : requestStatus.composer;
+  const adminRequestStatus: RoleRequestState =
+    isAdmin ? "approved" : requestStatus.admin;
+
+  const dashboardOptions = [
+    ...(userRoles.includes("buyer")
+      ? [{ key: "buyer", label: "Buyer Dashboard", path: "/buyer" }]
+      : []),
+    ...(userRoles.includes("composer")
+      ? [{ key: "composer", label: "Composer Dashboard", path: "/composer" }]
+      : []),
+    ...(userRoles.includes("admin")
+      ? [{ key: "admin", label: "Admin Dashboard", path: "/admin" }]
+      : []),
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 py-12 px-4">
@@ -403,7 +485,7 @@ export function ManageAccount() {
           <CardHeader className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
             <CardTitle className="text-2xl flex items-center gap-2">
               <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
-                👤
+                ðŸ‘¤
               </div>
               Profile Information
             </CardTitle>
@@ -424,7 +506,7 @@ export function ManageAccount() {
                             className="w-full h-full object-cover"
                           />
                         ) : (
-                          <div className="text-6xl">👤</div>
+                          <div className="text-6xl">ðŸ‘¤</div>
                         )}
                       </div>
                       <div className="absolute -bottom-2 -right-2 bg-green-500 w-8 h-8 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
@@ -514,7 +596,7 @@ export function ManageAccount() {
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <div className="text-6xl">👤</div>
+                        <div className="text-6xl">ðŸ‘¤</div>
                       )}
                     </div>
                     <div className="absolute inset-0 bg-black/40 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -533,7 +615,23 @@ export function ManageAccount() {
                       className="hidden"
                       title="Upload a new profile photo"
                     />
-                    📷 Upload New Photo
+                    ðŸ“· Upload New Photo
+                  </Label>
+                  <Label
+                    htmlFor="selfie-input"
+                    className="cursor-pointer inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg font-medium shadow-md transition-all"
+                  >
+                    <input
+                      id="selfie-input"
+                      type="file"
+                      accept="image/*"
+                      capture="user"
+                      onChange={handleSelfieChange}
+                      className="hidden"
+                      title="Take a selfie"
+                    />
+                    <Camera className="w-4 h-4" />
+                    Take Selfie
                   </Label>
                 </div>
 
@@ -613,25 +711,21 @@ export function ManageAccount() {
                     <p className="text-sm text-gray-600 mb-4">
                       Upload and publish music compositions
                     </p>
-                    {isComposer || requestStatus === "approved" ? (
+                    {composerRequestStatus === "approved" ? (
                       <div className="flex items-center gap-2">
                         <div className="flex items-center gap-2 text-green-700 font-medium">
                           <CheckCircle className="w-5 h-5 flex-shrink-0" />
                           <span className="text-sm">Active</span>
                         </div>
-                        {requestStatus === "approved" && !isComposer && (
-                          <Button
-                            onClick={() => {
-                              window.location.href = "/composer";
-                            }}
-                            className="ml-3 bg-green-600 hover:bg-green-700"
-                            size="sm"
-                          >
-                            Go to Composer Dashboard
-                          </Button>
-                        )}
+                        <Button
+                          onClick={() => navigate("/composer")}
+                          className="ml-3 bg-green-600 hover:bg-green-700"
+                          size="sm"
+                        >
+                          Open Dashboard
+                        </Button>
                       </div>
-                    ) : requestStatus === "pending" ? (
+                    ) : composerRequestStatus === "pending" ? (
                       <Button
                         disabled
                         className="w-full bg-gray-200 text-gray-700 border-gray-200"
@@ -640,13 +734,20 @@ export function ManageAccount() {
                         Pending Approval
                       </Button>
                     ) : (
-                      <Button
-                        onClick={() => setShowRoleModal("composer")}
-                        className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 shadow-md"
-                        size="sm"
-                      >
-                        Request Access
-                      </Button>
+                      <div className="space-y-2">
+                        <Button
+                          onClick={() => setShowRoleModal("composer")}
+                          className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 shadow-md"
+                          size="sm"
+                        >
+                          Request Access
+                        </Button>
+                        {composerRequestStatus === "rejected" ? (
+                          <p className="text-xs text-red-600">
+                            Your previous request was rejected. You can request again.
+                          </p>
+                        ) : null}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -664,20 +765,44 @@ export function ManageAccount() {
                     <p className="text-sm text-gray-600 mb-4">
                       Manage platform and users
                     </p>
-                    {isAdmin ? (
-                      <div className="flex items-center gap-2 text-blue-700 font-medium">
-                        <CheckCircle className="w-5 h-5 flex-shrink-0" />
-                        <span className="text-sm">Active</span>
+                    {adminRequestStatus === "approved" ? (
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 text-blue-700 font-medium">
+                          <CheckCircle className="w-5 h-5 flex-shrink-0" />
+                          <span className="text-sm">Active</span>
+                        </div>
+                        <Button
+                          onClick={() => navigate("/admin")}
+                          className="ml-3 bg-blue-600 hover:bg-blue-700 text-white"
+                          size="sm"
+                        >
+                          Open Dashboard
+                        </Button>
                       </div>
-                    ) : (
+                    ) : adminRequestStatus === "pending" ? (
                       <Button
-                        onClick={() => setShowRoleModal("admin")}
-                        variant="outline"
-                        className="w-full border-2 hover:bg-gray-50"
+                        disabled
+                        className="w-full bg-gray-200 text-gray-700 border-gray-200"
                         size="sm"
                       >
-                        Request Access
+                        Pending Approval
                       </Button>
+                    ) : (
+                      <div className="space-y-2">
+                        <Button
+                          onClick={() => setShowRoleModal("admin")}
+                          variant="outline"
+                          className="w-full border-2 hover:bg-gray-50"
+                          size="sm"
+                        >
+                          Request Access
+                        </Button>
+                        {adminRequestStatus === "rejected" ? (
+                          <p className="text-xs text-red-600">
+                            Your previous admin request was rejected. You can request again.
+                          </p>
+                        ) : null}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -685,6 +810,33 @@ export function ManageAccount() {
             </div>
           </CardContent>
         </Card>
+
+        {dashboardOptions.length > 1 ? (
+          <Card className="shadow-xl border-0 overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-emerald-600 to-cyan-600 text-white">
+              <CardTitle className="text-xl flex items-center gap-2">
+                <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center">
+                  <LayoutDashboard className="w-4 h-4" />
+                </div>
+                Switch Dashboard
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-6 pb-6">
+              <div className="grid sm:grid-cols-3 gap-3">
+                {dashboardOptions.map((item) => (
+                  <Button
+                    key={item.key}
+                    variant="outline"
+                    className="w-full border-2 hover:bg-gray-50"
+                    onClick={() => navigate(item.path)}
+                  >
+                    {item.label}
+                  </Button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {/* Danger Zone */}
         <Card className="shadow-xl border-2 border-red-200 overflow-hidden">

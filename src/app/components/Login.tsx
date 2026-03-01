@@ -13,13 +13,10 @@ import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { navbarService } from "@/services/navbarService";
 import { toast } from "sonner";
-import logo from "./images/logo.jpg";
+import logo from "./images/logo.JPG";
 
 type UserRole = "buyer" | "composer" | "admin";
-
-const normalizeEmail = (email: string) => email.toLowerCase().trim();
 
 export function Login() {
   const [email, setEmail] = useState("");

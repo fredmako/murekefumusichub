@@ -12,7 +12,6 @@ import {
   SelectValue,
 } from "@/app/components/ui/select";
 import { Checkbox } from "@/app/components/ui/checkbox";
-import { auth } from "@/lib/firebase";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 
@@ -23,6 +22,18 @@ const API_BASE_URL =
 interface UploadCompositionProps {
   onClose: () => void;
 }
+
+interface AnalyzedCompositionMetadata {
+  title?: string;
+  description?: string;
+  difficulty?: string;
+  duration?: string;
+  language?: string;
+  accompaniment?: string;
+  voiceParts?: string[];
+}
+
+type MetadataMode = "ai" | "manual";
 
 export function UploadComposition({ onClose }: UploadCompositionProps) {
   const [formData, setFormData] = useState({
@@ -40,6 +51,8 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isAnalyzingPdf, setIsAnalyzingPdf] = useState(false);
+  const [metadataMode, setMetadataMode] = useState<MetadataMode>("manual");
 
   const voicePartOptions = [
     "Soprano",
@@ -59,11 +72,96 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     }));
   };
 
+  const applyAnalyzedMetadata = (metadata: AnalyzedCompositionMetadata) => {
+    setFormData((prev) => ({
+      ...prev,
+      title: prev.title || metadata.title || "",
+      description: prev.description || metadata.description || "",
+      difficulty: prev.difficulty || metadata.difficulty || "",
+      duration: prev.duration || metadata.duration || "",
+      language: prev.language || metadata.language || "",
+      accompaniment: prev.accompaniment || metadata.accompaniment || "",
+      voiceParts:
+        prev.voiceParts.length > 0
+          ? prev.voiceParts
+          : Array.isArray(metadata.voiceParts)
+            ? metadata.voiceParts
+            : [],
+    }));
+  };
+
+  const getFreshAccessToken = async (): Promise<string | null> => {
+    try {
+      const { data: refreshData, error: refreshError } =
+        await supabase.auth.refreshSession();
+      if (!refreshError && refreshData?.session?.access_token) {
+        return refreshData.session.access_token;
+      }
+    } catch {
+      // Ignore refresh errors and fall back to current session.
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    return sessionData?.session?.access_token ?? null;
+  };
+
+  const analyzePdf = async (file: File) => {
+    try {
+      setIsAnalyzingPdf(true);
+
+      const token = await getFreshAccessToken();
+      if (!token) {
+        toast.error("Not authenticated for PDF analysis");
+        return;
+      }
+
+      const body = new FormData();
+      body.append("file", file);
+
+      const response = await fetch(`${API_BASE_URL}/compositions/analyze-pdf`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body,
+      });
+
+      if (!response.ok) {
+        let message = "PDF analysis failed";
+        try {
+          const errorData = await response.json();
+          message = errorData?.message || message;
+        } catch {
+          // ignore parse failures
+        }
+        toast.error(message);
+        return;
+      }
+
+      const result = await response.json();
+      if (!result?.success || !result?.metadata) {
+        toast.error("PDF analysis returned no metadata");
+        return;
+      }
+
+      applyAnalyzedMetadata(result.metadata);
+      toast.success("PDF analyzed. Review suggested fields.");
+    } catch (error) {
+      console.error("Error analyzing PDF:", error);
+      toast.error("Could not analyze this PDF automatically");
+    } finally {
+      setIsAnalyzingPdf(false);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && file.type === "application/pdf") {
       setPdfFile(file);
       toast.success("PDF file selected successfully");
+      if (metadataMode === "ai") {
+        void analyzePdf(file);
+      }
     } else {
       toast.error("Please select a valid PDF file");
     }
@@ -79,6 +177,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
         !formData.title ||
         !formData.price ||
         !formData.difficulty ||
+        !formData.language ||
         !formData.accompaniment
       ) {
         toast.error("Please fill in all required fields");
@@ -86,23 +185,28 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
         return;
       }
 
-      const firebaseUser = auth.currentUser;
-      if (!firebaseUser) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const authUser = sessionData?.session?.user;
+      if (!authUser) {
         toast.error("Not authenticated");
         setIsSubmitting(false);
         return;
+      }
+
+      const token = await getFreshAccessToken();
+      if (!token) {
+        throw new Error("Missing auth token");
       }
 
       let pdfUrl = "";
 
       // Step 1: Upload PDF to Supabase storage bucket
       if (pdfFile) {
+        setUploadProgress(15);
         const uploadFormData = new FormData();
         uploadFormData.append("file", pdfFile);
 
-        // Get auth token
-        const token = await firebaseUser.getIdToken();
-
+        // Get Supabase access token
         // Upload via Supabase bucket endpoint
         const uploadResponse = await fetch(
           `${API_BASE_URL}/upload/compositions`,
@@ -116,87 +220,79 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
         );
 
         if (!uploadResponse.ok) {
-          const errorData = await uploadResponse.json();
-          throw new Error(errorData.error || "Upload failed");
+          let errorData: any = {};
+          try {
+            errorData = await uploadResponse.json();
+          } catch {
+            // ignore parse errors
+          }
+          const uploadMessage =
+            errorData?.message ||
+            errorData?.error ||
+            errorData?.details ||
+            `Upload failed (${uploadResponse.status})`;
+          console.error("[UploadComposition] file upload failed", {
+            status: uploadResponse.status,
+            body: errorData,
+          });
+          throw new Error(uploadMessage);
         }
 
         const uploadData = await uploadResponse.json();
         pdfUrl = uploadData.url;
+        setUploadProgress(100);
       } else {
         toast.error("Please select a PDF file");
         setIsSubmitting(false);
         return;
       }
 
-      // Step 2: Get user's UUID from Firebase UID
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select("id")
-        .eq("firebase_uid", firebaseUser.uid)
-        .maybeSingle();
-
-      if (userError) {
-        console.error("User query error:", userError);
-        toast.error("Error retrieving user profile");
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (!userData) {
-        toast.error(
-          "User profile not found. Please complete your profile first.",
-        );
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Step 3: Get composer record for this user using their UUID
-      const { data: composerData, error: composerError } = await supabase
-        .from("composers")
-        .select("id")
-        .eq("user_id", userData.id)
-        .maybeSingle();
-
-      if (composerError) {
-        console.error("Composer query error:", composerError);
-        toast.error(
-          "Error retrieving composer profile: " +
-            (composerError.message || "Unknown error"),
-        );
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (!composerData) {
-        toast.error(
-          "Composer profile not found. Please complete your profile first.",
-        );
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Step 4: Save composition metadata to database
-      const { error: insertError } = await supabase
-        .from("compositions")
-        .insert({
-          composer_id: composerData.id,
+      // Step 2: Save composition metadata through backend API.
+      // Server resolves composer_id from authenticated user.
+      const createResponse = await fetch(`${API_BASE_URL}/compositions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
           title: formData.title,
           description: formData.description,
           price: parseFloat(formData.price),
           difficulty: formData.difficulty,
           duration: formData.duration || null,
-          language: formData.language || null,
+          language: formData.language,
           accompaniment: formData.accompaniment,
           voice_parts:
             formData.voiceParts.length > 0 ? formData.voiceParts : null,
           pdf_url: pdfUrl,
           is_published: true,
-          deleted: false,
-        });
+        }),
+      });
 
-      if (insertError) {
-        console.error("Database insert error:", insertError);
-        throw new Error("Failed to save composition to database");
+      if (!createResponse.ok) {
+        let errorMessage = "Failed to save composition to database";
+        let errorData: any = {};
+        try {
+          errorData = await createResponse.json();
+          errorMessage =
+            errorData?.message || errorData?.error || errorMessage;
+        } catch {
+          // ignore parse failures
+        }
+        console.error("[UploadComposition] composition create failed", {
+          status: createResponse.status,
+          body: errorData,
+          payload: {
+            title: formData.title,
+            price: formData.price,
+            difficulty: formData.difficulty,
+            language: formData.language,
+            accompaniment: formData.accompaniment,
+            hasPdfUrl: Boolean(pdfUrl),
+          },
+        });
+        throw new Error(errorMessage);
       }
 
       toast.success("Composition uploaded successfully!");
@@ -230,6 +326,34 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Metadata Entry Mode */}
+      <div>
+        <Label>How would you like to fill composition details?</Label>
+        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <Button
+            type="button"
+            variant={metadataMode === "ai" ? "default" : "outline"}
+            onClick={() => setMetadataMode("ai")}
+            disabled={isSubmitting}
+          >
+            AI Analyze
+          </Button>
+          <Button
+            type="button"
+            variant={metadataMode === "manual" ? "default" : "outline"}
+            onClick={() => setMetadataMode("manual")}
+            disabled={isSubmitting}
+          >
+            Manual Fill
+          </Button>
+        </div>
+        <p className="text-xs text-gray-600 mt-2">
+          {metadataMode === "ai"
+            ? "Upload a PDF and AI will suggest details. You can edit every field before publishing."
+            : "Fill all required details manually. PDF analysis will not run automatically."}
+        </p>
+      </div>
+
       {/* Title */}
       <div>
         <Label htmlFor="title">Composition Title *</Label>
@@ -399,6 +523,22 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
           {pdfFile && (
             <p className="text-sm text-gray-600 mt-2">
               Selected: {pdfFile.name}
+            </p>
+          )}
+          {pdfFile && metadataMode === "ai" && (
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-2"
+              onClick={() => void analyzePdf(pdfFile)}
+              disabled={isAnalyzingPdf || isSubmitting}
+            >
+              {isAnalyzingPdf ? "Analyzing PDF..." : "Analyze PDF with AI"}
+            </Button>
+          )}
+          {pdfFile && metadataMode === "manual" && (
+            <p className="text-xs text-gray-500 mt-2">
+              Manual mode is active. Enter composition details in the form.
             </p>
           )}
           {uploadProgress > 0 && uploadProgress < 100 && (

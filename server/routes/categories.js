@@ -1,13 +1,16 @@
 import express from "express";
-import { supabase } from "../lib/supabaseClient.js";
-import { verifyFirebaseToken, adminOnly } from "../middleware/auth.js";
+import { supabaseAdmin } from "../lib/supabaseServer.js";
+import {
+  verifySupabaseToken,
+  adminOnly,
+} from "../middleware/verifySupabaseToken.js";
 
 const router = express.Router();
 
 // GET /api/categories - get all categories
 router.get("/", async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("categories")
       .select("*")
       .order("name");
@@ -24,7 +27,7 @@ router.get("/", async (req, res) => {
 });
 
 // POST /api/categories - create a category (admin only)
-router.post("/", verifyFirebaseToken, adminOnly, async (req, res) => {
+router.post("/", verifySupabaseToken, adminOnly, async (req, res) => {
   try {
     const { name, description } = req.body;
 
@@ -32,7 +35,7 @@ router.post("/", verifyFirebaseToken, adminOnly, async (req, res) => {
       return res.status(400).json({ message: "name is required" });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("categories")
       .insert({ name, description })
       .select()

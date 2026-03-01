@@ -1,110 +1,83 @@
+// routes/upload.js
 import express from "express";
-import { supabase as supabaseAdmin } from "../lib/supabaseClient.js";
-import { verifyFirebaseToken } from "../middleware/auth.js";
+import multer from "multer";
+import { supabaseAdmin } from "../lib/supabaseServer.js";
+import { verifySupabaseToken } from "../middleware/verifySupabaseToken.js";
+import { serverError } from "../utils/errors.js";
+import path from "path";
+import crypto from "crypto";
 
+const upload = multer({ storage: multer.memoryStorage() });
 const router = express.Router();
 
-/**
- * Upload file to Supabase Storage (uses admin/service role key to bypass RLS)
- * POST /api/upload/:bucket
- */
-router.post("/:bucket", verifyFirebaseToken, async (req, res) => {
-  try {
-    const { bucket } = req.params;
-    const firebaseUid = req.firebaseDecoded?.uid; // From auth middleware
-    const file = req.file; // Requires multer middleware
-
-    // Validate inputs
-    if (
-      !bucket ||
-      !["avatars", "thumbnails", "compositions"].includes(bucket)
-    ) {
-      return res.status(400).json({ error: "Invalid bucket name" });
-    }
-
-    if (!file) {
-      return res.status(400).json({ error: "No file provided" });
-    }
-
-    if (!firebaseUid) {
-      return res.status(401).json({ error: "Unauthorized: No Firebase UID" });
-    }
-
-    // Get Supabase user ID from Firebase UID
-    const { data: userData, error: userError } = await supabaseAdmin
-      .from("users")
-      .select("id")
-      .eq("auth_uid", firebaseUid)
-      .single();
-
-    if (userError || !userData) {
-      return res.status(404).json({ error: "User not found in database" });
-    }
-
-    const userId = userData.id;
-
-    // Create file path: userId/timestamp-filename
-    const timestamp = Date.now();
-    const sanitizedFileName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, "-");
-    const filePath = `${userId}/${timestamp}-${sanitizedFileName}`;
-
-    // Upload using service role to bypass RLS
-    const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-      .from(bucket)
-      .upload(filePath, file.buffer, {
-        contentType: file.mimetype,
-        cacheControl: "3600",
-        upsert: false,
-      });
-
-    if (uploadError) {
-      console.error(`Upload error for bucket ${bucket}:`, uploadError);
-      return res.status(500).json({
-        error: `Failed to upload file: ${uploadError.message}`,
-      });
-    }
-
-    // Get public URL
-    const { data: urlData } = supabaseAdmin.storage
-      .from(bucket)
-      .getPublicUrl(filePath);
-
-    const publicUrl = urlData?.publicUrl || "";
-
-    console.log(`[uploads] File uploaded successfully:`, {
-      bucket,
-      filePath,
-      publicUrl,
-      urlData,
-    });
-
-    // Record upload in database
+// POST /api/upload/:bucket
+// Protected: we expect caller to be authenticated (so we can name files under user id)
+router.post(
+  "/:bucket",
+  verifySupabaseToken,
+  upload.single("file"),
+  async (req, res) => {
     try {
-      await supabaseAdmin.from("file_uploads").insert({
-        user_id: userId,
-        file_name: file.originalname,
-        file_path: filePath,
-        file_type: file.mimetype,
-        file_size: file.size,
+      const { bucket } = req.params;
+      const authUid = req.authUid;
+      console.log("[upload] incoming request", {
         bucket,
-        storage_url: publicUrl,
+        authUid: authUid || null,
+        hasFile: Boolean(req.file),
+        filename: req.file?.originalname || null,
+        mimetype: req.file?.mimetype || null,
+        size: req.file?.size || 0,
       });
-    } catch (dbErr) {
-      console.warn("Failed to record file upload in database:", dbErr);
-      // Continue anyway - file is uploaded
-    }
 
-    return res.json({
-      success: true,
-      url: publicUrl,
-      path: filePath,
-    });
-  } catch (err) {
-    console.error("[uploads] Error:", err);
-    return res.status(500).json({
-      error: err.message || "Upload failed",
-    });
-  }
-});
+      if (!["avatars", "compositions", "thumbnails"].includes(bucket)) {
+        return res.status(400).json({ message: "Invalid bucket" });
+      }
+      if (!req.file) return res.status(400).json({ message: "File required" });
+
+      const ext = path.extname(req.file.originalname) || "";
+      const filename = `${authUid}/${Date.now()}-${crypto.randomBytes(6).toString("hex")}${ext}`;
+
+      // upload using admin client (service role)
+      const { error } = await supabaseAdmin.storage
+        .from(bucket)
+        .upload(filename, req.file.buffer, { upsert: false });
+
+      if (error) throw error;
+
+      // generate a signed URL (valid for e.g., 1 hour) — useful if bucket is private
+      const { data: signedData, error: signedErr } = await supabaseAdmin.storage
+        .from(bucket)
+        .createSignedUrl(filename, 3600);
+
+      if (signedErr) {
+        // fallback to public URL if createSignedUrl not allowed
+        console.warn("[upload] createSignedUrl failed, falling back to public URL", {
+          bucket,
+          filename,
+          error: signedErr?.message || signedErr,
+        });
+        const { data: pub } = supabaseAdmin.storage
+          .from(bucket)
+          .getPublicUrl(filename);
+        console.log("[upload] success via public URL fallback", {
+          bucket,
+          filename,
+          hasPublicUrl: Boolean(pub?.publicUrl),
+        });
+        return res.json({ success: true, url: pub.publicUrl });
+      }
+
+      console.log("[upload] success with signed URL", {
+        bucket,
+        filename,
+        hasSignedUrl: Boolean(signedData?.signedUrl),
+      });
+      return res.json({ success: true, url: signedData?.signedUrl || null });
+    } catch (err) {
+      console.error("[upload] failed", err);
+      return serverError(res, err);
+    }
+  },
+);
 
 export default router;

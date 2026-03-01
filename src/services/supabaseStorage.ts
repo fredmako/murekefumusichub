@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-// use supabase auth session rather than firebase
+// use Supabase auth session token
 
 export type StorageBucket = "compositions" | "thumbnails" | "avatars";
 
@@ -16,7 +16,7 @@ export interface UploadResult {
 
 /**
  * Upload file to Supabase Storage
- * Uses Firebase UID as the user identifier in the path
+ * Uses auth UID as the user identifier in the path
  */
 export async function uploadFile(
   file: File,
