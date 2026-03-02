@@ -1,4 +1,4 @@
-﻿// src/app/components/ManageAccount.tsx
+// src/app/components/ManageAccount.tsx
 import { useAuth, AppUser } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/app/components/ui/button";
@@ -36,6 +36,8 @@ import { toast } from "sonner";
 import { storageService } from "@/services/api";
 
 type RoleRequestState = "none" | "pending" | "approved" | "rejected";
+const MAX_AVATAR_SIZE_BYTES = 8 * 1024 * 1024;
+
 export function ManageAccount() {
   const { appUser, signOut, getAuthToken, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -96,7 +98,7 @@ export function ManageAccount() {
     try {
       const token = await getAuthToken();
       const base =
-        (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
+        (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
       const res = await fetch(`${base}/request-role/status`, {
         headers: {
           "Content-Type": "application/json",
@@ -141,8 +143,23 @@ export function ManageAccount() {
   }, [user]);
 
   const applyAvatarFile = (file: File | null) => {
+    if (!file) {
+      setAvatarFile(null);
+      return;
+    }
+
+    if (!String(file.type || "").startsWith("image/")) {
+      toast.error("Please select an image file for your profile photo.");
+      return;
+    }
+
+    if (file.size > MAX_AVATAR_SIZE_BYTES) {
+      toast.error("Profile photo is too large. Please choose one under 8MB.");
+      return;
+    }
+
     setAvatarFile(file);
-    if (file) setAvatarUrl(URL.createObjectURL(file)); // local preview only
+    setAvatarUrl(URL.createObjectURL(file)); // local preview only
   };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -169,25 +186,20 @@ export function ManageAccount() {
 
       // 1) upload avatar if new file selected
       if (avatarFile) {
-        try {
-          const uploadedUrl = await storageService.uploadFile(
-            "avatars",
-            avatarFile,
-            supabaseId,
-          );
-          finalAvatarUrl = uploadedUrl;
-        } catch (uploadErr) {
-          console.warn("[handleSaveProfile] avatar upload failed:", uploadErr);
-          // keep previous avatar if upload fails
-          finalAvatarUrl = user?.avatar_url || null;
-        }
+        const uploadedUrl = await storageService.uploadFile(
+          "avatars",
+          avatarFile,
+          supabaseId,
+          { timeoutMs: 30000 },
+        );
+        finalAvatarUrl = uploadedUrl;
       }
 
       // 2) send update to backend
       try {
         const token = await getAuthToken();
         const base =
-          (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
+          (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
         const res = await fetch(`${base}/account`, {
           method: "PUT",
           headers: {
@@ -215,7 +227,7 @@ export function ManageAccount() {
       // 3) refetch user row from your API to get persisted values
       try {
         const base =
-          (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
+          (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
         const refetchRes = await fetch(`${base}/users/${supabaseId}`, {
           headers: { "Content-Type": "application/json" },
         });
@@ -259,7 +271,7 @@ export function ManageAccount() {
 
       setAvatarFile(null);
       setIsEditing(false);
-      toast.success("âœ… Profile updated successfully");
+      toast.success("✅ Profile updated successfully");
     } catch (err: any) {
       console.error("[handleSaveProfile] Error:", err);
       toast.error(err?.message || "Failed to save profile");
@@ -275,7 +287,7 @@ export function ManageAccount() {
     try {
       const token = await getAuthToken();
       const base =
-        (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
+        (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
 
       const res = await fetch(`${base}/request-role`, {
         method: "POST",
@@ -295,7 +307,7 @@ export function ManageAccount() {
       if (!res.ok) {
         if (res.status === 409) {
           toast.error(
-            `â³ You already have a ${data.status} ${roleType} request`,
+            `⏳ You already have a ${data.status} ${roleType} request`,
           );
           if (
             data?.status === "pending" ||
@@ -312,7 +324,7 @@ export function ManageAccount() {
       }
 
       toast.success(
-        `âœ… ${roleType.charAt(0).toUpperCase() + roleType.slice(1)} request submitted! Awaiting admin approval.`,
+        `✅ ${roleType.charAt(0).toUpperCase() + roleType.slice(1)} request submitted! Awaiting admin approval.`,
       );
       setShowRoleModal(false);
 
@@ -362,7 +374,7 @@ export function ManageAccount() {
       // refresh user record from server
       try {
         const base =
-          (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
+          (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
         let resp: Response | undefined;
         if (supabaseId) {
           resp = await fetch(`${base}/users/${supabaseId}?_ts=${Date.now()}`, {
@@ -405,7 +417,7 @@ export function ManageAccount() {
       setLoading(true);
       const token = await getAuthToken();
       const base =
-        (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
+        (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
 
       const res = await fetch(`${base}/account`, {
         method: "DELETE",
@@ -485,7 +497,7 @@ export function ManageAccount() {
           <CardHeader className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
             <CardTitle className="text-2xl flex items-center gap-2">
               <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
-                ðŸ‘¤
+                👤
               </div>
               Profile Information
             </CardTitle>
@@ -506,7 +518,7 @@ export function ManageAccount() {
                             className="w-full h-full object-cover"
                           />
                         ) : (
-                          <div className="text-6xl">ðŸ‘¤</div>
+                          <div className="text-6xl">👤</div>
                         )}
                       </div>
                       <div className="absolute -bottom-2 -right-2 bg-green-500 w-8 h-8 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
@@ -596,7 +608,7 @@ export function ManageAccount() {
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <div className="text-6xl">ðŸ‘¤</div>
+                        <div className="text-6xl">👤</div>
                       )}
                     </div>
                     <div className="absolute inset-0 bg-black/40 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -615,7 +627,7 @@ export function ManageAccount() {
                       className="hidden"
                       title="Upload a new profile photo"
                     />
-                    ðŸ“· Upload New Photo
+                    📷 Upload New Photo
                   </Label>
                   <Label
                     htmlFor="selfie-input"

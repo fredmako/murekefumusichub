@@ -322,6 +322,36 @@ router.get("/", async (req, res) => {
 });
 
 // GET /api/compositions/:id
+// GET /api/compositions/composer/:composerId - get composer's compositions
+router.get("/composer/:composerId", async (req, res) => {
+  try {
+    const { composerId } = req.params;
+    if (!composerId)
+      return res.status(400).json({ message: "composerId is required" });
+
+    const { data, error } = await supabaseAdmin
+      .from("compositions")
+      .select(
+        `
+        *,
+        categories(name),
+        composition_stats(views, purchases)
+      `,
+      )
+      .eq("composer_id", composerId)
+      .eq("deleted", false)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    return res.json(data || []);
+  } catch (err) {
+    console.error("[get-composer-compositions] Error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/compositions/:id
 router.get("/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -549,35 +579,6 @@ router.delete("/:id", verifySupabaseToken, async (req, res) => {
     return res.json({ message: "Composition deleted" });
   } catch (err) {
     console.error("[delete-composition] Error:", err);
-    return res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /api/composer/:composerId/compositions - get composer's compositions
-router.get("/composer/:composerId", async (req, res) => {
-  try {
-    const { composerId } = req.params;
-    if (!composerId)
-      return res.status(400).json({ message: "composerId is required" });
-
-    const { data, error } = await supabaseAdmin
-      .from("compositions")
-      .select(
-        `
-        *,
-        categories(name),
-        composition_stats(views, purchases)
-      `,
-      )
-      .eq("composer_id", composerId)
-      .eq("deleted", false)
-      .order("created_at", { ascending: false });
-
-    if (error) throw error;
-
-    return res.json(data || []);
-  } catch (err) {
-    console.error("[get-composer-compositions] Error:", err);
     return res.status(500).json({ error: err.message });
   }
 });

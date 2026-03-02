@@ -7,15 +7,41 @@ import { serverError } from "../utils/errors.js";
 import path from "path";
 import crypto from "crypto";
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 30 * 1024 * 1024, // hard cap across all buckets
+  },
+});
 const router = express.Router();
+
+const BUCKET_MAX_SIZE_BYTES = {
+  avatars: 8 * 1024 * 1024,
+  thumbnails: 10 * 1024 * 1024,
+  compositions: 30 * 1024 * 1024,
+};
+
+function runSingleUpload(req, res, next) {
+  upload.single("file")(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof multer.MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res
+          .status(413)
+          .json({ message: "File is too large for upload limits." });
+      }
+      return res.status(400).json({ message: err.message || "Upload failed." });
+    }
+    return next(err);
+  });
+}
 
 // POST /api/upload/:bucket
 // Protected: we expect caller to be authenticated (so we can name files under user id)
 router.post(
   "/:bucket",
   verifySupabaseToken,
-  upload.single("file"),
+  runSingleUpload,
   async (req, res) => {
     try {
       const { bucket } = req.params;
@@ -33,6 +59,32 @@ router.post(
         return res.status(400).json({ message: "Invalid bucket" });
       }
       if (!req.file) return res.status(400).json({ message: "File required" });
+
+      const maxBytes = BUCKET_MAX_SIZE_BYTES[bucket] || 30 * 1024 * 1024;
+      if (req.file.size > maxBytes) {
+        return res.status(413).json({
+          message: `File too large for ${bucket}. Max size is ${Math.floor(maxBytes / (1024 * 1024))}MB.`,
+        });
+      }
+
+      const mimeType = String(req.file.mimetype || "").toLowerCase();
+      if (
+        (bucket === "avatars" || bucket === "thumbnails") &&
+        !mimeType.startsWith("image/")
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Only image files are allowed for this bucket." });
+      }
+
+      if (
+        bucket === "compositions" &&
+        !["application/pdf", "application/octet-stream"].includes(mimeType)
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Only PDF files are allowed for compositions." });
+      }
 
       const ext = path.extname(req.file.originalname) || "";
       const filename = `${authUid}/${Date.now()}-${crypto.randomBytes(6).toString("hex")}${ext}`;

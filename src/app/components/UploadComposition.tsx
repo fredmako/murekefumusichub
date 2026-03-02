@@ -17,7 +17,7 @@ import { toast } from "sonner";
 
 // API Configuration - matches the backend
 const API_BASE_URL =
-  (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
+  (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
 
 interface UploadCompositionProps {
   onClose: () => void;

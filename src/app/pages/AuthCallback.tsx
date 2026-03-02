@@ -12,6 +12,19 @@ export default function AuthCallback() {
       if (mounted) navigate(path, { replace: true });
     };
 
+    const consumePostLoginRedirect = () => {
+      try {
+        const nextPath = sessionStorage.getItem("post_login_redirect");
+        if (nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")) {
+          sessionStorage.removeItem("post_login_redirect");
+          return nextPath;
+        }
+      } catch {
+        // ignore storage failures
+      }
+      return null;
+    };
+
     const handleAuth = async () => {
       try {
         // Avoid immediate lock contention with AuthContext startup.
@@ -24,11 +37,13 @@ export default function AuthCallback() {
           return;
         }
 
-        safeNavigate(data?.session ? "/" : "/login");
+        const target = consumePostLoginRedirect();
+        safeNavigate(data?.session ? target || "/" : "/login");
       } catch (err: any) {
         if (err?.name === "NavigatorLockAcquireTimeoutError") {
           // Let AuthContext resolve auth state via listener after lock contention.
-          safeNavigate("/");
+          const target = consumePostLoginRedirect();
+          safeNavigate(target || "/");
           return;
         }
         console.error("Callback handling failed:", err);
@@ -39,8 +54,9 @@ export default function AuthCallback() {
     const { data: authState } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
+        const target = consumePostLoginRedirect();
         if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-          safeNavigate("/");
+          safeNavigate(target || "/");
           return;
         }
         if (event === "SIGNED_OUT") {
@@ -48,7 +64,7 @@ export default function AuthCallback() {
           return;
         }
         if (event === "INITIAL_SESSION" && session) {
-          safeNavigate("/");
+          safeNavigate(target || "/");
         }
       },
     );

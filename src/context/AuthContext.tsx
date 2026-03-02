@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import type { ThemePreset } from "./ThemeContext";
 
 export interface AppUser {
   id: string;
@@ -15,6 +16,9 @@ export interface AppUser {
   email: string | null;
   display_name: string | null;
   avatar_url: string | null; // ✅ ADD THIS
+  theme_settings?: {
+    preset?: ThemePreset;
+  } | null;
   roles: string[];
   isComposer?: boolean;
 }
@@ -39,7 +43,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const API_BASE_URL =
-    (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
+    (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
+  const ADMIN_IDENTIFIERS = String(
+    (import.meta as any).env?.VITE_ADMIN_IDENTIFIERS || "",
+  )
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
 
   const fetchServerRoles = async (authUid: string): Promise<string[]> => {
     try {
@@ -55,6 +65,47 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const resolveFallbackRoles = async (
+    userId: string,
+    email: string | null,
+  ): Promise<string[]> => {
+    const roles = ["buyer"];
+
+    try {
+      const { data: composerData } = await supabase
+        .from("composers")
+        .select("id")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (composerData && !roles.includes("composer")) roles.push("composer");
+    } catch (err) {
+      console.warn("[resolveFallbackRoles] composer lookup failed:", err);
+    }
+
+    const normalizedEmail = (email || "").trim().toLowerCase();
+    if (normalizedEmail && ADMIN_IDENTIFIERS.includes(normalizedEmail)) {
+      if (!roles.includes("admin")) roles.push("admin");
+      return roles;
+    }
+
+    if (!normalizedEmail) return roles;
+
+    try {
+      const { data: adminEmailRow, error: adminEmailErr } = await supabase
+        .from("admin_emails")
+        .select("id")
+        .eq("email", normalizedEmail)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (adminEmailErr) throw adminEmailErr;
+      if (adminEmailRow && !roles.includes("admin")) roles.push("admin");
+    } catch (err) {
+      console.warn("[resolveFallbackRoles] admin email lookup failed:", err);
+    }
+
+    return roles;
+  };
+
   /**
    * Sync user profile: fetch from Supabase users table and check roles
    */
@@ -63,7 +114,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Try to fetch existing user row by auth_uid
       const { data: userData, error: userError } = await supabase
         .from("users")
-        .select("id, auth_uid, email, display_name, avatar_url")
+        .select("id, auth_uid, email, display_name, avatar_url, theme_settings")
         .eq("auth_uid", authUid)
         .maybeSingle();
 
@@ -85,7 +136,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             (authUser?.user?.user_metadata as any)?.picture ?? null;
 
           const base =
-            (import.meta as any).VITE_API_BASE_URL ||
+            (import.meta as any).env?.VITE_API_BASE_URL ||
             "http://localhost:3001/api";
 
           // Call server endpoint to ensure a users row exists (server uses service role key)
@@ -119,7 +170,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           try {
             const { data: createdUser, error: fetchUserErr } = await supabase
               .from("users")
-              .select("id, auth_uid, email, display_name, avatar_url")
+              .select("id, auth_uid, email, display_name, avatar_url, theme_settings")
               .eq("auth_uid", authUid)
               .maybeSingle();
 
@@ -155,13 +206,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       let roles = await fetchServerRoles(authUid);
       if (!Array.isArray(roles) || roles.length === 0) {
-        // Fallback for local/dev cases where roles endpoint is unavailable.
-        const { data: composerData } = await supabase
-          .from("composers")
-          .select("id")
-          .eq("user_id", finalUser.id)
-          .maybeSingle();
-        roles = composerData ? ["composer"] : [];
+        roles = await resolveFallbackRoles(finalUser.id, finalUser.email || null);
       }
       const isComposer = roles.includes("composer");
 
@@ -171,6 +216,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         email: finalUser.email,
         display_name: finalUser.display_name,
         avatar_url: finalUser.avatar_url,
+        theme_settings: finalUser.theme_settings || null,
         roles,
         isComposer,
       });
@@ -201,12 +247,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (!appUser) return;
       let roles = await fetchServerRoles(appUser.auth_uid);
       if (!Array.isArray(roles) || roles.length === 0) {
-        const { data: composerData } = await supabase
-          .from("composers")
-          .select("id")
-          .eq("user_id", appUser.id)
-          .maybeSingle();
-        roles = composerData ? ["composer"] : [];
+        roles = await resolveFallbackRoles(appUser.id, appUser.email || null);
       }
       const isComposer = roles.includes("composer");
 

@@ -6,6 +6,12 @@ dotenv.config();
 
 const JWT_SECRET = process.env.SUPABASE_JWT_SECRET?.trim();
 let missingSecretLogged = false;
+const ADMIN_IDENTIFIERS = new Set(
+  String(process.env.ADMIN_IDENTIFIERS || "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean),
+);
 
 function getJwtAlg(token) {
   try {
@@ -137,12 +143,21 @@ export async function adminOnly(req, res, next) {
       .maybeSingle();
 
     if (userErr) throw userErr;
-    if (!user?.email) return res.status(403).json({ message: "Admin access required" });
+    const normalizedEmail = String(user?.email || req.auth?.email || "")
+      .trim()
+      .toLowerCase();
+    if (!normalizedEmail) {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
+    if (ADMIN_IDENTIFIERS.has(normalizedEmail)) {
+      return next();
+    }
 
     const { data: adminEmail, error: adminErr } = await supabaseAdmin
       .from("admin_emails")
       .select("id")
-      .eq("email", user.email)
+      .ilike("email", normalizedEmail)
       .eq("is_active", true)
       .maybeSingle();
 

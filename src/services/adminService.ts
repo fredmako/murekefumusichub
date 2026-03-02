@@ -229,6 +229,42 @@ export const adminService = {
     }
   },
 
+  async approvePaymentSubmission(submissionId: string, adminNotes?: string) {
+    try {
+      const result = await apiRequest<any>(
+        `/admin/payment-submissions/${submissionId}/approve`,
+        {
+          method: "POST",
+          body: JSON.stringify({ adminNotes: adminNotes || null }),
+        },
+      );
+      toast.success("Payment approved");
+      return result;
+    } catch (err: any) {
+      console.error("approvePaymentSubmission error:", err);
+      toast.error(err.message || "Failed to approve payment");
+      throw err;
+    }
+  },
+
+  async rejectPaymentSubmission(submissionId: string, adminNotes?: string) {
+    try {
+      const result = await apiRequest<any>(
+        `/admin/payment-submissions/${submissionId}/reject`,
+        {
+          method: "POST",
+          body: JSON.stringify({ adminNotes: adminNotes || null }),
+        },
+      );
+      toast.success("Payment rejected");
+      return result;
+    } catch (err: any) {
+      console.error("rejectPaymentSubmission error:", err);
+      toast.error(err.message || "Failed to reject payment");
+      throw err;
+    }
+  },
+
   async removeComposition(compositionId: string) {
     try {
       const result = await apiRequest<any>(`/compositions/${compositionId}`, {

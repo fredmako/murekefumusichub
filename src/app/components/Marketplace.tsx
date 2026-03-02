@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from "@/app/components/ui/select";
 import { CompositionCard } from "@/app/components/CompositionCard";
-import { supabase } from "@/lib/supabase";
+import { compositionService } from "@/services/api";
 import { toast } from "sonner";
 
 interface Composition {
@@ -43,7 +43,7 @@ interface MarketplaceProps {
   onAddToCart?: (composition: Composition) => void;
 }
 
-export function Marketplace({ currentUser, onAddToCart }: MarketplaceProps) {
+export function Marketplace({ onAddToCart }: MarketplaceProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [difficultyFilter, setDifficultyFilter] = useState<string>("all");
   const [languageFilter, setLanguageFilter] = useState<string>("all");
@@ -56,70 +56,28 @@ export function Marketplace({ currentUser, onAddToCart }: MarketplaceProps) {
     const fetchCompositions = async () => {
       try {
         setLoading(true);
+        // Use public backend endpoint to avoid anon RLS issues and N+1 client queries.
+        const compositionsData = await compositionService.getAll();
+        const mapped = (compositionsData || []).map((comp: any) => ({
+          id: comp.id,
+          title: comp.title,
+          composerName: comp.composers?.users?.display_name || "Unknown Composer",
+          price: Number(comp.price || 0),
+          description: comp.description || "",
+          difficulty: comp.difficulty || "Intermediate",
+          duration: comp.duration || "",
+          language: comp.language || "",
+          accompaniment: comp.accompaniment || "",
+          voiceParts: Array.isArray(comp.voice_parts) ? comp.voice_parts : [],
+          pdfUrl: comp.pdf_url || undefined,
+          createdAt: comp.created_at || "",
+          stats: comp.composition_stats?.[0] || {
+            views: 0,
+            purchases: 0,
+          },
+        })) as Composition[];
 
-        // Fetch published compositions with composer details
-        const { data: compositionsData, error: compError } = await supabase
-          .from("compositions")
-          .select(
-            `
-            id,
-            title,
-            description,
-            price,
-            pdf_url,
-            created_at,
-            is_published,
-            composer_id,
-            composers(user_id),
-            composition_stats(views, purchases)
-          `,
-          )
-          .eq("is_published", true)
-          .eq("deleted", false);
-
-        if (compError) {
-          console.error("Error fetching compositions:", compError);
-          toast.error("Failed to load compositions");
-          setLoading(false);
-          return;
-        }
-
-        // Get composer details for each composition
-        if (compositionsData && compositionsData.length > 0) {
-          const compositionsWithComposers = await Promise.all(
-            compositionsData.map(async (comp: any) => {
-              // Get composer's user info
-              const { data: composerUser } = await supabase
-                .from("users")
-                .select("display_name")
-                .eq("id", comp.composers.user_id)
-                .maybeSingle();
-
-              return {
-                id: comp.id,
-                title: comp.title,
-                composerName: composerUser?.display_name || "Unknown Composer",
-                price: comp.price,
-                description: comp.description,
-                difficulty: "Intermediate", // Default value - will be available after migrations
-                duration: "", // Default value - will be available after migrations
-                language: "", // Default value - will be available after migrations
-                accompaniment: "", // Default value - will be available after migrations
-                voiceParts: [], // Default value - will be available after migrations
-                pdfUrl: comp.pdf_url,
-                createdAt: comp.created_at,
-                stats: comp.composition_stats?.[0] || {
-                  views: 0,
-                  purchases: 0,
-                },
-              } as Composition;
-            }),
-          );
-
-          setCompositions(compositionsWithComposers);
-        } else {
-          setCompositions([]);
-        }
+        setCompositions(mapped);
       } catch (error) {
         console.error("Error fetching compositions:", error);
         toast.error("Failed to load compositions");
@@ -154,18 +112,21 @@ export function Marketplace({ currentUser, onAddToCart }: MarketplaceProps) {
   });
 
   return (
-    <div>
+    <div className="section-shell">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Discover Choral Music</h1>
-        <p className="text-gray-600">
+      <div className="mb-10 rounded-2xl border border-border/70 bg-gradient-to-r from-[#0d3e47] to-primary p-8 text-white shadow-[0_20px_40px_-30px_rgba(15,23,42,0.7)]">
+        <span className="inline-flex rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em]">
+          Music Hub
+        </span>
+        <h1 className="mt-4 text-4xl font-semibold">Discover Choral Music</h1>
+        <p className="mt-3 max-w-2xl text-white/85">
           Browse and purchase high-quality choral compositions from talented
           composers worldwide
         </p>
       </div>
 
       {/* Search and Filters */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border mb-8">
+      <div className="mb-8 rounded-2xl border border-border/70 bg-card p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)]">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           {/* Search */}
           <div className="lg:col-span-2 relative">
@@ -174,7 +135,7 @@ export function Marketplace({ currentUser, onAddToCart }: MarketplaceProps) {
               placeholder="Search compositions..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
+              className="pl-10 bg-white"
             />
           </div>
 
@@ -248,7 +209,7 @@ export function Marketplace({ currentUser, onAddToCart }: MarketplaceProps) {
 
       {/* Results */}
       <div className="mb-4">
-        <p className="text-gray-600">
+        <p className="text-sm font-medium text-muted-foreground">
           {loading
             ? "Loading compositions..."
             : `${filteredCompositions.length} composition${filteredCompositions.length !== 1 ? "s" : ""} found`}
@@ -261,7 +222,7 @@ export function Marketplace({ currentUser, onAddToCart }: MarketplaceProps) {
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <div
               key={i}
-              className="bg-gray-200 animate-pulse rounded-lg h-96"
+              className="h-96 animate-pulse rounded-xl border border-border/60 bg-muted/60"
             ></div>
           ))}
         </div>

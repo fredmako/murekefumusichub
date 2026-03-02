@@ -1,11 +1,22 @@
 import { supabase } from "@/lib/supabase";
 
 const API_BASE_URL =
-  (import.meta as any).VITE_API_BASE_URL || "http://localhost:3001/api";
+  (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
 
 async function getAccessToken(): Promise<string | null> {
   const { data, error } = await supabase.auth.getSession();
-  if (error || !data?.session) return null;
+  if (error || !data?.session) {
+    try {
+      const { data: refreshed, error: refreshErr } =
+        await supabase.auth.refreshSession();
+      if (!refreshErr && refreshed?.session?.access_token) {
+        return refreshed.session.access_token;
+      }
+    } catch {
+      // ignore and return null below
+    }
+    return null;
+  }
 
   const session = data.session;
   const now = Math.floor(Date.now() / 1000);
@@ -29,20 +40,81 @@ async function getAccessToken(): Promise<string | null> {
 
 export async function apiRequest<T>(
   endpoint: string,
-  options: RequestInit = {},
+  options: RequestInit & { timeoutMs?: number } = {},
 ): Promise<T> {
+  const { timeoutMs = 20000, ...requestOptions } = options;
   const token = await getAccessToken();
 
-  const headers: HeadersInit = {
+  const baseHeaders: HeadersInit = {
     "Content-Type": "application/json",
-    ...(options.headers || {}),
+    ...(requestOptions.headers || {}),
   };
 
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
   const url = `${API_BASE_URL.replace(/\/+$/, "")}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+  const externalSignal = requestOptions.signal;
 
-  const response = await fetch(url, { ...options, headers });
+  const executeFetch = async (bearerToken: string | null): Promise<Response> => {
+    const headers: HeadersInit = {
+      ...baseHeaders,
+    };
+    if (bearerToken) headers["Authorization"] = `Bearer ${bearerToken}`;
+
+    const controller = new AbortController();
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        controller.abort();
+      } else {
+        externalSignal.addEventListener("abort", () => controller.abort(), {
+          once: true,
+        });
+      }
+    }
+
+    const timeout = setTimeout(() => {
+      controller.abort();
+    }, timeoutMs);
+
+    try {
+      return await fetch(url, {
+        ...requestOptions,
+        headers,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  let response: Response;
+  try {
+    response = await executeFetch(token);
+  } catch (err: any) {
+    if (err?.name === "AbortError") {
+      const timeoutError = new Error(
+        "Request timed out. Please check your connection and try again.",
+      );
+      (timeoutError as any).status = 408;
+      throw timeoutError;
+    }
+    throw err;
+  }
+
+  // If the access token is stale, refresh and retry once automatically.
+  if (response.status === 401) {
+    try {
+      const { data: refreshed, error: refreshErr } =
+        await supabase.auth.refreshSession();
+      const refreshedToken = refreshErr
+        ? null
+        : refreshed?.session?.access_token || null;
+
+      if (refreshedToken && refreshedToken !== token) {
+        response = await executeFetch(refreshedToken);
+      }
+    } catch {
+      // Keep original 401 response path.
+    }
+  }
 
   if (!response.ok) {
     let errorBody: any = { message: response.statusText };
@@ -214,6 +286,43 @@ export const purchaseService = {
   },
 };
 
+export const checkoutService = {
+  async submitManualPayment(payload: {
+    mpesaCode: string;
+    items: Array<{ composition_id: string }>;
+  }) {
+    return await apiRequest<{
+      success: boolean;
+      checkoutBatchId: string;
+      totalAmount: number;
+      mpesa?: {
+        businessNumber?: string;
+        accountNo?: string;
+        businessName?: string;
+        paymentUrl?: string;
+      };
+      submitted: Array<{
+        id: string;
+        composition_id: string;
+        amount: number;
+        status: string;
+      }>;
+      skipped?: {
+        alreadyPurchased?: string[];
+        alreadyPending?: string[];
+      };
+    }>(`/checkout/submit`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      timeoutMs: 25000,
+    });
+  },
+
+  async getMyCheckoutStatus() {
+    return await apiRequest<any[]>(`/checkout/status`, { method: "GET" });
+  },
+};
+
 export const fypService = {
   async getRecommendations(_buyerId: string, limit: number = 20) {
     return await apiRequest(`/purchases/recommendations?limit=${limit}`, {
@@ -242,6 +351,44 @@ export const categoryService = {
       method: "POST",
       body: JSON.stringify({ name, description }),
     });
+  },
+};
+
+export const mediaService = {
+  async getLandingImages(options?: {
+    query?: string;
+    perPage?: number;
+    mode?: "instruments" | "mixed";
+    queries?: string[];
+  }) {
+    const query = options?.query || "choir music performance";
+    const perPage = options?.perPage ?? 12;
+    const mode = options?.mode || "instruments";
+    const params = new URLSearchParams();
+    params.set("query", query);
+    params.set("perPage", String(perPage));
+    params.set("mode", mode);
+    if (Array.isArray(options?.queries) && options.queries.length > 0) {
+      params.set("queries", options.queries.join(","));
+    }
+    return await apiRequest<{
+      source: string;
+      mode?: string;
+      items: Array<{
+        id: number;
+        photographer: string;
+        width?: number;
+        height?: number;
+        alt?: string;
+        src: {
+          large2x?: string | null;
+          large?: string | null;
+          landscape?: string | null;
+          medium?: string | null;
+        };
+        url?: string | null;
+      }>;
+    }>(`/media/landing-images?${params.toString()}`, { method: "GET" });
   },
 };
 
@@ -318,24 +465,65 @@ export const storageService = {
     bucket: "compositions" | "thumbnails" | "avatars",
     file: File,
     _userId: string,
+    options?: { timeoutMs?: number },
   ): Promise<string> {
     const token = await getAccessToken();
     if (!token) {
       throw new Error("No authentication token available");
     }
 
+    if (!file) {
+      throw new Error("No file selected for upload");
+    }
+
+    if (bucket === "avatars" && file.size > 8 * 1024 * 1024) {
+      throw new Error("Avatar file is too large. Please use an image under 8MB.");
+    }
+
+    if (
+      (bucket === "avatars" || bucket === "thumbnails") &&
+      !String(file.type || "").startsWith("image/")
+    ) {
+      throw new Error("Only image files are allowed for avatar and thumbnail uploads.");
+    }
+
+    if (
+      bucket === "compositions" &&
+      !["application/pdf", "application/octet-stream"].includes(
+        String(file.type || "").toLowerCase(),
+      )
+    ) {
+      throw new Error("Only PDF files are allowed for composition uploads.");
+    }
+
     const formData = new FormData();
     formData.append("file", file);
 
     const url = `${API_BASE_URL.replace(/\/+$/, "")}/upload/${bucket}`;
+    const timeoutMs = Math.max(5000, options?.timeoutMs ?? 30000);
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+        signal: controller.signal,
+      });
+    } catch (error: any) {
+      if (error?.name === "AbortError") {
+        throw new Error("Upload timed out. Please check your network and try again.");
+      }
+      throw new Error(
+        error?.message || "Upload failed due to a network error. Please try again.",
+      );
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
 
     if (!response.ok) {
       let errorMessage = `Upload failed with status ${response.status}`;
@@ -439,8 +627,10 @@ export const api = {
   auth: authService,
   compositions: compositionService,
   purchases: purchaseService,
+  checkout: checkoutService,
   fyp: fypService,
   categories: categoryService,
+  media: mediaService,
   reports: reportService,
   storage: storageService,
   analytics: analyticsService,

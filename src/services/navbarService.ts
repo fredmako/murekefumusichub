@@ -13,13 +13,8 @@ export const navbarService = {
   },
 
   async fetchAdminNotifications() {
-    try {
-      const notifications = await apiRequest<any[]>(`/admin/notifications`);
-      return notifications || [];
-    } catch (err: any) {
-      console.warn("fetchAdminNotifications error:", err);
-      return [];
-    }
+    const notifications = await apiRequest<any[]>(`/admin/notifications`);
+    return notifications || [];
   },
 
   async approveRoleRequest(userId: string, requestedRole: "composer" | "admin") {
@@ -56,6 +51,40 @@ export const navbarService = {
     } catch (err: any) {
       console.error("rejectRoleRequest error:", err);
       toast.error(err.message || "Failed to reject request");
+      throw err;
+    }
+  },
+
+  async approvePaymentSubmission(submissionId: string) {
+    try {
+      const result = await apiRequest<any>(
+        `/admin/payment-submissions/${submissionId}/approve`,
+        {
+          method: "POST",
+        },
+      );
+      toast.success("Payment approved");
+      return result;
+    } catch (err: any) {
+      console.error("approvePaymentSubmission error:", err);
+      toast.error(err.message || "Failed to approve payment");
+      throw err;
+    }
+  },
+
+  async rejectPaymentSubmission(submissionId: string) {
+    try {
+      const result = await apiRequest<any>(
+        `/admin/payment-submissions/${submissionId}/reject`,
+        {
+          method: "POST",
+        },
+      );
+      toast.success("Payment rejected");
+      return result;
+    } catch (err: any) {
+      console.error("rejectPaymentSubmission error:", err);
+      toast.error(err.message || "Failed to reject payment");
       throw err;
     }
   },

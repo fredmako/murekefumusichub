@@ -11,7 +11,7 @@ import {
   Trash2,
   ArrowRight,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/app/components/ui/button";
 import {
   Card,
@@ -53,11 +53,20 @@ export function BuyerDashboard({
   onRemoveFromCart,
 }: BuyerDashboardProps) {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { appUser } = useAuth();
-  const [activeTab, setActiveTab] = useState("library");
+  const [activeTab, setActiveTab] = useState(
+    searchParams.get("tab") === "checkout" ? "checkout" : "library",
+  );
   const [loading, setLoading] = useState(true);
   const [purchasedCompositions, setPurchasedCompositions] = useState<any[]>([]);
   const [totalSpent, setTotalSpent] = useState(0);
+
+  useEffect(() => {
+    const requestedTab =
+      searchParams.get("tab") === "checkout" ? "checkout" : "library";
+    setActiveTab((prev) => (prev === requestedTab ? prev : requestedTab));
+  }, [searchParams]);
 
   useEffect(() => {
     const fetchUserPurchases = async () => {
@@ -108,11 +117,16 @@ export function BuyerDashboard({
   );
 
   const handleCheckout = () => {
-    toast.success(
-      "Purchase successful! Your compositions are now in your library.",
-    );
-    onClearCart();
-    setActiveTab("library");
+    if (!appUser) {
+      try {
+        sessionStorage.setItem("post_login_redirect", "/checkout");
+      } catch {
+        // ignore storage failures
+      }
+      navigate("/login?next=%2Fcheckout&intent=purchase");
+      return;
+    }
+    navigate("/checkout");
   };
 
   const handleRemoveItem = (compositionId: string) => {
@@ -120,6 +134,17 @@ export function BuyerDashboard({
       onRemoveFromCart(compositionId);
       toast.success("Item removed from cart");
     }
+  };
+
+  const handleTabChange = (nextTab: string) => {
+    setActiveTab(nextTab);
+    const next = new URLSearchParams(searchParams);
+    if (nextTab === "checkout") {
+      next.set("tab", "checkout");
+    } else {
+      next.delete("tab");
+    }
+    setSearchParams(next, { replace: true });
   };
 
   return (
@@ -182,7 +207,7 @@ export function BuyerDashboard({
         </div>
 
         {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="grid w-full max-w-md grid-cols-2 bg-white shadow-md">
             <TabsTrigger
               value="library"
@@ -439,7 +464,7 @@ export function BuyerDashboard({
                       onClick={handleCheckout}
                     >
                       <CreditCard className="size-5 mr-2" />
-                      Complete Purchase
+                      Proceed to Checkout
                     </Button>
 
                     <div className="bg-blue-50 rounded-lg p-4 space-y-2">

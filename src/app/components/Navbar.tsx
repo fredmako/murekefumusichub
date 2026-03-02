@@ -52,6 +52,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   );
 
   const roles = appUser?.roles || [];
+  const isAdmin = roles.includes("admin");
   const [notifications, setNotifications] = useState<any[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
   const [processingNotification, setProcessingNotification] = useState<
@@ -65,34 +66,45 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   // Fetch admin notifications (role requests and composer requests)
   useEffect(() => {
     let mounted = true;
-    let timer: any;
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
     async function fetchNotifications() {
-      if (!roles.includes("admin")) return setNotifications([]);
+      if (!isAdmin) {
+        setNotifications([]);
+        return;
+      }
       setNotifLoading(true);
       try {
         const items = await navbarService.fetchAdminNotifications();
-        if (mounted) setNotifications(items);
+        if (!mounted) return;
+        setNotifications(items);
+        timer = setTimeout(fetchNotifications, NOTIF_POLL_INTERVAL);
       } catch (err) {
+        if (!mounted) return;
+        const status = (err as any)?.status;
+        if (status === 401 || status === 403) {
+          // Access revoked or role changed; stop polling to prevent noisy retries.
+          setNotifications([]);
+          return;
+        }
         console.warn("Navbar notifications fetch error:", err);
+        timer = setTimeout(fetchNotifications, NOTIF_POLL_INTERVAL);
       } finally {
         if (mounted) setNotifLoading(false);
-        // schedule next poll
-        timer = setTimeout(fetchNotifications, NOTIF_POLL_INTERVAL);
       }
     }
 
     // only fetch when admin
-    if (roles.includes("admin")) fetchNotifications();
+    if (isAdmin) fetchNotifications();
 
     return () => {
       mounted = false;
       if (timer) clearTimeout(timer);
     };
-  }, [roles]);
+  }, [isAdmin]);
 
   useEffect(() => {
-    if (!roles.includes("admin")) {
+    if (!isAdmin) {
       previousNotificationCount.current = 0;
       return;
     }
@@ -107,7 +119,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
         `${added} new admin notification${added > 1 ? "s" : ""} received`,
       );
     }
-  }, [notifications, roles]);
+  }, [notifications, isAdmin]);
 
   // Handle approve/reject actions
   const handleApproveRequest = async (
@@ -137,6 +149,36 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
       setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
     } catch (err) {
       console.error("Failed to reject request:", err);
+    } finally {
+      setProcessingNotification(null);
+    }
+  };
+
+  const handleApprovePayment = async (
+    notificationId: string,
+    submissionId: string,
+  ) => {
+    setProcessingNotification(notificationId);
+    try {
+      await navbarService.approvePaymentSubmission(submissionId);
+      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+    } catch (err) {
+      console.error("Failed to approve payment submission:", err);
+    } finally {
+      setProcessingNotification(null);
+    }
+  };
+
+  const handleRejectPayment = async (
+    notificationId: string,
+    submissionId: string,
+  ) => {
+    setProcessingNotification(notificationId);
+    try {
+      await navbarService.rejectPaymentSubmission(submissionId);
+      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+    } catch (err) {
+      console.error("Failed to reject payment submission:", err);
     } finally {
       setProcessingNotification(null);
     }
@@ -224,21 +266,22 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   })();
 
   return (
-    <nav className="bg-white shadow-md border-b">
-      <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-16">
+    <nav className="texture-fabric sticky top-0 z-40 border-b border-border/80 bg-card/90 backdrop-blur-md">
+      <div className="app-shell">
+        <div className="flex h-16 items-center justify-between">
           {/* ================= Logo ================= */}
-          <Link to="/" className="flex items-center gap-2">
+          <Link to="/" className="flex items-center gap-3">
+            <div className="size-8 rounded-full bg-gradient-to-br from-primary to-[#0a4b56]" />
             <div>
-              <h1 className="font-semibold text-lg bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              <h1 className="text-lg font-semibold tracking-tight text-foreground">
                 Murekefu Music Hub
               </h1>
-              <p className="text-xs text-gray-500">Choral Music Hub</p>
+              <p className="text-xs text-muted-foreground">Choral Music Hub</p>
             </div>
           </Link>
 
           {/* ================= Main Navigation ================= */}
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-2 rounded-full border border-border/80 bg-background/70 p-1">
             {navItems.map((item) => {
               const isVisible =
                 item.showOn.includes("any") ||
@@ -251,7 +294,11 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
               return (
                 <NavLink key={item.path} to={item.path}>
                   {({ isActive }) => (
-                    <Button variant={isActive ? "default" : "ghost"}>
+                    <Button
+                      variant={isActive ? "default" : "ghost"}
+                      size="sm"
+                      className={isActive ? "" : "text-muted-foreground"}
+                    >
                       {item.label}
                     </Button>
                   )}
@@ -262,6 +309,9 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
 
           {/* ================= Right Actions ================= */}
           <div className="flex items-center gap-3">
+            <span className="motion-float-delayed hidden rounded-full border border-border/80 bg-secondary/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-secondary-foreground md:inline-flex">
+              Live Marketplace
+            </span>
             {/* ===== Admin Notifications (Admin Only) ===== */}
             {roles.includes("admin") && (
               <DropdownMenu>
@@ -309,6 +359,19 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                               </span>
                               <span className="text-xs text-gray-500">
                                 {n.email}
+                              </span>
+                            </>
+                          ) : n.type === "payment_request" ? (
+                            <>
+                              <span className="font-semibold block">
+                                Pending M-Pesa Payment
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {n.displayName || n.email}
+                              </span>
+                              <span className="text-xs text-gray-500 block mt-1">
+                                Ref: {n.mpesaCode || "-"} | Amount: $
+                                {Number(n.amount || 0).toFixed(2)}
                               </span>
                             </>
                           ) : (
@@ -377,6 +440,44 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                                     ? "admin"
                                     : "composer",
                                 );
+                              }}
+                              disabled={processingNotification === n.id}
+                            >
+                              {processingNotification === n.id ? (
+                                <Loader className="size-4 mr-1 animate-spin" />
+                              ) : (
+                                <X className="size-4 mr-1" />
+                              )}
+                              Reject
+                            </Button>
+                          </div>
+                        )}
+                        {n.type === "payment_request" && (
+                          <div className="flex gap-2 mt-2">
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="flex-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleApprovePayment(n.id, n.submissionId);
+                              }}
+                              disabled={processingNotification === n.id}
+                            >
+                              {processingNotification === n.id ? (
+                                <Loader className="size-4 mr-1 animate-spin" />
+                              ) : (
+                                <Check className="size-4 mr-1" />
+                              )}
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="flex-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRejectPayment(n.id, n.submissionId);
                               }}
                               disabled={processingNotification === n.id}
                             >

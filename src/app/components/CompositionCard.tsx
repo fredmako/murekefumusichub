@@ -1,4 +1,5 @@
-import { Music2, Clock, Languages, Users, ShoppingCart } from "lucide-react";
+import { Clock, Languages, Music2, ShoppingCart, Users } from "lucide-react";
+import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import {
   Card,
@@ -7,7 +8,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/app/components/ui/card";
-import { Badge } from "@/app/components/ui/badge";
 
 interface Composition {
   title: string;
@@ -48,40 +48,41 @@ export function CompositionCard({
   };
 
   return (
-    <Card className="hover:shadow-lg transition-shadow">
+    <Card className="lift-card overflow-hidden border-border/70">
+      <div className="h-1 w-full bg-gradient-to-r from-primary to-[#0d3e47]" />
       <CardHeader>
-        <div className="flex items-start justify-between mb-2">
-          <Music2 className="size-8 text-blue-600" />
+        <div className="mb-2 flex items-start justify-between">
+          <Music2 className="size-8 text-primary" />
           <Badge className={getDifficultyColor(composition.difficulty)}>
             {composition.difficulty}
           </Badge>
         </div>
-        <CardTitle className="text-xl">{composition.title}</CardTitle>
-        <p className="text-sm text-gray-600">by {composition.composerName}</p>
+        <CardTitle className="text-2xl">{composition.title}</CardTitle>
+        <p className="text-sm text-muted-foreground">by {composition.composerName}</p>
       </CardHeader>
 
       <CardContent className="space-y-3">
-        <p className="text-sm text-gray-700 line-clamp-2">
+        <p className="line-clamp-2 text-sm text-muted-foreground">
           {composition.description || "No description available"}
         </p>
 
         <div className="space-y-2">
           {composition.voiceParts && composition.voiceParts.length > 0 && (
-            <div className="flex items-center gap-2 text-sm text-gray-600">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Users className="size-4" />
               <span>{composition.voiceParts.join(", ")}</span>
             </div>
           )}
 
           {composition.duration && (
-            <div className="flex items-center gap-2 text-sm text-gray-600">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Clock className="size-4" />
               <span>{composition.duration}</span>
             </div>
           )}
 
           {(composition.language || composition.accompaniment) && (
-            <div className="flex items-center gap-2 text-sm text-gray-600">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Languages className="size-4" />
               <span>
                 {composition.language || "Unknown"} •{" "}
@@ -94,7 +95,7 @@ export function CompositionCard({
 
       <CardFooter className="flex items-center justify-between">
         <div>
-          <p className="text-2xl font-bold text-blue-600">
+          <p className="text-2xl font-bold text-primary">
             ${composition.price.toFixed(2)}
           </p>
         </div>
@@ -103,7 +104,7 @@ export function CompositionCard({
             onClick={() => onAddToCart?.(composition)}
             disabled={!canAddToCart}
           >
-            <ShoppingCart className="size-4 mr-2" />
+            <ShoppingCart className="mr-2 size-4" />
             Add to Cart
           </Button>
         )}
@@ -111,3 +112,5 @@ export function CompositionCard({
     </Card>
   );
 }
+
+export default CompositionCard;

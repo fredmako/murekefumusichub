@@ -6,6 +6,21 @@ import { serverError } from "../utils/errors.js";
 
 const router = express.Router();
 
+const ALLOWED_THEME_PRESETS = new Set([
+  "emerald",
+  "aurora",
+  "ocean",
+  "sunset",
+  "forest",
+]);
+
+function normalizeThemeSettings(themeSettings) {
+  if (!themeSettings || typeof themeSettings !== "object") return null;
+  const presetRaw = String(themeSettings.preset || "").trim().toLowerCase();
+  if (!ALLOWED_THEME_PRESETS.has(presetRaw)) return null;
+  return { preset: presetRaw };
+}
+
 /**
  * PUT /api/account
  * Update current user's profile (display_name, avatar_url).
@@ -16,7 +31,7 @@ router.put("/", verifySupabaseToken, async (req, res) => {
     const authUid = req.authUid;
     if (!authUid) return res.status(401).json({ message: "No auth uid" });
 
-    const { displayName, avatarUrl } = req.body;
+    const { displayName, avatarUrl, themeSettings } = req.body;
 
     // Find DB user by auth_uid
     const { data: userRow, error: userError } = await supabaseAdmin
@@ -29,10 +44,23 @@ router.put("/", verifySupabaseToken, async (req, res) => {
     if (!userRow)
       return res.status(404).json({ message: "User row not found" });
 
-    const updates = {
-      display_name: displayName ?? undefined,
-      avatar_url: avatarUrl ?? undefined,
-    };
+    const updates = {};
+    if (displayName !== undefined) updates.display_name = displayName || null;
+    if (avatarUrl !== undefined) updates.avatar_url = avatarUrl || null;
+    if (themeSettings !== undefined) {
+      const normalizedTheme = normalizeThemeSettings(themeSettings);
+      if (!normalizedTheme) {
+        return res.status(400).json({
+          message:
+            "Invalid theme settings. Allowed presets: emerald, aurora, ocean, sunset, forest.",
+        });
+      }
+      updates.theme_settings = normalizedTheme;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: "No updatable fields provided" });
+    }
 
     const { data: updated, error: updateErr } = await supabaseAdmin
       .from("users")

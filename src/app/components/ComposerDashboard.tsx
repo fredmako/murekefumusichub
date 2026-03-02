@@ -30,13 +30,17 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/app/components/ui/dialog";
 import { Badge } from "@/app/components/ui/badge";
+import { Input } from "@/app/components/ui/input";
+import { Textarea } from "@/app/components/ui/textarea";
 import { UploadComposition } from "@/app/components/UploadComposition";
 import { supabase } from "@/lib/supabase";
+import { compositionService } from "@/services/api";
 import { toast } from "sonner";
 
 interface ComposerDashboardProps {
@@ -49,7 +53,14 @@ interface CompositionWithStats {
   description: string;
   price: number;
   created_at: string;
+  updated_at?: string;
   is_published: boolean;
+  difficulty?: string;
+  duration?: string;
+  language?: string;
+  accompaniment?: string;
+  voice_parts?: string[];
+  pdf_url?: string;
   composition_stats: {
     views: number;
     purchases: number;
@@ -66,7 +77,19 @@ interface ComposerStats {
 export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
   const { appUser } = useAuth();
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isViewOpen, setIsViewOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const previousUploadOpen = useRef(false);
+  const [selectedComposition, setSelectedComposition] =
+    useState<CompositionWithStats | null>(null);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    title: "",
+    description: "",
+    price: "",
+    is_published: true,
+  });
   const [stats, setStats] = useState<ComposerStats>({
     composerCompositions: [],
     totalRevenue: 0,
@@ -118,7 +141,14 @@ export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
           description,
           price,
           created_at,
+          updated_at,
           is_published,
+          difficulty,
+          duration,
+          language,
+          accompaniment,
+          voice_parts,
+          pdf_url,
           composition_stats(views, purchases)
         `,
         )
@@ -176,6 +206,74 @@ export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
 
   const { composerCompositions, totalRevenue, totalSales, loading } = stats;
 
+  const handleViewComposition = (composition: CompositionWithStats) => {
+    setSelectedComposition(composition);
+    setIsViewOpen(true);
+  };
+
+  const handleOpenEdit = (composition: CompositionWithStats) => {
+    setSelectedComposition(composition);
+    setEditForm({
+      title: composition.title || "",
+      description: composition.description || "",
+      price: String(composition.price ?? 0),
+      is_published: Boolean(composition.is_published),
+    });
+    setIsEditOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedComposition?.id) return;
+    const parsedPrice = Number(editForm.price);
+    if (!editForm.title.trim()) {
+      toast.error("Title is required");
+      return;
+    }
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      toast.error("Enter a valid non-negative price");
+      return;
+    }
+
+    setSaveLoading(true);
+    try {
+      await compositionService.update(selectedComposition.id, {
+        title: editForm.title.trim(),
+        description: editForm.description.trim(),
+        price: parsedPrice,
+        is_published: editForm.is_published,
+      });
+
+      toast.success("Composition updated");
+      setIsEditOpen(false);
+      setSelectedComposition(null);
+      await fetchComposerData();
+    } catch (error: any) {
+      console.error("[composer-dashboard] update failed:", error);
+      toast.error(error?.message || "Failed to update composition");
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
+  const handleDeleteComposition = async (composition: CompositionWithStats) => {
+    const confirmed = window.confirm(
+      `Delete "${composition.title}"? This will remove it from the marketplace.`,
+    );
+    if (!confirmed) return;
+
+    setActionLoadingId(composition.id);
+    try {
+      await compositionService.delete(composition.id);
+      toast.success("Composition deleted");
+      await fetchComposerData();
+    } catch (error: any) {
+      console.error("[composer-dashboard] delete failed:", error);
+      toast.error(error?.message || "Failed to delete composition");
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
   return (
     <div>
       {/* Header */}
@@ -204,6 +302,141 @@ export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
           </DialogContent>
         </Dialog>
       </div>
+
+      <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{selectedComposition?.title || "Composition"}</DialogTitle>
+            <DialogDescription>Composition details and performance.</DialogDescription>
+          </DialogHeader>
+          {selectedComposition && (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-700">
+                {selectedComposition.description || "No description provided."}
+              </p>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-gray-500">Price</p>
+                  <p className="font-medium">${Number(selectedComposition.price || 0).toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Status</p>
+                  <p className="font-medium">
+                    {selectedComposition.is_published ? "Published" : "Draft"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Difficulty</p>
+                  <p className="font-medium">{selectedComposition.difficulty || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Language</p>
+                  <p className="font-medium">{selectedComposition.language || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Views</p>
+                  <p className="font-medium">
+                    {selectedComposition.composition_stats?.[0]?.views || 0}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Purchases</p>
+                  <p className="font-medium">
+                    {selectedComposition.composition_stats?.[0]?.purchases || 0}
+                  </p>
+                </div>
+              </div>
+              {selectedComposition.pdf_url && (
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    window.open(selectedComposition.pdf_url, "_blank", "noopener,noreferrer")
+                  }
+                >
+                  Open PDF Score
+                </Button>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Edit Composition</DialogTitle>
+            <DialogDescription>Update listing details.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm mb-1">Title</p>
+              <Input
+                value={editForm.title}
+                onChange={(e) =>
+                  setEditForm((prev) => ({ ...prev, title: e.target.value }))
+                }
+                disabled={saveLoading}
+              />
+            </div>
+            <div>
+              <p className="text-sm mb-1">Description</p>
+              <Textarea
+                value={editForm.description}
+                onChange={(e) =>
+                  setEditForm((prev) => ({ ...prev, description: e.target.value }))
+                }
+                disabled={saveLoading}
+              />
+            </div>
+            <div>
+              <p className="text-sm mb-1">Price (USD)</p>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={editForm.price}
+                onChange={(e) =>
+                  setEditForm((prev) => ({ ...prev, price: e.target.value }))
+                }
+                disabled={saveLoading}
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={editForm.is_published}
+                onChange={(e) =>
+                  setEditForm((prev) => ({
+                    ...prev,
+                    is_published: e.target.checked,
+                  }))
+                }
+                disabled={saveLoading}
+              />
+              Published
+            </label>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsEditOpen(false)}
+              disabled={saveLoading}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={saveLoading}>
+              {saveLoading ? (
+                <>
+                  <Loader className="size-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -332,14 +565,36 @@ export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <Button variant="ghost" size="icon" title="View">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="View"
+                            onClick={() => handleViewComposition(comp)}
+                            disabled={actionLoadingId === comp.id || saveLoading}
+                          >
                             <Eye className="size-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" title="Edit">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Edit"
+                            onClick={() => handleOpenEdit(comp)}
+                            disabled={actionLoadingId === comp.id || saveLoading}
+                          >
                             <Edit className="size-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" title="Delete">
-                            <Trash2 className="size-4 text-red-600" />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Delete"
+                            onClick={() => handleDeleteComposition(comp)}
+                            disabled={actionLoadingId === comp.id || saveLoading}
+                          >
+                            {actionLoadingId === comp.id ? (
+                              <Loader className="size-4 animate-spin text-red-600" />
+                            ) : (
+                              <Trash2 className="size-4 text-red-600" />
+                            )}
                           </Button>
                         </div>
                       </TableCell>

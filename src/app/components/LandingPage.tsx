@@ -1,31 +1,30 @@
-import React, { useState } from "react";
-import { Button } from "./ui/button";
-import { Card } from "./ui/card";
-import {
-  Music,
-  Keyboard,
-  Guitar,
-  Mic,
-  Wind,
-  Users,
-  BookOpen,
-  Award,
-  Quote,
-  Headphones,
-  Radio,
-} from "lucide-react"
-import ShowBanner  from "../utils/privacyBanner";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useEffect } from "react";
+import {
+  Award,
+  BookOpen,
+  Guitar,
+  Headphones,
+  Keyboard,
+  Mic,
+  Music,
+  Quote,
+  Users,
+  Wind,
+} from "lucide-react";
+import { Button } from "./ui/button";
+import { Card, CardContent } from "./ui/card";
+import { mediaService } from "@/services/api";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "./ui/dialog";
-import { CardContent } from "./ui/card";
+import ShowBanner from "../utils/privacyBanner";
+
 interface MusicClass {
   id: string;
   name: string;
@@ -34,475 +33,519 @@ interface MusicClass {
   level: string;
 }
 
-  const testimonials = [
-    {
-      message: `We came together as Parents in Kianda school to sing together in support of our daughters. Most of us were passionate about singing without experience or training!
-On the first day, I could read Sam’s mind wondering what he had gotten himself into! He started from identifying who fit into which voice group and patiently training us as individuals and groups. With his determination and great teaching/coaching skills, we were able to perform during Easter and Christmas cantatas.
-The joy in our girls’ faces said it all. They were really proud of our beautiful singing. Memories were created that will last a life time.
+interface LandingImage {
+  id: number;
+  url: string;
+  alt: string;
+  photographer: string;
+  width: number;
+  height: number;
+}
 
-Thank Sam!`,
-      author: "Ann, Kianda School Parents Choir 2023 & 2024",
-    },
-    {
-      message: `My passion for choral music was ignited when I had the privilege of being trained by the incredible Murekefu Sam. It all began at The Nairobi School, where I discovered a singer within me I never knew existed. With him at the helm, participation at the national level wasn't just a possibility – it was a guarantee. Murekefu is someone I truly look up to in the world of music, crafting melodies that leave you wanting more. Five years under his tutelage was a transformative experience I'd highly recommend to any aspiring choral artist.`,
-      author:
-        "Oduor Benedict, Nairobi School 2020 - 2023 & JKUAT Choir 2025",
-    },
-    {
-      message: `Working with Sam Murekefu has been one of the best pleasures I have enjoyed in my adult life. He has been such an amazing music trainer, director, composer and friend. Before I met Sam, I was the "singing in the shower kinda girl" because I didn't know how to balance, warm, and sing from the stomach and he helped me with that.
+const testimonials = [
+  {
+    message:
+      "He took us from passion without technique to confident performances during Easter and Christmas cantatas.",
+    author: "Ann, Kianda School Parents Choir",
+  },
+  {
+    message:
+      "With his guidance at The Nairobi School, participating at the national level became the standard.",
+    author: "Oduor Benedict, Nairobi School",
+  },
+  {
+    message:
+      "Strong coaching, clear discipline, and practical vocal training transformed our choir’s sound.",
+    author: "Lilian, Maziwa Methodist Church",
+  },
+];
 
-The negative for me was that I never really got the chance to work with him longer but I get to call him a friend and that's good enough. Also, if you don't learn him well you might think he's always angry when he isn't, he's just concentrating on the music.`,
-      author: "Naserian, MKU Main Campus Choir 2022 & 2023",
-    },
-    {
-      message: `Mr. Sam Murekefu elevated our school choir to new heights with his expertise and passion for music. He demands excellence and pushes you to be your best - it's tough, but it works. It was his first time working with the JKUAT choir and his commitment to our growth and perfection pushed us to doing and being more. Literally took us out of our comfort zone. Though I didn't get to work with him one-on-one, I've seen how he brings out the best in our choir. He placed us on the map, musically speaking! Would love to learn from him more in the future.`,
-      author: "Miriam Seka, JKUAT Choir 2025",
-    },
-    {
-      message: `Murekefu Sam, thank you for your incredible dedication to Maziwa Methodist Choir in the year 2018 all through covid season. You took a group of passionate but untrained singers and, through individual voice coaching, discipline, and strict time keeping, turned us into a confident and effective choir.
+const musicClasses: MusicClass[] = [
+  {
+    id: "piano",
+    name: "Piano",
+    description: "Build confident technique from foundations to performance.",
+    icon: <Keyboard className="size-9" />,
+    level: "Beginner to Advanced",
+  },
+  {
+    id: "guitar",
+    name: "Guitar",
+    description: "Master rhythm, harmony, and expressive accompaniment.",
+    icon: <Guitar className="size-9" />,
+    level: "Beginner to Advanced",
+  },
+  {
+    id: "vocal",
+    name: "Vocal",
+    description: "Improve breath support, diction, blend, and projection.",
+    icon: <Mic className="size-9" />,
+    level: "All Levels",
+  },
+  {
+    id: "trumpet",
+    name: "Trumpet",
+    description: "Train embouchure and tone control with guided practice.",
+    icon: <Wind className="size-9" />,
+    level: "Beginner to Advanced",
+  },
+  {
+    id: "theory",
+    name: "Music Theory",
+    description: "Understand composition, harmony, and score reading clearly.",
+    icon: <BookOpen className="size-9" />,
+    level: "All Levels",
+  },
+  {
+    id: "ensemble",
+    name: "Ensemble",
+    description: "Rehearse and perform with disciplined group musicianship.",
+    icon: <Users className="size-9" />,
+    level: "Intermediate to Advanced",
+  },
+];
 
-You helped Maziwa Methodist Choir grow from raw passion into a structured and confident choir through individual coaching and strong emphasis on time keeping.
+const highlights = [
+  {
+    title: "Professional Mentorship",
+    description:
+      "Work with experienced trainers focused on measurable musical growth.",
+    icon: <Award className="size-6 text-primary" />,
+  },
+  {
+    title: "Structured Programs",
+    description:
+      "Clear progression paths from beginner foundations to stage-ready performance.",
+    icon: <Music className="size-6 text-primary" />,
+  },
+  {
+    title: "Digital + Live Delivery",
+    description:
+      "Learn through in-person rehearsals and digital resources you can revisit anytime.",
+    icon: <Headphones className="size-6 text-primary" />,
+  },
+];
 
-All the best!`,
-      author: "Lilian, Maziwa Methodist Church 2018-2019",
-    },
-  ];
-
-
-export const LandingPage: React.FC = () => {
+export const LandingPage = () => {
   const navigate = useNavigate();
-
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
-
-  // ✅ Privacy Modal (Shows only once)
-  // Initialize in an effect to avoid reading localStorage during SSR
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+  const [landingImages, setLandingImages] = useState<LandingImage[]>([]);
+  const [pexelsCredit, setPexelsCredit] = useState<string>("Pexels");
 
   useEffect(() => {
     const accepted = localStorage.getItem("privacyAccepted");
     setIsPrivacyOpen(accepted !== "true");
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadLandingImages() {
+      try {
+        const data = await mediaService.getLandingImages({
+          mode: "instruments",
+          perPage: 18,
+          queries: [
+            "piano keys close up",
+            "guitar strings close up",
+            "drum kit studio",
+            "violin on sheet music",
+            "trumpet saxophone instruments",
+            "music instruments flat lay",
+          ],
+        });
+        if (!mounted) return;
+        const images: LandingImage[] = (data?.items || [])
+          .map((item) => {
+            const imageUrl =
+              item?.src?.large2x ||
+              item?.src?.landscape ||
+              item?.src?.large ||
+              item?.src?.medium ||
+              null;
+            if (!imageUrl) return null;
+            return {
+              id: item.id,
+              url: imageUrl,
+              alt: item.alt || "Musical instrument",
+              photographer: item.photographer || "",
+              width: Number(item.width || 1600),
+              height: Number(item.height || 900),
+            };
+          })
+          .filter(Boolean) as LandingImage[];
+        if (images.length > 0) {
+          setLandingImages(images);
+          const firstPhotographer = data?.items?.[0]?.photographer;
+          if (firstPhotographer) setPexelsCredit(`${firstPhotographer} / Pexels`);
+        }
+      } catch (err) {
+        console.warn("[LandingPage] failed to load Pexels images:", err);
+      }
+    }
+
+    loadLandingImages();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const pickImage = (index: number): LandingImage | null =>
+    landingImages.length > 0
+      ? landingImages[index % landingImages.length]
+      : null;
+  const pickImageUrl = (index: number) => pickImage(index)?.url || null;
+
   const handleAcceptPrivacy = () => {
     localStorage.setItem("privacyAccepted", "true");
     setIsPrivacyOpen(false);
   };
 
-  const musicClasses: MusicClass[] = [
-    {
-      id: "piano",
-      name: "Piano",
-      description: "Learn piano at your pace.",
-      icon: <Keyboard className="w-12 h-12" />,
-      level: "Beginner to Advanced",
-    },
-    {
-      id: "guitar",
-      name: "Guitar",
-      description: "Play the world's favorite instrument.",
-      icon: <Guitar className="w-12 h-12" />,
-      level: "Beginner to Advanced",
-    },
-    {
-      id: "vocal",
-      name: "Vocal",
-      description: "Improve your singing skills.",
-      icon: <Mic className="w-12 h-12" />,
-      level: "All Levels",
-    },
-    {
-      id: "trumpet",
-      name: "Trumpet",
-      description: "Master the trumpet with us.",
-      icon: <Wind className="w-12 h-12" />,
-      level: "Beginner to Advanced",
-    },
-    {
-      id: "music-theory",
-      name: "Music Theory",
-      description: "Understand music composition.",
-      icon: <BookOpen className="w-12 h-12" />,
-      level: "All Levels",
-    },
-    {
-      id: "ensemble",
-      name: "Ensemble",
-      description: "Perform with fellow musicians.",
-      icon: <Users className="w-12 h-12" />,
-      level: "Intermediate to Advanced",
-    },
-  ];
-
-  const features = [
-    {
-      title: "Expert Instructors",
-      description: "Learn from experienced professionals.",
-      icon: <Award className="w-8 h-8" />,
-    },
-    {
-      title: "Flexible Scheduling",
-      description: "Classes at times that suit you.",
-      icon: <Music className="w-8 h-8" />,
-    },
-    {
-      title: "All Skill Levels",
-      description: "From beginners to advanced.",
-      icon: <BookOpen className="w-8 h-8" />,
-    },
-  ];
-
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+    <main className="texture-linen relative min-h-screen overflow-hidden pb-24">
+      {pickImageUrl(0) ? (
+        <div
+          className="pointer-events-none fixed inset-0 -z-20 opacity-[0.07]"
+          style={{
+            backgroundImage: `url(${pickImageUrl(0)})`,
+            backgroundRepeat: "repeat",
+            backgroundSize: "560px auto",
+            backgroundPosition: "center",
+          }}
+          aria-hidden="true"
+        />
+      ) : null}
       <Dialog open={isPrivacyOpen} onOpenChange={setIsPrivacyOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Privacy Policy Notice</DialogTitle>
             <DialogDescription>
-              We respect your privacy. By continuing to use this website,
-              you agree to our privacy and data usage practices.
+              We respect your privacy. By continuing to use this website, you
+              agree to our privacy and data usage practices.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex flex-col sm:flex-row gap-2">
-            <Button
-              variant="outline"
-              onClick={() => navigate("/privacy-policy")}
-            >
+            <Button variant="outline" onClick={() => navigate("/privacy-policy")}>
               View Privacy Policy
             </Button>
-            <Button onClick={handleAcceptPrivacy}>
-              Accept & Continue
-            </Button>
+            <Button onClick={handleAcceptPrivacy}>Accept & Continue</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ================= Hero Section ================= */}
-      <section className="relative bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-20 px-4">
-        <div className="container mx-auto max-w-6xl text-center space-y-6">
-          <h1 className="text-5xl md:text-6xl font-bold">
-            Music <span className="italic">for</span> Everyone
-          </h1>
-          <p className="text-xl md:text-2xl text-purple-100">
-            Discover your talents and pick your instrument
-          </p>
-          <Link to="/login">
-            <Button size="lg" variant="secondary" className="text-lg">
-              Join Us Today
-            </Button>
-          </Link>
+      <section className="section-shell texture-fabric texture-speckle motion-reveal relative overflow-hidden rounded-3xl border border-border/60 bg-card/60">
+        {pickImageUrl(1) ? (
+          <div
+            className="pointer-events-none absolute inset-0 opacity-15"
+            style={{
+              backgroundImage: `linear-gradient(to right, rgba(255,255,255,0.95), rgba(255,255,255,0.78)), url(${pickImageUrl(1)})`,
+              backgroundPosition: "center",
+              backgroundSize: "cover",
+            }}
+            aria-hidden="true"
+          />
+        ) : null}
+        <div className="relative z-10 grid gap-8 p-6 sm:p-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+          <div>
+            <span className="soft-kicker">Choral Studio Platform</span>
+            <h1 className="mt-5 text-5xl font-semibold leading-[1.1] tracking-tight text-foreground sm:text-6xl">
+              Train Better. Perform Better. Publish Better.
+            </h1>
+            <p className="mt-6 max-w-xl text-base text-muted-foreground sm:text-lg">
+              Murekefu Music Hub combines elite training, choir development,
+              and a modern marketplace for composers and music teams.
+            </p>
+            <div className="mt-8 flex flex-wrap items-center gap-3">
+              <Link to="/enroll">
+                <Button size="lg">Start Learning</Button>
+              </Link>
+              <Link to="/marketplace">
+                <Button size="lg" variant="outline">
+                  Explore Music Hub
+                </Button>
+              </Link>
+            </div>
+            <div className="mt-8 grid max-w-md grid-cols-3 gap-3 text-sm">
+              <div className="rounded-xl border border-border/70 bg-card p-3">
+                <p className="text-2xl font-bold">6+</p>
+                <p className="text-muted-foreground">Class Tracks</p>
+              </div>
+              <div className="rounded-xl border border-border/70 bg-card p-3">
+                <p className="text-2xl font-bold">100+</p>
+                <p className="text-muted-foreground">Learners</p>
+              </div>
+              <div className="rounded-xl border border-border/70 bg-card p-3">
+                <p className="text-2xl font-bold">24/7</p>
+                <p className="text-muted-foreground">Access</p>
+              </div>
+            </div>
+          </div>
+
+          <Card
+            className="lift-card motion-float texture-speckle overflow-hidden border-0 text-white"
+            style={{
+              backgroundImage: `linear-gradient(to bottom right, rgba(11,63,69,0.92), rgba(15,118,110,0.88)), ${pickImageUrl(2) ? `url(${pickImageUrl(2)})` : "none"}`,
+              backgroundPosition: "center",
+              backgroundSize: "cover",
+            }}
+          >
+            <CardContent className="p-8 sm:p-10">
+              <div className="inline-flex items-center rounded-full bg-white/20 px-3 py-1 text-xs font-semibold tracking-wide">
+                Featured
+              </div>
+              <h2 className="mt-5 text-3xl font-semibold leading-tight">
+                Built for choirs, conductors, and composers
+              </h2>
+              <p className="mt-4 text-sm text-white/85 sm:text-base">
+                From first rehearsal to final upload, manage growth and
+                distribution in one streamlined environment.
+              </p>
+              <ul className="mt-6 space-y-2 text-sm text-white/90">
+                <li>Performance-ready vocal training</li>
+                <li>Composition publishing and monetization</li>
+                <li>Role-based dashboards for team workflows</li>
+              </ul>
+            </CardContent>
+          </Card>
         </div>
       </section>
 
-      {/* Render the bottom privacy banner (also respects localStorage) */}
       <ShowBanner onAccept={handleAcceptPrivacy} />
 
-      {/* ================= Features Section ================= */}
-      <section className="py-16 px-4 bg-gray-50">
-        <div className="container mx-auto max-w-6xl text-center">
-          <h2 className="text-3xl font-bold mb-12 text-gray-900">
-            Why Choose Us?
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {features.map((feature, idx) => (
-              <Card key={idx} className="p-6 hover:shadow-lg transition-shadow">
-                <div className="flex justify-center mb-4 text-purple-600">
-                  {feature.icon}
+      <section className="section-shell motion-reveal pt-10">
+        <div className="mb-8">
+          <span className="soft-kicker">Instrument Focus</span>
+          <h2 className="section-title">Visuals centered on instruments</h2>
+          <p className="section-copy">
+            We prioritize instrument-rich imagery so the page reflects practice,
+            composition, and performance craft.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          {[
+            { title: "Keys & Harmony", idx: 9 },
+            { title: "Strings & Texture", idx: 10 },
+            { title: "Rhythm & Brass", idx: 11 },
+          ].map((item, index) => {
+            const image = pickImage(item.idx);
+            return (
+              <Card
+                key={item.title}
+                className="lift-card motion-reveal texture-speckle overflow-hidden border-border/70"
+                style={{ animationDelay: `${index * 120}ms` }}
+              >
+                <div className="aspect-[4/3] w-full bg-muted">
+                  {image ? (
+                    <img
+                      src={image.url}
+                      alt={image.alt || "Musical instrument"}
+                      width={image.width}
+                      height={image.height}
+                      className="h-full w-full object-cover"
+                      loading={index === 0 ? "eager" : "lazy"}
+                      decoding="async"
+                      sizes="(min-width: 768px) 33vw, 100vw"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                      Loading instrument image...
+                    </div>
+                  )}
                 </div>
-                <h3 className="text-xl font-semibold mb-2 text-gray-900">
-                  {feature.title}
-                </h3>
-                <p className="text-gray-600">{feature.description}</p>
+                <CardContent className="p-4">
+                  <p className="text-sm font-semibold">{item.title}</p>
+                </CardContent>
               </Card>
-            ))}
-          </div>
+            );
+          })}
         </div>
       </section>
 
-      {/* ================= Music Classes ================= */}
-      <section className="py-16 px-4 bg-white">
-        <div className="container mx-auto max-w-6xl text-center">
-          <h2 className="text-3xl md:text-4xl font-bold mb-12 text-gray-900">
-            Music Classes
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {musicClasses.map((musicClass) => (
-              <Card
-                key={musicClass.id}
-                className={`p-8 cursor-pointer transition-all hover:shadow-lg hover:border-purple-400 ${
-                  selectedClass === musicClass.id
-                    ? "border-2 border-purple-600 bg-purple-50"
-                    : ""
-                }`}
-                onClick={() => setSelectedClass(musicClass.id)}
-              >
-                <div className="flex justify-center mb-4 text-purple-600">
+      <section className="section-shell texture-fabric motion-reveal relative">
+        {pickImageUrl(5) ? (
+          <div
+            className="pointer-events-none absolute right-8 top-10 hidden h-40 w-40 rounded-full bg-cover bg-center opacity-20 blur-[1px] md:block"
+            style={{ backgroundImage: `url(${pickImageUrl(5)})` }}
+            aria-hidden="true"
+          />
+        ) : null}
+        <div className="mb-10">
+          <span className="soft-kicker">Why Us</span>
+          <h2 className="section-title">A structured path to musical excellence</h2>
+          <p className="section-copy">
+            Clear curriculum, strong coaching, and practical outcomes for both
+            individuals and ensembles.
+          </p>
+        </div>
+        <div className="grid gap-5 md:grid-cols-3">
+          {highlights.map((highlight, index) => (
+            <Card
+              key={highlight.title}
+              className="lift-card motion-reveal texture-speckle"
+              style={
+                {
+                  ...(pickImageUrl(index + 3)
+                    ? {
+                        backgroundImage: `linear-gradient(to bottom right, rgba(255,255,255,0.95), rgba(255,255,255,0.9)), url(${pickImageUrl(index + 3)})`,
+                        backgroundSize: "cover",
+                        backgroundPosition: "center",
+                      }
+                    : {}),
+                  animationDelay: `${index * 100}ms`,
+                }
+              }
+            >
+              <CardContent className="p-6">
+                <div className="mb-4 inline-flex rounded-full bg-primary/10 p-2">
+                  {highlight.icon}
+                </div>
+                <h3 className="text-xl font-semibold">{highlight.title}</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {highlight.description}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      <section className="section-shell">
+        <div className="mb-10">
+          <span className="soft-kicker">Programs</span>
+          <h2 className="section-title">Choose your class track</h2>
+          <p className="section-copy">
+            Select a focused learning path and progress with guided milestones.
+          </p>
+        </div>
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {musicClasses.map((musicClass, index) => (
+            <Card
+              key={musicClass.id}
+              className={`lift-card motion-reveal texture-speckle cursor-pointer ${
+                selectedClass === musicClass.id
+                  ? "ring-2 ring-primary/40"
+                  : "ring-1 ring-border/60"
+              }`}
+              style={
+                {
+                  ...(pickImageUrl(index + 7)
+                    ? {
+                        backgroundImage: `linear-gradient(to bottom, rgba(255,255,255,0.95), rgba(255,255,255,0.9)), url(${pickImageUrl(index + 7)})`,
+                        backgroundSize: "cover",
+                        backgroundPosition: "center",
+                      }
+                    : {}),
+                  animationDelay: `${index * 80}ms`,
+                }
+              }
+              onClick={() => setSelectedClass(musicClass.id)}
+            >
+              <CardContent className="p-6">
+                <div className="mb-4 inline-flex rounded-full bg-secondary p-3 text-primary">
                   {musicClass.icon}
                 </div>
-                <h3 className="text-2xl font-bold mb-2 text-gray-900 text-center">
-                  {musicClass.name}
-                </h3>
-                <p className="text-gray-600 mb-4 text-center">
+                <h3 className="text-2xl font-semibold">{musicClass.name}</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
                   {musicClass.description}
                 </p>
-                <span className="inline-block px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-medium mb-4">
+                <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-primary/80">
                   {musicClass.level}
-                </span>
-                <Link to="/classes">
-                  <Button variant="outline" className="w-full">
-                    Learn More
-                  </Button>
-                </Link>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-       {/* ================= HERO SECTION ================= */}
-      <section className="relative bg-gradient-to-r from-purple-700 to-indigo-800 text-white py-24 px-6">
-        <div className="container mx-auto text-center max-w-4xl">
-          <Music className="w-14 h-14 mx-auto mb-6 text-yellow-300" />
-          <h1 className="text-5xl font-bold mb-6">
-            Elevating Choral & Music Excellence
-          </h1>
-          <p className="text-lg text-purple-100 mb-8">
-            Discover professional music training, choral compositions,
-            performance opportunities, and a growing creative community.
-          </p>
-
-          <div className="flex justify-center gap-4 flex-wrap">
-            <Link to="/marketplace">
-              <Button size="lg" variant="secondary">
-                Explore Music Hub
-              </Button>
-            </Link>
-
-            <Link to="/about">
-              <Button size="lg" variant="outline">
-                Learn More
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* ================= ABOUT PREVIEW ================= */}
-      <section className="py-20 px-6 bg-gray-50">
-        <div className="container mx-auto max-w-5xl text-center">
-          <h2 className="text-4xl font-bold mb-6">About Us</h2>
-
-          <p className="text-gray-600 text-lg mb-6 leading-relaxed">
-            We are a dynamic music platform committed to nurturing talent,
-            promoting choral excellence, and creating opportunities for
-            musicians to grow professionally and creatively.
-          </p>
-
-          <p className="text-gray-600 text-lg mb-8 leading-relaxed">
-            Through structured training programs, digital music distribution,
-            live performance preparation, and professional mentorship, we help
-            individuals and choirs reach their highest artistic potential.
-          </p>
-
-          <Link to="/about">
-            <Button size="lg">Read More</Button>
-          </Link>
-        </div>
-      </section>
-
-      {/* ================= SERVICES SECTION ================= */}
-      <section className="py-20 px-6">
-        <div className="container mx-auto max-w-6xl">
-          <h2 className="text-4xl font-bold text-center mb-14">
-            Our Services
-          </h2>
-
-          <div className="grid md:grid-cols-3 gap-8">
-
-            <Card className="text-center p-6 shadow-lg hover:shadow-xl transition">
-              <CardContent>
-                <Mic className="w-10 h-10 mx-auto text-purple-600 mb-4" />
-                <h3 className="text-xl font-semibold mb-3">
-                  Vocal Training
-                </h3>
-                <p className="text-gray-600">
-                  Professional vocal coaching designed to improve technique,
-                  breathing, tone quality, and performance confidence.
                 </p>
+                <div className="mt-5">
+                  <Link to="/enroll">
+                    <Button variant="outline" className="w-full">
+                      Learn More
+                    </Button>
+                  </Link>
+                </div>
               </CardContent>
             </Card>
-
-            <Card className="text-center p-6 shadow-lg hover:shadow-xl transition">
-              <CardContent>
-                <Users className="w-10 h-10 mx-auto text-purple-600 mb-4" />
-                <h3 className="text-xl font-semibold mb-3">
-                  Choral Development
-                </h3>
-                <p className="text-gray-600">
-                  Structured programs for choirs to enhance harmony,
-                  coordination, stage presence, and musical interpretation.
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="text-center p-6 shadow-lg hover:shadow-xl transition">
-              <CardContent>
-                <BookOpen className="w-10 h-10 mx-auto text-purple-600 mb-4" />
-                <h3 className="text-xl font-semibold mb-3">
-                  Music Education
-                </h3>
-                <p className="text-gray-600">
-                  Comprehensive music theory, instrumental training, and
-                  performance preparation for all levels.
-                </p>
-              </CardContent>
-            </Card>
-
-          </div>
-          <div className="mt-8 flex justify-center gap-4">
-            <Link to="/enroll">
-              <Button size="lg" variant="secondary">
-                Enroll Now
-              </Button>
-            </Link>
-
-            <Link to="/contact">
-              <Button size="lg" variant="outline">
-                Contact Us
-              </Button>
-            </Link>
-          </div>
+          ))}
         </div>
       </section>
 
-      {/* ================= WHY CHOOSE US ================= */}
-      <section className="py-20 px-6 bg-gray-50">
-        <div className="container mx-auto max-w-6xl">
-          <h2 className="text-4xl font-bold text-center mb-14">
-            Why Choose Us
-          </h2>
-
-          <div className="grid md:grid-cols-3 gap-8 text-center">
-
-            <div>
-              <Headphones className="w-10 h-10 mx-auto text-indigo-600 mb-4" />
-              <h3 className="text-xl font-semibold mb-2">
-                Professional Mentorship
-              </h3>
-              <p className="text-gray-600">
-                Learn from experienced musicians and composers dedicated to
-                developing your musical journey.
-              </p>
-            </div>
-
-            <div>
-              <Radio className="w-10 h-10 mx-auto text-indigo-600 mb-4" />
-              <h3 className="text-xl font-semibold mb-2">
-                Modern Digital Access
-              </h3>
-              <p className="text-gray-600">
-                Access online resources, compositions, and digital training
-                materials anytime, anywhere.
-              </p>
-            </div>
-
-            <div>
-              <Music className="w-10 h-10 mx-auto text-indigo-600 mb-4" />
-              <h3 className="text-xl font-semibold mb-2">
-                Performance Opportunities
-              </h3>
-              <p className="text-gray-600">
-                Participate in concerts, recordings, and live events that
-                showcase your musical growth.
-              </p>
-            </div>
-
-          </div>
+      <section className="section-shell">
+        <div className="mb-10">
+          <span className="soft-kicker">Success Stories</span>
+          <h2 className="section-title">What choirs say</h2>
         </div>
-      </section>
-
-      {/* ================= CALL TO ACTION ================= */}
-      <section className="py-24 px-6 bg-gradient-to-r from-indigo-800 to-purple-700 text-white text-center">
-        <div className="container mx-auto max-w-3xl">
-          <h2 className="text-4xl font-bold mb-6">
-            Join Our Growing Music Community
-          </h2>
-
-          <p className="text-lg text-purple-100 mb-8">
-            Whether you're a beginner, a choir director, or a professional
-            composer, there's a place for you here.
-          </p>
-
-          <div className="flex justify-center gap-4 flex-wrap">
-            <Link to="/enroll">
-              <Button size="lg" variant="secondary">
-                Join Us
-              </Button>
-            </Link>
-
-            <Link to="/marketplace">
-              <Button size="lg" variant="outline">
-                Explore Music Hub
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-   
-
-          
-            {/* ================= Testimonials ================= */}
-      <section className="py-20 px-4 bg-white">
-        <div className="max-w-6xl mx-auto text-center">
-          <h2 className="text-4xl font-bold mb-14">Testimonials</h2>
-
-          <div className="grid md:grid-cols-2 gap-10">
-            {testimonials.map((testimonial, index) => (
-              <Card key={index} className="p-8 shadow-lg text-left">
-                <Quote className="text-purple-600 mb-4" />
-                <p className="text-gray-700 whitespace-pre-line leading-relaxed mb-6">
+        <div className="grid gap-5 lg:grid-cols-3">
+          {testimonials.map((testimonial, index) => (
+            <Card
+              key={testimonial.author}
+              className="lift-card motion-reveal texture-speckle"
+              style={{ animationDelay: `${index * 120}ms` }}
+            >
+              <CardContent className="p-6">
+                <Quote className="size-5 text-primary" />
+                <p className="mt-4 text-sm leading-6 text-muted-foreground">
                   {testimonial.message}
                 </p>
-                <p className="font-semibold text-purple-700">
-                  ~ {testimonial.author}
+                <p className="mt-5 text-sm font-semibold text-foreground">
+                  {testimonial.author}
                 </p>
-              </Card>
-            ))}
-          </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </section>
 
-      {/* ================= Footer ================= */}
-      <footer className="bg-gray-900 text-gray-300 py-8 text-center">
-        <p>© {new Date().getFullYear()} Music Academy. All rights reserved.</p>
-        <div className="mt-4 flex justify-center gap-6 text-sm">
-          <Link to="/privacy-policy" className="hover:text-white">
-            Privacy Policy
-          </Link>
-          <Link to="/terms" className="hover:text-white">
-            Terms of Service
-          </Link>
-        </div>
-      </footer>
-
-      {/* ================= Bottom Privacy Banner ================= */}
-      {ShowBanner && (
-        <div className="fixed bottom-0 left-0 right-0 bg-gray-900 text-white p-4 z-50">
-          <div className="max-w-6xl mx-auto flex justify-between items-center gap-4">
-            <p className="text-sm">
-              We use cookies to improve your experience. Read our{" "}
-              <span
-                onClick={() => navigate("/privacy-policy")}
-                className="underline cursor-pointer"
-              >
-                Privacy Policy
-              </span>.
+      <section className="section-shell">
+        <Card className="motion-float-delayed texture-speckle overflow-hidden border-0 bg-gradient-to-r from-[#0b3f45] to-primary text-white">
+          <CardContent className="p-8 text-center sm:p-12">
+            <h2 className="text-4xl font-semibold tracking-tight">
+              Join our growing music community
+            </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-sm text-white/85 sm:text-base">
+              Whether you are starting out, leading a choir, or publishing
+              compositions, there is a place for you here.
             </p>
-            <Button size="sm" onClick={handleAcceptPrivacy}>
-              Accept
-            </Button>
+            <div className="mt-8 flex flex-wrap justify-center gap-3">
+              <Link to="/login">
+                <Button size="lg" variant="secondary">
+                  Join Us
+                </Button>
+              </Link>
+              <Link to="/contact">
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="border-white/35 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                >
+                  Talk to Us
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      <footer className="border-t border-border/80 bg-card/80">
+        <div className="app-shell py-8">
+          <div className="flex flex-col items-center justify-between gap-3 text-sm text-muted-foreground sm:flex-row">
+            <p>© {new Date().getFullYear()} Murekefu Music Hub. All rights reserved.</p>
+            <div className="flex items-center gap-4">
+              <Link to="/privacy-policy" className="hover:text-foreground">
+                Privacy Policy
+              </Link>
+              <Link to="/about" className="hover:text-foreground">
+                About
+              </Link>
+              <a
+                href="https://www.pexels.com/"
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-foreground"
+              >
+                Images: {pexelsCredit}
+              </a>
+            </div>
           </div>
         </div>
-      
-      )}
-</div>); };
-  
+      </footer>
+    </main>
+  );
+};
+
+export default LandingPage;

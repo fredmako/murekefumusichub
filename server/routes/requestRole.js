@@ -5,9 +5,15 @@ import { supabaseAdmin } from "../lib/supabaseServer.js";
 import { serverError } from "../utils/errors.js";
 
 const router = express.Router();
+const ADMIN_IDENTIFIERS = new Set(
+  String(process.env.ADMIN_IDENTIFIERS || "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean),
+);
 
 async function resolveUserRoles(userId, email) {
-  const roles = [];
+  const roles = ["buyer"];
 
   const { data: roleRows, error: roleRowsErr } = await supabaseAdmin
     .from("user_roles")
@@ -28,11 +34,16 @@ async function resolveUserRoles(userId, email) {
   if (composerErr) throw composerErr;
   if (composerRow && !roles.includes("composer")) roles.push("composer");
 
-  if (email) {
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
+  if (normalizedEmail && ADMIN_IDENTIFIERS.has(normalizedEmail)) {
+    if (!roles.includes("admin")) roles.push("admin");
+  } else if (normalizedEmail) {
     const { data: adminEmail, error: adminEmailErr } = await supabaseAdmin
       .from("admin_emails")
       .select("id")
-      .eq("email", email)
+      .ilike("email", normalizedEmail)
       .eq("is_active", true)
       .maybeSingle();
     if (adminEmailErr) throw adminEmailErr;

@@ -59,6 +59,14 @@ const rolePriority: Record<string, number> = {
   admin: 3,
 };
 
+function getInitials(displayName?: string | null, email?: string | null) {
+  const source = (displayName || email || "U").trim();
+  if (!source) return "U";
+  const parts = source.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
 /* --------- TYPES --------- */
 type UserRoleMap = Record<string, string>; // user_id -> primaryRoleString
 type DataLoadLevel = "none" | "preview" | "full";
@@ -401,6 +409,20 @@ export function AdminPanel() {
     });
   }
 
+  async function approvePaymentSubmission(submissionId: string) {
+    await runAction(`payment:approve:${submissionId}`, async () => {
+      await adminService.approvePaymentSubmission(submissionId);
+      await Promise.all([fetchTransactions(true, true), fetchExactStats()]);
+    });
+  }
+
+  async function rejectPaymentSubmission(submissionId: string) {
+    await runAction(`payment:reject:${submissionId}`, async () => {
+      await adminService.rejectPaymentSubmission(submissionId);
+      await Promise.all([fetchTransactions(true, true), fetchExactStats()]);
+    });
+  }
+
   async function removeComposition(composition: any) {
     const compositionId = composition?.id;
     if (!compositionId) {
@@ -457,6 +479,7 @@ export function AdminPanel() {
 
     // aggregate purchases
     transactions.forEach((p: any) => {
+      if (p.status && p.status !== "approved") return;
       const compId =
         p.composition_id || p.compositions?.id || p.compositions?.composer_id;
       const price = Number(p.price_paid || 0);
@@ -700,13 +723,14 @@ export function AdminPanel() {
                     <TableHead>Date</TableHead>
                     <TableHead>Buyer</TableHead>
                     <TableHead>Composition</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {transactionsLoading && transactions.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center text-gray-500">
+                      <TableCell colSpan={5} className="text-center text-gray-500">
                         Loading recent transactions...
                       </TableCell>
                     </TableRow>
@@ -725,6 +749,19 @@ export function AdminPanel() {
                       </TableCell>
                       <TableCell>
                         {t.compositions?.title || "Unknown"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            t.status === "pending"
+                              ? "bg-amber-100 text-amber-800"
+                              : t.status === "rejected"
+                                ? "bg-red-100 text-red-800"
+                                : "bg-green-100 text-green-800"
+                          }
+                        >
+                          {(t.status || "approved").toString().toUpperCase()}
+                        </Badge>
                       </TableCell>
                       <TableCell className="text-right font-semibold">
                         ${Number(t.price_paid || 0).toFixed(2)}
@@ -766,7 +803,25 @@ export function AdminPanel() {
                   {users.map((u) => (
                     <TableRow key={u.id}>
                       <TableCell className="font-medium">
-                        {u.display_name || "N/A"}
+                        <div className="flex items-center gap-3">
+                          {u.avatar_url ? (
+                            <img
+                              src={u.avatar_url}
+                              alt={`${u.display_name || u.email || "User"} avatar`}
+                              className="size-9 rounded-full object-cover border border-border/70 bg-muted"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="size-9 rounded-full border border-border/70 bg-secondary/60 text-secondary-foreground grid place-items-center text-xs font-semibold">
+                              {getInitials(u.display_name, u.email)}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">
+                              {u.display_name || "N/A"}
+                            </p>
+                          </div>
+                        </div>
                       </TableCell>
                       <TableCell>{u.email}</TableCell>
                       <TableCell>
@@ -1000,13 +1055,16 @@ export function AdminPanel() {
                     <TableHead>Date</TableHead>
                     <TableHead>Buyer</TableHead>
                     <TableHead>Composition</TableHead>
+                    <TableHead>Payment Ref</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {transactionsLoading && transactions.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-gray-500">
+                      <TableCell colSpan={8} className="text-center text-gray-500">
                         Loading transactions...
                       </TableCell>
                     </TableRow>
@@ -1014,7 +1072,7 @@ export function AdminPanel() {
                   {transactions.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell className="font-mono text-sm">
-                        {p.id}
+                        {p.transaction_id || p.id}
                       </TableCell>
                       <TableCell>
                         {new Date(
@@ -1029,8 +1087,58 @@ export function AdminPanel() {
                       <TableCell className="font-medium">
                         {p.compositions?.title || "Unknown"}
                       </TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {p.payment_ref || "-"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            p.status === "pending"
+                              ? "bg-amber-100 text-amber-800"
+                              : p.status === "rejected"
+                                ? "bg-red-100 text-red-800"
+                                : "bg-green-100 text-green-800"
+                          }
+                        >
+                          {(p.status || "approved").toString().toUpperCase()}
+                        </Badge>
+                      </TableCell>
                       <TableCell className="text-right font-semibold">
                         ${Number(p.price_paid || 0).toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {p.source === "payment_submission" &&
+                        p.status === "pending" ? (
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() =>
+                                approvePaymentSubmission(
+                                  p.payment_submission_id || p.transaction_id,
+                                )
+                              }
+                              disabled={isProcessing}
+                            >
+                              <Check className="mr-2" />
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                rejectPaymentSubmission(
+                                  p.payment_submission_id || p.transaction_id,
+                                )
+                              }
+                              disabled={isProcessing}
+                            >
+                              <X className="mr-2" />
+                              Reject
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-500">-</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

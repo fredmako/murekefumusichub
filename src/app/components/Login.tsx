@@ -11,7 +11,7 @@ import {
 } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "sonner";
 import logo from "./images/logo.JPG";
@@ -25,6 +25,7 @@ export function Login() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [isForgot, setIsForgot] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const {
     appUser,
     signInWithEmail,
@@ -53,10 +54,37 @@ export function Login() {
   /* ============================= */
   /* AUTO REDIRECT IF LOGGED IN */
   /* ============================= */
+  const resolveNextPath = (): string | null => {
+    const fromQuery = searchParams.get("next");
+    const fromStorage = (() => {
+      try {
+        return sessionStorage.getItem("post_login_redirect");
+      } catch {
+        return null;
+      }
+    })();
+
+    const candidate = fromQuery || fromStorage;
+    if (!candidate) return null;
+    if (!candidate.startsWith("/") || candidate.startsWith("//")) return null;
+    return candidate;
+  };
+
   useEffect(() => {
     if (!appUser) return; // Not logged in
 
     try {
+      const nextPath = resolveNextPath();
+      if (nextPath) {
+        try {
+          sessionStorage.removeItem("post_login_redirect");
+        } catch {
+          // ignore storage failures
+        }
+        navigate(nextPath, { replace: true });
+        return;
+      }
+
       let role: UserRole = "buyer";
       if (appUser.roles?.includes("admin")) role = "admin";
       else if (appUser.roles?.includes("composer")) role = "composer";
@@ -65,7 +93,7 @@ export function Login() {
     } catch (err) {
       console.error("[Login] Failed to redirect on auth state change:", err);
     }
-  }, [appUser]);
+  }, [appUser, navigate, searchParams]);
 
   /* ============================= */
   /* EMAIL / PASSWORD LOGIN */

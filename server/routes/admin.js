@@ -10,6 +10,17 @@ const router = express.Router();
 // Protect all admin routes
 router.use(verifySupabaseToken, adminOnly);
 
+function isMissingPaymentSubmissionsError(err) {
+  const code = String(err?.code || "").toUpperCase();
+  const message = String(err?.message || "").toLowerCase();
+  return (
+    code === "42P01" ||
+    code === "PGRST204" ||
+    code === "PGRST205" ||
+    message.includes("payment_submissions")
+  );
+}
+
 function parseLimit(raw, fallback = 200, max = 1000) {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return fallback;
@@ -38,6 +49,31 @@ async function resolveDbUser(userIdentifier) {
   if (byAuthUid) return byAuthUid;
 
   return null;
+}
+
+async function insertPurchaseWithFallback(payload) {
+  const primary = await supabase
+    .from("purchases")
+    .insert(payload)
+    .select("*")
+    .maybeSingle();
+  if (!primary.error) return primary;
+
+  const maybePaymentRefColumnMissing =
+    primary.error.code === "PGRST204" ||
+    String(primary.error.message || "")
+      .toLowerCase()
+      .includes("payment_ref");
+
+  if (!maybePaymentRefColumnMissing) return primary;
+
+  const fallbackPayload = { ...payload };
+  delete fallbackPayload.payment_ref;
+  return await supabase
+    .from("purchases")
+    .insert(fallbackPayload)
+    .select("*")
+    .maybeSingle();
 }
 
 router.get("/bootstrap", async (req, res) => {
@@ -213,96 +249,140 @@ router.get("/transactions", async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 200, 1000);
 
-    const { data: purchases, error: purchasesError } = await supabase
-      .from("purchases")
-      .select("id, buyer_id, composition_id, price_paid, payment_ref, purchased_at, is_active")
-      .order("purchased_at", { ascending: false })
-      .limit(limit);
-    if (purchasesError) throw purchasesError;
+    const [purchasesRes, submissionsRes] = await Promise.all([
+      supabase
+        .from("purchases")
+        .select("*")
+        .order("purchased_at", { ascending: false })
+        .limit(limit),
+      supabase
+        .from("payment_submissions")
+        .select(
+          "id, checkout_batch_id, buyer_id, composition_id, amount, mpesa_code, status, purchase_id, reviewed_by, reviewed_at, admin_notes, submitted_at",
+        )
+        .order("submitted_at", { ascending: false })
+        .limit(limit),
+    ]);
 
+    if (purchasesRes.error) throw purchasesRes.error;
+
+    let paymentSubmissions = [];
+    if (submissionsRes.error) {
+      if (!isMissingPaymentSubmissionsError(submissionsRes.error)) {
+        throw submissionsRes.error;
+      }
+      console.warn(
+        "[admin-transactions] payment_submissions table missing; returning purchases only",
+      );
+    } else {
+      paymentSubmissions = submissionsRes.data || [];
+    }
+
+    const purchases = purchasesRes.data || [];
     const compositionIds = [
-      ...new Set((purchases || []).map((p) => p.composition_id).filter(Boolean)),
+      ...new Set(
+        [...purchases, ...paymentSubmissions]
+          .map((row) => row.composition_id)
+          .filter(Boolean),
+      ),
     ];
-    const buyerIds = [
-      ...new Set((purchases || []).map((p) => p.buyer_id).filter(Boolean)),
+    const userIds = [
+      ...new Set(
+        [...purchases, ...paymentSubmissions]
+          .flatMap((row) => [row.buyer_id, row.reviewed_by])
+          .filter(Boolean),
+      ),
     ];
 
-    const [compositionsRes, buyersRes] = await Promise.all([
+    const [compositionsRes, usersRes] = await Promise.all([
       compositionIds.length > 0
         ? supabase
             .from("compositions")
             .select("id, title, composer_id")
             .in("id", compositionIds)
         : Promise.resolve({ data: [], error: null }),
-      buyerIds.length > 0
+      userIds.length > 0
         ? supabase
-            .from("buyers")
-            .select("id, user_id")
-            .in("id", buyerIds)
+            .from("users")
+            .select("id, display_name, email")
+            .in("id", userIds)
         : Promise.resolve({ data: [], error: null }),
     ]);
 
     if (compositionsRes.error) throw compositionsRes.error;
-    if (buyersRes.error) throw buyersRes.error;
+    if (usersRes.error) throw usersRes.error;
 
-    let compositionsById = {};
+    const compositionsById = {};
     (compositionsRes.data || []).forEach((c) => {
       compositionsById[c.id] = c;
     });
 
-    let buyersById = {};
-    (buyersRes.data || []).forEach((b) => {
-      buyersById[b.id] = b;
+    const usersById = {};
+    (usersRes.data || []).forEach((u) => {
+      usersById[u.id] = u;
     });
 
-    const buyerUserIds = [
-      ...new Set(Object.values(buyersById).map((b) => b.user_id).filter(Boolean)),
-    ];
+    const purchaseRows = purchases.map((purchase) => ({
+      ...purchase,
+      id: `purchase:${purchase.id}`,
+      source: "purchase",
+      transaction_kind: "purchase",
+      transaction_id: purchase.id,
+      status: "approved",
+      payment_ref: purchase.payment_ref || null,
+      purchased_at:
+        purchase.purchased_at || purchase.created_at || new Date().toISOString(),
+      compositions: purchase.composition_id
+        ? compositionsById[purchase.composition_id] || null
+        : null,
+      buyers: purchase.buyer_id
+        ? {
+            id: purchase.buyer_id,
+            user_id: purchase.buyer_id,
+            users: usersById[purchase.buyer_id] || null,
+          }
+        : null,
+      can_approve: false,
+      can_reject: false,
+    }));
 
-    // Backward compatibility: some legacy records may store buyer_id directly as users.id.
-    const unresolvedBuyerIds = buyerIds.filter((buyerId) => !buyersById[buyerId]);
-    const userLookupIds = [...new Set([...buyerUserIds, ...unresolvedBuyerIds])];
+    const submissionRows = paymentSubmissions.map((submission) => ({
+      ...submission,
+      id: `submission:${submission.id}`,
+      source: "payment_submission",
+      transaction_kind: "manual_checkout",
+      transaction_id: submission.id,
+      payment_submission_id: submission.id,
+      price_paid: Number(submission.amount || 0),
+      payment_ref: submission.mpesa_code || null,
+      purchased_at:
+        submission.submitted_at ||
+        submission.reviewed_at ||
+        new Date().toISOString(),
+      compositions: submission.composition_id
+        ? compositionsById[submission.composition_id] || null
+        : null,
+      buyers: submission.buyer_id
+        ? {
+            id: submission.buyer_id,
+            user_id: submission.buyer_id,
+            users: usersById[submission.buyer_id] || null,
+          }
+        : null,
+      reviewer: submission.reviewed_by
+        ? usersById[submission.reviewed_by] || null
+        : null,
+      can_approve: submission.status === "pending",
+      can_reject: submission.status === "pending",
+    }));
 
-    let usersById = {};
-    if (userLookupIds.length > 0) {
-      const { data: users, error: usersError } = await supabase
-        .from("users")
-        .select("id, display_name, email")
-        .in("id", userLookupIds);
-      if (usersError) throw usersError;
-      (users || []).forEach((u) => {
-        usersById[u.id] = u;
-      });
-    }
-
-    const formatted = (purchases || []).map((purchase) => {
-      const buyerRecord = purchase.buyer_id ? buyersById[purchase.buyer_id] : null;
-      const fallbackUser = purchase.buyer_id ? usersById[purchase.buyer_id] : null;
-      const buyer = buyerRecord
-        ? buyerRecord
-        : fallbackUser
-          ? { id: purchase.buyer_id, user_id: purchase.buyer_id }
-          : null;
-      const buyerUser = buyer?.user_id ? usersById[buyer.user_id] : null;
-      return {
-        ...purchase,
-        compositions: purchase.composition_id
-          ? compositionsById[purchase.composition_id] || null
-          : null,
-        buyers: buyer
-          ? {
-              ...buyer,
-              users: buyerUser
-                ? {
-                    id: buyerUser.id,
-                    display_name: buyerUser.display_name,
-                    email: buyerUser.email,
-                  }
-                : null,
-            }
-          : null,
-      };
-    });
+    const formatted = [...submissionRows, ...purchaseRows]
+      .sort((a, b) => {
+        const aMs = new Date(a.purchased_at || 0).getTime();
+        const bMs = new Date(b.purchased_at || 0).getTime();
+        return bMs - aMs;
+      })
+      .slice(0, limit);
 
     return res.json(formatted);
   } catch (err) {
@@ -715,23 +795,221 @@ router.post("/role-requests/:userId/reject", async (req, res) => {
   }
 });
 
+router.post("/payment-submissions/:submissionId/approve", async (req, res) => {
+  try {
+    const { submissionId } = req.params;
+    const adminNotes = req.body?.adminNotes
+      ? String(req.body.adminNotes).trim()
+      : null;
+    if (!submissionId) {
+      return res.status(400).json({ error: "submissionId is required" });
+    }
+
+    const reviewer = await resolveDbUser(req.authUid);
+    if (!reviewer) {
+      return res.status(404).json({ error: "Reviewer user not found" });
+    }
+
+    const { data: submission, error: submissionErr } = await supabase
+      .from("payment_submissions")
+      .select("*")
+      .eq("id", submissionId)
+      .maybeSingle();
+    if (submissionErr) throw submissionErr;
+    if (!submission) {
+      return res.status(404).json({ error: "Payment submission not found" });
+    }
+
+    if (submission.status === "approved") {
+      return res.json({
+        success: true,
+        alreadyApproved: true,
+        submission,
+      });
+    }
+    if (submission.status === "rejected") {
+      return res
+        .status(409)
+        .json({ error: "Rejected submissions cannot be approved" });
+    }
+
+    const { data: existingPurchase, error: existingPurchaseErr } = await supabase
+      .from("purchases")
+      .select("id, buyer_id, composition_id, is_active")
+      .eq("buyer_id", submission.buyer_id)
+      .eq("composition_id", submission.composition_id)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (existingPurchaseErr) throw existingPurchaseErr;
+
+    let purchase = existingPurchase || null;
+    if (!purchase) {
+      const purchasePayload = {
+        buyer_id: submission.buyer_id,
+        composition_id: submission.composition_id,
+        price_paid: Number(submission.amount || 0),
+        payment_ref: submission.mpesa_code || null,
+        purchased_at: new Date().toISOString(),
+        is_active: true,
+      };
+
+      const insertPurchaseRes = await insertPurchaseWithFallback(purchasePayload);
+      if (insertPurchaseRes.error) throw insertPurchaseRes.error;
+      purchase = insertPurchaseRes.data;
+    }
+
+    const { data: updatedSubmission, error: updateSubmissionErr } = await supabase
+      .from("payment_submissions")
+      .update({
+        status: "approved",
+        purchase_id: purchase?.id || null,
+        reviewed_by: reviewer.id,
+        reviewed_at: new Date().toISOString(),
+        admin_notes: adminNotes,
+      })
+      .eq("id", submissionId)
+      .select("*")
+      .maybeSingle();
+    if (updateSubmissionErr) throw updateSubmissionErr;
+
+    // Best effort: increment composition purchases stats.
+    try {
+      const { data: existingStats, error: existingStatsErr } = await supabase
+        .from("composition_stats")
+        .select("id, purchases")
+        .eq("composition_id", submission.composition_id)
+        .maybeSingle();
+      if (existingStatsErr) throw existingStatsErr;
+
+      if (existingStats?.id) {
+        await supabase
+          .from("composition_stats")
+          .update({ purchases: Number(existingStats.purchases || 0) + 1 })
+          .eq("id", existingStats.id);
+      } else {
+        await supabase.from("composition_stats").insert({
+          composition_id: submission.composition_id,
+          views: 0,
+          purchases: 1,
+        });
+      }
+    } catch (statsErr) {
+      console.warn(
+        "[admin-approve-payment-submission] Failed to update composition stats:",
+        statsErr?.message || statsErr,
+      );
+    }
+
+    return res.json({
+      success: true,
+      message: "Payment submission approved",
+      submission: updatedSubmission,
+      purchase,
+    });
+  } catch (err) {
+    console.error("[admin-approve-payment-submission] Error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/payment-submissions/:submissionId/reject", async (req, res) => {
+  try {
+    const { submissionId } = req.params;
+    const adminNotes = req.body?.adminNotes
+      ? String(req.body.adminNotes).trim()
+      : null;
+    if (!submissionId) {
+      return res.status(400).json({ error: "submissionId is required" });
+    }
+
+    const reviewer = await resolveDbUser(req.authUid);
+    if (!reviewer) {
+      return res.status(404).json({ error: "Reviewer user not found" });
+    }
+
+    const { data: submission, error: submissionErr } = await supabase
+      .from("payment_submissions")
+      .select("id, status")
+      .eq("id", submissionId)
+      .maybeSingle();
+    if (submissionErr) throw submissionErr;
+    if (!submission) {
+      return res.status(404).json({ error: "Payment submission not found" });
+    }
+
+    if (submission.status === "approved") {
+      return res
+        .status(409)
+        .json({ error: "Approved submissions cannot be rejected" });
+    }
+
+    const { data: updatedSubmission, error: updateSubmissionErr } = await supabase
+      .from("payment_submissions")
+      .update({
+        status: "rejected",
+        reviewed_by: reviewer.id,
+        reviewed_at: new Date().toISOString(),
+        admin_notes: adminNotes,
+      })
+      .eq("id", submissionId)
+      .select("*")
+      .maybeSingle();
+    if (updateSubmissionErr) throw updateSubmissionErr;
+
+    return res.json({
+      success: true,
+      message: "Payment submission rejected",
+      submission: updatedSubmission,
+    });
+  } catch (err) {
+    console.error("[admin-reject-payment-submission] Error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // Admin notifications endpoint
 router.get("/notifications", async (req, res) => {
   try {
-    const { data: invitesData } = await supabase
-      .from("invites")
-      .select("*")
-      .eq("used", false)
-      .order("created_at", { ascending: false })
-      .limit(50);
+    const [invitesRes, roleReqRes, paymentReqRes] = await Promise.all([
+      supabase
+        .from("invites")
+        .select("*")
+        .eq("used", false)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      supabase
+        .from("role_requests")
+        .select("*")
+        .eq("status", "pending")
+        .order("requested_at", { ascending: false })
+        .limit(50),
+      supabase
+        .from("payment_submissions")
+        .select(
+          "id, buyer_id, composition_id, amount, mpesa_code, status, submitted_at",
+        )
+        .eq("status", "pending")
+        .order("submitted_at", { ascending: false })
+        .limit(50),
+    ]);
 
-    // Fetch pending composer and admin requests from role_requests table
-    const { data: roleReqData } = await supabase
-      .from("role_requests")
-      .select("*")
-      .eq("status", "pending")
-      .order("requested_at", { ascending: false })
-      .limit(50);
+    if (invitesRes.error) throw invitesRes.error;
+    if (roleReqRes.error) throw roleReqRes.error;
+
+    let paymentReqData = [];
+    if (paymentReqRes.error) {
+      if (!isMissingPaymentSubmissionsError(paymentReqRes.error)) {
+        throw paymentReqRes.error;
+      }
+      console.warn(
+        "[admin-notifications] payment_submissions table missing; payment notifications disabled",
+      );
+    } else {
+      paymentReqData = paymentReqRes.data || [];
+    }
+
+    const invitesData = invitesRes.data || [];
+    const roleReqData = roleReqRes.data || [];
 
     const items = [];
 
@@ -752,20 +1030,26 @@ router.get("/notifications", async (req, res) => {
     const roleUserIdentifiers = (roleReqData || [])
       .map((r) => r.user_id)
       .filter(Boolean);
+    const paymentBuyerIds = (paymentReqData || [])
+      .map((p) => p.buyer_id)
+      .filter(Boolean);
+    const allUserIdentifiers = [
+      ...new Set([...roleUserIdentifiers, ...paymentBuyerIds]),
+    ];
     let usersById = {};
     let usersByAuthUid = {};
     let rolesByUserId = {};
-    if (roleUserIdentifiers.length > 0) {
+    if (allUserIdentifiers.length > 0) {
       try {
         const [usersByIdRes, usersByAuthUidRes] = await Promise.all([
           supabase
             .from("users")
             .select("id, auth_uid, email, display_name")
-            .in("id", roleUserIdentifiers),
+            .in("id", allUserIdentifiers),
           supabase
             .from("users")
             .select("id, auth_uid, email, display_name")
-            .in("auth_uid", roleUserIdentifiers),
+            .in("auth_uid", allUserIdentifiers),
         ]);
 
         if (usersByIdRes.error) throw usersByIdRes.error;
@@ -829,6 +1113,28 @@ router.get("/notifications", async (req, res) => {
         createdAt: reqItem.requested_at,
         created_at: reqItem.requested_at,
         roles: user?.id ? rolesByUserId[user.id] || [] : [],
+      });
+    });
+
+    // Add pending payment submissions as notifications
+    (paymentReqData || []).forEach((paymentReq) => {
+      const user = usersById[paymentReq.buyer_id] || null;
+      items.push({
+        id: `payment:${paymentReq.id}`,
+        type: "payment_request",
+        submissionId: paymentReq.id,
+        userId: paymentReq.buyer_id,
+        email: user?.email || null,
+        displayName:
+          user?.display_name ||
+          user?.email ||
+          `User (${String(paymentReq.buyer_id).slice(0, 8)}...)`,
+        amount: Number(paymentReq.amount || 0),
+        mpesaCode: paymentReq.mpesa_code || null,
+        requestedRole: null,
+        status: paymentReq.status,
+        createdAt: paymentReq.submitted_at,
+        created_at: paymentReq.submitted_at,
       });
     });
 

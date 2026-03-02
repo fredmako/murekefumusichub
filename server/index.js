@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import http from "http";
 import { fileURLToPath } from "url";
 import usersRouter from "./routes/users.js";
 import accountRouter from "./routes/account.js";
@@ -9,8 +10,10 @@ import rolesRouter from "./routes/role.js";
 import requestRoleRouter from "./routes/requestRole.js";
 import compositionsRouter from "./routes/compositions.js";
 import purchasesRouter from "./routes/purchases.js";
+import checkoutRouter from "./routes/checkout.js";
 import categoriesRouter from "./routes/categories.js";
 import adminRouter from "./routes/admin.js";
+import mediaRouter from "./routes/media.js";
 
 dotenv.config();
 
@@ -39,8 +42,10 @@ app.use("/api/user", rolesRouter);
 app.use("/api", requestRoleRouter);
 app.use("/api/compositions", compositionsRouter);
 app.use("/api/purchases", purchasesRouter);
+app.use("/api/checkout", checkoutRouter);
 app.use("/api/categories", categoriesRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api/media", mediaRouter);
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.get("/health", (_req, res) => res.json({ ok: true }));
@@ -55,10 +60,30 @@ let serverInstance = null;
 
 export function startServer(port = PORT) {
   if (serverInstance) return serverInstance;
-  serverInstance = app.listen(port, () => {
+
+  const server = http.createServer(app);
+
+  server.on("listening", () => {
     console.log(`[server] listening on http://localhost:${port}`);
   });
-  return serverInstance;
+
+  server.on("error", (error) => {
+    if (error?.code === "EADDRINUSE") {
+      console.error(
+        `[server] Port ${port} is already in use. Stop the existing process or change PORT in server/.env.`,
+      );
+      console.error(
+        "[server] Windows quick fix: netstat -ano | findstr :3001, then taskkill /PID <pid> /F",
+      );
+    } else {
+      console.error("[server] Failed to start:", error);
+    }
+    serverInstance = null;
+  });
+
+  server.listen(port);
+  serverInstance = server;
+  return server;
 }
 
 export function stopServer() {
@@ -67,8 +92,25 @@ export function stopServer() {
   serverInstance = null;
 }
 
+function registerShutdownHandlers() {
+  const shutdown = () => {
+    stopServer();
+    process.exit(0);
+  };
+
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+
+  // nodemon restart signal on Windows/Node: allow clean close before re-spawn
+  process.once("SIGUSR2", () => {
+    stopServer();
+    process.kill(process.pid, "SIGUSR2");
+  });
+}
+
 const isMainModule = process.argv[1] === fileURLToPath(import.meta.url);
 if (isMainModule) {
+  registerShutdownHandlers();
   startServer(PORT);
 }
 
