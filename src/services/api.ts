@@ -4,38 +4,63 @@ const API_BASE_URL =
   (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
 
 async function getAccessToken(): Promise<string | null> {
-  const { data, error } = await supabase.auth.getSession();
-  if (error || !data?.session) {
-    try {
-      const { data: refreshed, error: refreshErr } =
-        await supabase.auth.refreshSession();
-      if (!refreshErr && refreshed?.session?.access_token) {
-        return refreshed.session.access_token;
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (error || !data?.session) {
+      try {
+        const { data: refreshed, error: refreshErr } =
+          await supabase.auth.refreshSession();
+        if (!refreshErr && refreshed?.session?.access_token) {
+          return refreshed.session.access_token;
+        }
+      } catch {
+        // ignore and return null below
       }
-    } catch {
-      // ignore and return null below
+      return null;
     }
+
+    const session = data.session;
+    const now = Math.floor(Date.now() / 1000);
+    const expiresAt = session.expires_at || 0;
+
+    // Refresh shortly before expiry to avoid edge-case 401s on slow requests.
+    if (expiresAt - now <= 30) {
+      try {
+        const { data: refreshData, error: refreshErr } =
+          await supabase.auth.refreshSession();
+        if (!refreshErr && refreshData?.session?.access_token) {
+          return refreshData.session.access_token;
+        }
+      } catch {
+        // Ignore refresh failures and return existing token as best effort.
+      }
+    }
+
+    return session.access_token;
+  } catch (err) {
+    console.warn("[getAccessToken] session lookup failed; proceeding without token:", err);
     return null;
   }
+}
 
-  const session = data.session;
-  const now = Math.floor(Date.now() / 1000);
-  const expiresAt = session.expires_at || 0;
+function isRetriableNetworkError(err: any): boolean {
+  if (!err) return false;
+  const name = String(err?.name || "");
+  const message = String(err?.message || "").toLowerCase();
+  if (name === "AbortError") return true;
+  return (
+    message.includes("failed to fetch") ||
+    message.includes("networkerror") ||
+    message.includes("network request failed") ||
+    message.includes("load failed") ||
+    message.includes("timed out") ||
+    message.includes("timeout")
+  );
+}
 
-  // Refresh shortly before expiry to avoid edge-case 401s on slow requests.
-  if (expiresAt - now <= 30) {
-    try {
-      const { data: refreshData, error: refreshErr } =
-        await supabase.auth.refreshSession();
-      if (!refreshErr && refreshData?.session?.access_token) {
-        return refreshData.session.access_token;
-      }
-    } catch {
-      // Ignore refresh failures and return existing token as best effort.
-    }
-  }
-
-  return session.access_token;
+function shouldRetryRequest(method: string): boolean {
+  const m = String(method || "GET").toUpperCase();
+  return m === "GET" || m === "HEAD" || m === "OPTIONS";
 }
 
 export async function apiRequest<T>(
@@ -85,18 +110,38 @@ export async function apiRequest<T>(
     }
   };
 
-  let response: Response;
-  try {
-    response = await executeFetch(token);
-  } catch (err: any) {
-    if (err?.name === "AbortError") {
-      const timeoutError = new Error(
-        "Request timed out. Please check your connection and try again.",
-      );
-      (timeoutError as any).status = 408;
-      throw timeoutError;
+  const method = String(requestOptions.method || "GET").toUpperCase();
+  const maxAttempts = shouldRetryRequest(method) ? 2 : 1;
+  let response: Response | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      response = await executeFetch(token);
+      break;
+    } catch (err: any) {
+      const isLastAttempt = attempt >= maxAttempts;
+      const retriable = isRetriableNetworkError(err);
+
+      if (!isLastAttempt && retriable) {
+        const backoffMs = 350 * attempt;
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        continue;
+      }
+
+      if (err?.name === "AbortError") {
+        const timeoutError = new Error(
+          "Request timed out. Please check your connection and try again.",
+        );
+        (timeoutError as any).status = 408;
+        throw timeoutError;
+      }
+
+      throw err;
     }
-    throw err;
+  }
+
+  if (!response) {
+    throw new Error("Request failed before receiving a response");
   }
 
   // If the access token is stale, refresh and retry once automatically.
@@ -204,7 +249,10 @@ export const compositionService = {
     if (filters?.search) params.set("search", String(filters.search));
 
     const endpoint = `/compositions${params.toString() ? `?${params.toString()}` : ""}`;
-    return await apiRequest<any[]>(endpoint, { method: "GET" });
+    return await apiRequest<any[]>(endpoint, {
+      method: "GET",
+      timeoutMs: 45000,
+    });
   },
 
   async getById(id: string) {

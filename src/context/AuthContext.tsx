@@ -51,6 +51,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
 
+  const isAuthNetworkError = (err: any): boolean => {
+    if (!err) return false;
+    const name = String(err?.name || "");
+    const message = String(err?.message || "").toLowerCase();
+    return (
+      name === "AuthRetryableFetchError" ||
+      name === "TypeError" ||
+      message.includes("failed to fetch") ||
+      message.includes("networkerror") ||
+      message.includes("network request failed") ||
+      message.includes("timed out") ||
+      message.includes("timeout")
+    );
+  };
+
+  const mapAuthNetworkError = (err: any): Error | any => {
+    if (!isAuthNetworkError(err)) return err;
+    return new Error(
+      "Unable to reach authentication service. Check your internet connection, VPN, firewall, and system clock, then try again.",
+    );
+  };
+
   const fetchServerRoles = async (authUid: string): Promise<string[]> => {
     try {
       const res = await fetch(`${API_BASE_URL}/user/roles/${authUid}`, {
@@ -292,7 +314,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           "Email not confirmed. Please check your inbox and click the confirmation link before signing in.",
         );
       }
-      throw err;
+      throw mapAuthNetworkError(err);
     }
   };
 
@@ -317,7 +339,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (err: any) {
       console.error("[signUpWithEmail] error:", err);
-      throw err;
+      throw mapAuthNetworkError(err);
     }
   };
 

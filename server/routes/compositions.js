@@ -35,6 +35,60 @@ const VOICE_PART_OPTIONS = [
   "Soprano II",
 ];
 
+function parseLimit(raw, fallback = 120, max = 500) {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(Math.floor(n), max);
+}
+
+function extractCompositionStoragePath(pdfUrl) {
+  if (!pdfUrl) return null;
+  const raw = String(pdfUrl).trim();
+  if (!raw) return null;
+
+  // If path is already stored directly, use it as-is.
+  if (!/^https?:\/\//i.test(raw)) {
+    return raw.replace(/^\/+/, "");
+  }
+
+  // For Supabase storage URLs, derive object path from the URL.
+  const match = raw.match(
+    /\/storage\/v1\/object\/(?:sign|public)\/compositions\/([^?]+)/i,
+  );
+  if (!match?.[1]) return null;
+
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
+async function refreshCompositionPdfUrl(composition) {
+  if (!composition?.pdf_url) return composition;
+
+  const storagePath = extractCompositionStoragePath(composition.pdf_url);
+  if (!storagePath) return composition;
+
+  const { data, error } = await supabaseAdmin.storage
+    .from("compositions")
+    .createSignedUrl(storagePath, 3600);
+
+  if (error || !data?.signedUrl) {
+    console.warn("[public-composition] Failed to refresh signed URL:", {
+      compositionId: composition.id,
+      path: storagePath,
+      error: error?.message || error || "missing signedUrl",
+    });
+    return composition;
+  }
+
+  return {
+    ...composition,
+    pdf_url: data.signedUrl,
+  };
+}
+
 function firstNonEmptyLine(text) {
   const lines = text
     .split("\n")
@@ -292,12 +346,26 @@ router.post(
 router.get("/", async (req, res) => {
   try {
     const { category, search, limit } = req.query;
+    const safeLimit = parseLimit(limit, 120, 500);
 
     let query = supabaseAdmin
       .from("compositions")
       .select(
         `
-        *,
+        id,
+        composer_id,
+        title,
+        description,
+        category_id,
+        price,
+        pdf_url,
+        thumbnail_url,
+        created_at,
+        duration,
+        difficulty,
+        language,
+        accompaniment,
+        voice_parts,
         composers(id, users(display_name)),
         categories(name),
         composition_stats(views, purchases)
@@ -305,12 +373,12 @@ router.get("/", async (req, res) => {
       )
       .eq("is_published", true)
       .eq("deleted", false)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(safeLimit);
 
     if (category) query = query.eq("category_id", category);
     if (search)
       query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
-    if (limit) query = query.limit(Number(limit));
 
     const { data, error } = await query;
     if (error) throw error;
@@ -383,7 +451,9 @@ router.get("/:id", async (req, res) => {
       );
     }
 
-    return res.json(data);
+    const compositionWithFreshPdfUrl = await refreshCompositionPdfUrl(data);
+
+    return res.json(compositionWithFreshPdfUrl);
   } catch (err) {
     console.error("[public-composition] Error:", err);
     return res.status(500).json({ error: err.message });

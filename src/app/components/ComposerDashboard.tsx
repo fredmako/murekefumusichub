@@ -274,6 +274,26 @@ export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
     }
   };
 
+  const handleOpenPdf = async () => {
+    if (!selectedComposition?.id) return;
+
+    try {
+      const latest = (await compositionService.getById(
+        selectedComposition.id,
+      )) as any;
+      const pdfUrl = latest?.pdf_url || selectedComposition.pdf_url;
+      if (!pdfUrl) {
+        toast.error("No PDF URL found for this composition");
+        return;
+      }
+
+      window.open(pdfUrl, "_blank", "noopener,noreferrer");
+    } catch (error: any) {
+      console.error("[composer-dashboard] open PDF failed:", error);
+      toast.error(error?.message || "Failed to open composition PDF");
+    }
+  };
+
   return (
     <div>
       {/* Header */}
@@ -349,9 +369,7 @@ export function ComposerDashboard({ currentUser }: ComposerDashboardProps) {
               {selectedComposition.pdf_url && (
                 <Button
                   variant="outline"
-                  onClick={() =>
-                    window.open(selectedComposition.pdf_url, "_blank", "noopener,noreferrer")
-                  }
+                  onClick={() => void handleOpenPdf()}
                 >
                   Open PDF Score
                 </Button>

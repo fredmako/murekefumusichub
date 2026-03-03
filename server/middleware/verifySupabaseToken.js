@@ -138,7 +138,7 @@ export async function adminOnly(req, res, next) {
 
     const { data: user, error: userErr } = await supabaseAdmin
       .from("users")
-      .select("email")
+      .select("id, email")
       .eq("auth_uid", authUid)
       .maybeSingle();
 
@@ -152,6 +152,19 @@ export async function adminOnly(req, res, next) {
 
     if (ADMIN_IDENTIFIERS.has(normalizedEmail)) {
       return next();
+    }
+
+    if (user?.id) {
+      const { data: roleRows, error: roleErr } = await supabaseAdmin
+        .from("user_roles")
+        .select("roles(name)")
+        .eq("user_id", user.id);
+      if (roleErr) throw roleErr;
+
+      const hasAdminRole = (roleRows || []).some(
+        (row) => String(row?.roles?.name || "").toLowerCase() === "admin",
+      );
+      if (hasAdminRole) return next();
     }
 
     const { data: adminEmail, error: adminErr } = await supabaseAdmin

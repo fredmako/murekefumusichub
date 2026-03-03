@@ -50,6 +50,7 @@ import {
 import { toast } from "sonner";
 import { useAuth } from "../../context/AuthContext";
 import { adminService } from "@/services/adminService";
+import { compositionService } from "@/services/api";
 
 /* --------- CONFIG --------- */
 const normalizeEmail = (e: string) => e?.toLowerCase().trim() ?? "";
@@ -436,13 +437,28 @@ export function AdminPanel() {
     });
   }
 
-  function viewCompositionDetails(composition: any) {
-    const pdfUrl = composition?.pdf_url || composition?.pdfUrl || null;
-    if (pdfUrl) {
-      window.open(pdfUrl, "_blank", "noopener,noreferrer");
-      return;
+  async function viewCompositionDetails(composition: any) {
+    try {
+      const compositionId = composition?.id;
+      if (!compositionId) {
+        toast.info("No composition ID found");
+        return;
+      }
+
+      const latest = (await compositionService.getById(compositionId)) as any;
+      const pdfUrl =
+        latest?.pdf_url || composition?.pdf_url || composition?.pdfUrl || null;
+
+      if (pdfUrl) {
+        window.open(pdfUrl, "_blank", "noopener,noreferrer");
+        return;
+      }
+
+      toast.info("No PDF URL found for this composition");
+    } catch (error: any) {
+      console.error("[admin-panel] open composition failed:", error);
+      toast.error(error?.message || "Failed to open composition PDF");
     }
-    toast.info("No PDF URL found for this composition");
   }
 
   /* ---------------- composer stats derived from compositions/purchases ---------------- */
