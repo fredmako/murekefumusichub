@@ -1,29 +1,16 @@
 import express from "express";
 import { supabase } from "../lib/supabaseClient.js";
 import { verifySupabaseToken } from "../middleware/supabaseAuth.js";
+import { isValidAvatarUrl, normalizeAvatarUrl } from "../utils/avatarUrl.js";
 
 const router = express.Router();
-
-// Utility: Validate avatar URL - only accept valid Supabase URLs or null
-function isValidAvatarUrl(url) {
-  if (!url) return true; // null/undefined is valid (removes avatar)
-  if (typeof url !== "string") return false;
-
-  // Reject blob URLs (temporary client-side URLs)
-  if (url.startsWith("blob:")) return false;
-
-  // Accept Supabase storage URLs
-  if (url.includes("supabase.co/storage/")) return true;
-
-  // Reject anything else to prevent invalid URLs
-  return false;
-}
 
 // POST /api/auth/register
 // Create a new Supabase auth user and sync to users table
 router.post("/register", async (req, res) => {
   try {
     const { email, password, displayName, phone, avatarUrl } = req.body;
+    const normalizedAvatarUrl = normalizeAvatarUrl(avatarUrl);
 
     if (!email)
       return res
@@ -95,7 +82,7 @@ router.post("/register", async (req, res) => {
         email,
         display_name: displayName || null,
         phone: phone || null,
-        avatar_url: avatarUrl || null,
+        avatar_url: normalizedAvatarUrl || null,
         is_active: true,
         created_at: new Date().toISOString(),
       })
@@ -228,6 +215,7 @@ router.post("/sync-user", verifySupabaseToken, async (req, res) => {
     const authUid = req.supabaseUser.id;
     const email = req.supabaseUser.email;
     const { displayName, phone, avatarUrl } = req.body;
+    const normalizedAvatarUrl = normalizeAvatarUrl(avatarUrl);
 
     if (!authUid || !email) {
       return res.status(400).json({
@@ -255,7 +243,7 @@ router.post("/sync-user", verifySupabaseToken, async (req, res) => {
         .update({
           email,
           display_name: displayName || null,
-          avatar_url: avatarUrl || null,
+          avatar_url: normalizedAvatarUrl || null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", existingUser.id)
@@ -273,7 +261,7 @@ router.post("/sync-user", verifySupabaseToken, async (req, res) => {
           email,
           display_name: displayName || null,
           phone: phone || null,
-          avatar_url: avatarUrl || null,
+          avatar_url: normalizedAvatarUrl || null,
           is_active: true,
           created_at: new Date().toISOString(),
         })

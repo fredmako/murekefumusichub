@@ -3,6 +3,10 @@ import express from "express";
 import { supabaseAdmin } from "../lib/supabaseServer.js";
 import { verifySupabaseToken } from "../middleware/verifySupabaseToken.js";
 import { serverError } from "../utils/errors.js";
+import {
+  normalizeAvatarUrl,
+  withNormalizedAvatar,
+} from "../utils/avatarUrl.js";
 
 const router = express.Router();
 
@@ -46,7 +50,9 @@ router.put("/", verifySupabaseToken, async (req, res) => {
 
     const updates = {};
     if (displayName !== undefined) updates.display_name = displayName || null;
-    if (avatarUrl !== undefined) updates.avatar_url = avatarUrl || null;
+    if (avatarUrl !== undefined) {
+      updates.avatar_url = normalizeAvatarUrl(avatarUrl);
+    }
     if (themeSettings !== undefined) {
       const normalizedTheme = normalizeThemeSettings(themeSettings);
       if (!normalizedTheme) {
@@ -70,7 +76,7 @@ router.put("/", verifySupabaseToken, async (req, res) => {
       .maybeSingle();
 
     if (updateErr) throw updateErr;
-    return res.json(updated);
+    return res.json(withNormalizedAvatar(updated));
   } catch (err) {
     return serverError(res, err);
   }

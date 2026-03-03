@@ -32,14 +32,7 @@ interface Composition {
   };
 }
 
-interface User {
-  id: string;
-  email: string;
-  display_name: string;
-}
-
 interface MarketplaceProps {
-  currentUser?: User;
   onAddToCart?: (composition: Composition) => void;
 }
 

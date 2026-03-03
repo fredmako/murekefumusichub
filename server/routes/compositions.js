@@ -34,6 +34,26 @@ const VOICE_PART_OPTIONS = [
   "Soprano I",
   "Soprano II",
 ];
+const PRICE_CURRENCY_DEFAULT = "USD";
+
+function isMissingPriceCurrencyColumnError(err) {
+  const code = String(err?.code || "").toUpperCase();
+  const message = String(err?.message || "").toLowerCase();
+  return (
+    code === "42703" ||
+    code === "PGRST204" ||
+    code === "PGRST205" ||
+    message.includes("price_currency")
+  );
+}
+
+function normalizePriceCurrency(value) {
+  const trimmed = String(value || "")
+    .trim()
+    .toUpperCase();
+  if (!trimmed) return PRICE_CURRENCY_DEFAULT;
+  return trimmed.slice(0, 16);
+}
 
 function parseLimit(raw, fallback = 120, max = 500) {
   const n = Number(raw);
@@ -348,39 +368,79 @@ router.get("/", async (req, res) => {
     const { category, search, limit } = req.query;
     const safeLimit = parseLimit(limit, 120, 500);
 
-    let query = supabaseAdmin
-      .from("compositions")
-      .select(
-        `
-        id,
-        composer_id,
-        title,
-        description,
-        category_id,
-        price,
-        pdf_url,
-        thumbnail_url,
-        created_at,
-        duration,
-        difficulty,
-        language,
-        accompaniment,
-        voice_parts,
-        composers(id, users(display_name)),
-        categories(name),
-        composition_stats(views, purchases)
-      `,
-      )
-      .eq("is_published", true)
-      .eq("deleted", false)
-      .order("created_at", { ascending: false })
-      .limit(safeLimit);
+    const baseSelect = `
+      id,
+      composer_id,
+      title,
+      description,
+      category_id,
+      price,
+      pdf_url,
+      thumbnail_url,
+      created_at,
+      duration,
+      difficulty,
+      language,
+      accompaniment,
+      voice_parts,
+      composers(id, users(display_name)),
+      categories(name),
+      composition_stats(views, purchases)
+    `;
+    const selectWithPriceCurrency = `
+      id,
+      composer_id,
+      title,
+      description,
+      category_id,
+      price,
+      price_currency,
+      pdf_url,
+      thumbnail_url,
+      created_at,
+      duration,
+      difficulty,
+      language,
+      accompaniment,
+      voice_parts,
+      composers(id, users(display_name)),
+      categories(name),
+      composition_stats(views, purchases)
+    `;
 
-    if (category) query = query.eq("category_id", category);
-    if (search)
-      query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
+    const runQuery = async (includePriceCurrency) => {
+      let query = supabaseAdmin
+        .from("compositions")
+        .select(includePriceCurrency ? selectWithPriceCurrency : baseSelect)
+        .eq("is_published", true)
+        .eq("deleted", false)
+        .order("created_at", { ascending: false })
+        .limit(safeLimit);
 
-    const { data, error } = await query;
+      if (category) query = query.eq("category_id", category);
+      if (search)
+        query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
+
+      return await query;
+    };
+
+    let { data, error } = await runQuery(true);
+
+    if (error && isMissingPriceCurrencyColumnError(error)) {
+      console.warn(
+        "[public-compositions] price_currency column missing; retrying without it",
+      );
+      const fallback = await runQuery(false);
+      data = fallback.data;
+      error = fallback.error;
+      if (!error) {
+        data = (data || []).map((row) => ({
+          ...row,
+          price_currency: PRICE_CURRENCY_DEFAULT,
+        }));
+      }
+    }
+
     if (error) throw error;
     return res.json(data || []);
   } catch (err) {
@@ -468,6 +528,7 @@ router.post("/", verifySupabaseToken, async (req, res) => {
       description,
       category_id,
       price,
+      price_currency,
       file_url,
       pdf_url,
       thumbnail_url,
@@ -485,6 +546,7 @@ router.post("/", verifySupabaseToken, async (req, res) => {
       hasComposerIdInBody: Boolean(composer_id),
       title: title || null,
       price: price ?? null,
+      price_currency: normalizePriceCurrency(price_currency),
       hasPdfUrl: Boolean(pdf_url || file_url),
       difficulty: difficulty || null,
       language: language || null,
@@ -535,25 +597,42 @@ router.post("/", verifySupabaseToken, async (req, res) => {
       return res.status(400).json({ message: "title is required" });
     }
 
-    const { data: newComp, error: createErr } = await supabaseAdmin
+    const insertPayload = {
+      title,
+      description: description || null,
+      category_id: category_id || null,
+      price: price || 0,
+      price_currency: normalizePriceCurrency(price_currency),
+      pdf_url: pdf_url || file_url || null,
+      thumbnail_url: thumbnail_url || null,
+      duration: duration || (duration_seconds ? String(duration_seconds) : null),
+      difficulty: difficulty || null,
+      language: language || null,
+      accompaniment: accompaniment || null,
+      voice_parts: Array.isArray(voice_parts) ? voice_parts : null,
+      composer_id: composerId,
+      created_at: new Date().toISOString(),
+    };
+
+    let { data: newComp, error: createErr } = await supabaseAdmin
       .from("compositions")
-      .insert({
-        title,
-        description: description || null,
-        category_id: category_id || null,
-        price: price || 0,
-        pdf_url: pdf_url || file_url || null,
-        thumbnail_url: thumbnail_url || null,
-        duration: duration || (duration_seconds ? String(duration_seconds) : null),
-        difficulty: difficulty || null,
-        language: language || null,
-        accompaniment: accompaniment || null,
-        voice_parts: Array.isArray(voice_parts) ? voice_parts : null,
-        composer_id: composerId,
-        created_at: new Date().toISOString(),
-      })
+      .insert(insertPayload)
       .select()
       .single();
+
+    if (createErr && isMissingPriceCurrencyColumnError(createErr)) {
+      console.warn(
+        "[create-composition] price_currency column missing; retrying without it",
+      );
+      const { price_currency: _omit, ...fallbackPayload } = insertPayload;
+      const fallbackInsert = await supabaseAdmin
+        .from("compositions")
+        .insert(fallbackPayload)
+        .select()
+        .single();
+      newComp = fallbackInsert.data;
+      createErr = fallbackInsert.error;
+    }
 
     if (createErr) throw createErr;
     console.log("[create-composition] insert success", {
@@ -588,6 +667,7 @@ router.put("/:id", verifySupabaseToken, async (req, res) => {
       description,
       category_id,
       price,
+      price_currency,
       is_published,
       difficulty,
       language,
@@ -605,6 +685,8 @@ router.put("/:id", verifySupabaseToken, async (req, res) => {
     if (description !== undefined) updates.description = description;
     if (category_id !== undefined) updates.category_id = category_id;
     if (price !== undefined) updates.price = price;
+    if (price_currency !== undefined)
+      updates.price_currency = normalizePriceCurrency(price_currency);
     if (is_published !== undefined) updates.is_published = is_published;
     if (difficulty !== undefined) updates.difficulty = difficulty || null;
     if (language !== undefined) updates.language = language || null;
@@ -615,12 +697,27 @@ router.put("/:id", verifySupabaseToken, async (req, res) => {
     if (pdf_url !== undefined) updates.pdf_url = pdf_url || null;
     if (thumbnail_url !== undefined) updates.thumbnail_url = thumbnail_url || null;
 
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from("compositions")
       .update(updates)
       .eq("id", id)
       .select()
       .maybeSingle();
+
+    if (error && isMissingPriceCurrencyColumnError(error)) {
+      console.warn(
+        "[update-composition] price_currency column missing; retrying without it",
+      );
+      const { price_currency: _omit, ...fallbackUpdates } = updates;
+      const fallbackUpdate = await supabaseAdmin
+        .from("compositions")
+        .update(fallbackUpdates)
+        .eq("id", id)
+        .select()
+        .maybeSingle();
+      data = fallbackUpdate.data;
+      error = fallbackUpdate.error;
+    }
 
     if (error) throw error;
     if (!data)
@@ -633,20 +730,49 @@ router.put("/:id", verifySupabaseToken, async (req, res) => {
   }
 });
 
-// DELETE /api/compositions/:id - soft delete composition (authenticated)
+// DELETE /api/compositions/:id - delete composition (authenticated)
 router.delete("/:id", verifySupabaseToken, async (req, res) => {
   try {
     const { id } = req.params;
+    const hardDelete = String(req.query?.hard || "true").toLowerCase() !== "false";
     if (!id) return res.status(400).json({ message: "id is required" });
 
-    const { error } = await supabaseAdmin
+    if (hardDelete) {
+      const { error: hardErr } = await supabaseAdmin
+        .from("compositions")
+        .delete()
+        .eq("id", id);
+
+      if (!hardErr) {
+        return res.json({ message: "Composition deleted from database", hard: true });
+      }
+
+      // Fallback to soft delete when hard delete is blocked by FK constraints.
+      const fkBlocked =
+        String(hardErr?.code || "") === "23503" ||
+        String(hardErr?.message || "")
+          .toLowerCase()
+          .includes("foreign key");
+
+      if (!fkBlocked) throw hardErr;
+
+      console.warn(
+        "[delete-composition] hard delete blocked by FK; applying soft delete:",
+        hardErr?.message || hardErr,
+      );
+    }
+
+    const { error: softErr } = await supabaseAdmin
       .from("compositions")
       .update({ deleted: true, is_published: false })
       .eq("id", id);
 
-    if (error) throw error;
+    if (softErr) throw softErr;
 
-    return res.json({ message: "Composition deleted" });
+    return res.json({
+      message: "Composition soft-deleted",
+      hard: false,
+    });
   } catch (err) {
     console.error("[delete-composition] Error:", err);
     return res.status(500).json({ error: err.message });

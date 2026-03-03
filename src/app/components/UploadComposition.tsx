@@ -34,17 +34,50 @@ interface AnalyzedCompositionMetadata {
 }
 
 type MetadataMode = "ai" | "manual";
+type SelectOrOther = string;
+
+const CURRENCY_OPTIONS = [
+  { value: "KES", label: "Kenyan Shilling (KES)" },
+  { value: "USD", label: "US Dollar (USD)" },
+  { value: "EUR", label: "Euro (EUR)" },
+  { value: "Other", label: "Other (Specify)" },
+];
+
+const DIFFICULTY_OPTIONS = ["Easy", "Intermediate", "Advanced", "Other"];
+const LANGUAGE_OPTIONS = [
+  "English",
+  "Latin",
+  "German",
+  "French",
+  "Italian",
+  "Spanish",
+  "Other",
+];
+const ACCOMPANIMENT_OPTIONS = [
+  "A cappella",
+  "Piano",
+  "Organ",
+  "String Quartet",
+  "Orchestra",
+  "Other",
+];
 
 export function UploadComposition({ onClose }: UploadCompositionProps) {
   const [formData, setFormData] = useState({
     title: "",
     price: "",
+    currency: "USD" as SelectOrOther,
+    customCurrency: "",
     description: "",
-    difficulty: "",
+    difficulty: "" as SelectOrOther,
+    customDifficulty: "",
     duration: "",
-    language: "",
-    accompaniment: "",
+    language: "" as SelectOrOther,
+    customLanguage: "",
+    accompaniment: "" as SelectOrOther,
+    customAccompaniment: "",
     voiceParts: [] as string[],
+    customVoicePart: "",
   });
 
   const [pdfFile, setPdfFile] = useState<File | null>(null);
@@ -63,6 +96,57 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     "Soprano II",
   ];
 
+  const resolveCustomOrPreset = (
+    selectedValue: SelectOrOther,
+    customValue: string,
+  ) => {
+    if (selectedValue === "Other") return customValue.trim();
+    return selectedValue.trim();
+  };
+
+  const resolvedCurrency = resolveCustomOrPreset(
+    formData.currency,
+    formData.customCurrency,
+  ).toUpperCase();
+  const resolvedDifficulty = resolveCustomOrPreset(
+    formData.difficulty,
+    formData.customDifficulty,
+  );
+  const resolvedLanguage = resolveCustomOrPreset(
+    formData.language,
+    formData.customLanguage,
+  );
+  const resolvedAccompaniment = resolveCustomOrPreset(
+    formData.accompaniment,
+    formData.customAccompaniment,
+  );
+
+  const handleAddCustomVoicePart = () => {
+    const value = formData.customVoicePart.trim();
+    if (!value) return;
+
+    const exists = formData.voiceParts.some(
+      (part) => part.toLowerCase() === value.toLowerCase(),
+    );
+    if (exists) {
+      toast.error("Voice part already added");
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      voiceParts: [...prev.voiceParts, value],
+      customVoicePart: "",
+    }));
+  };
+
+  const handleRemoveVoicePart = (partToRemove: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      voiceParts: prev.voiceParts.filter((part) => part !== partToRemove),
+    }));
+  };
+
   const handleVoicePartToggle = (part: string) => {
     setFormData((prev) => ({
       ...prev,
@@ -73,14 +157,56 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
   };
 
   const applyAnalyzedMetadata = (metadata: AnalyzedCompositionMetadata) => {
+    const detectedDifficulty = metadata.difficulty || "";
+    const detectedLanguage = metadata.language || "";
+    const detectedAccompaniment = metadata.accompaniment || "";
+    const isKnownDifficulty = DIFFICULTY_OPTIONS
+      .filter((item) => item !== "Other")
+      .some((item) => item.toLowerCase() === detectedDifficulty.toLowerCase());
+    const isKnownLanguage = LANGUAGE_OPTIONS
+      .filter((item) => item !== "Other")
+      .some((item) => item.toLowerCase() === detectedLanguage.toLowerCase());
+    const isKnownAccompaniment = ACCOMPANIMENT_OPTIONS
+      .filter((item) => item !== "Other")
+      .some((item) => item.toLowerCase() === detectedAccompaniment.toLowerCase());
+
     setFormData((prev) => ({
       ...prev,
       title: prev.title || metadata.title || "",
       description: prev.description || metadata.description || "",
-      difficulty: prev.difficulty || metadata.difficulty || "",
+      difficulty: prev.difficulty
+        ? prev.difficulty
+        : detectedDifficulty
+          ? isKnownDifficulty
+            ? detectedDifficulty
+            : "Other"
+          : "",
+      customDifficulty:
+        prev.customDifficulty ||
+        (detectedDifficulty && !isKnownDifficulty ? detectedDifficulty : ""),
       duration: prev.duration || metadata.duration || "",
-      language: prev.language || metadata.language || "",
-      accompaniment: prev.accompaniment || metadata.accompaniment || "",
+      language: prev.language
+        ? prev.language
+        : detectedLanguage
+          ? isKnownLanguage
+            ? detectedLanguage
+            : "Other"
+          : "",
+      customLanguage:
+        prev.customLanguage ||
+        (detectedLanguage && !isKnownLanguage ? detectedLanguage : ""),
+      accompaniment: prev.accompaniment
+        ? prev.accompaniment
+        : detectedAccompaniment
+          ? isKnownAccompaniment
+            ? detectedAccompaniment
+            : "Other"
+          : "",
+      customAccompaniment:
+        prev.customAccompaniment ||
+        (detectedAccompaniment && !isKnownAccompaniment
+          ? detectedAccompaniment
+          : ""),
       voiceParts:
         prev.voiceParts.length > 0
           ? prev.voiceParts
@@ -173,14 +299,32 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
 
     try {
       // Validate form data
+      const parsedPrice = Number.parseFloat(formData.price);
+      if (!formData.title || !formData.description.trim()) {
+        toast.error("Please fill in title and description");
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+        toast.error("Please enter a valid non-negative price");
+        setIsSubmitting(false);
+        return;
+      }
+
       if (
-        !formData.title ||
-        !formData.price ||
-        !formData.difficulty ||
-        !formData.language ||
-        !formData.accompaniment
+        !resolvedCurrency ||
+        !resolvedDifficulty ||
+        !resolvedLanguage ||
+        !resolvedAccompaniment
       ) {
         toast.error("Please fill in all required fields");
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (formData.voiceParts.length === 0) {
+        toast.error("Please add at least one voice part");
         setIsSubmitting(false);
         return;
       }
@@ -258,11 +402,12 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
         body: JSON.stringify({
           title: formData.title,
           description: formData.description,
-          price: parseFloat(formData.price),
-          difficulty: formData.difficulty,
+          price: parsedPrice,
+          price_currency: resolvedCurrency,
+          difficulty: resolvedDifficulty,
           duration: formData.duration || null,
-          language: formData.language,
-          accompaniment: formData.accompaniment,
+          language: resolvedLanguage,
+          accompaniment: resolvedAccompaniment,
           voice_parts:
             formData.voiceParts.length > 0 ? formData.voiceParts : null,
           pdf_url: pdfUrl,
@@ -286,9 +431,10 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
           payload: {
             title: formData.title,
             price: formData.price,
-            difficulty: formData.difficulty,
-            language: formData.language,
-            accompaniment: formData.accompaniment,
+            price_currency: resolvedCurrency,
+            difficulty: resolvedDifficulty,
+            language: resolvedLanguage,
+            accompaniment: resolvedAccompaniment,
             hasPdfUrl: Boolean(pdfUrl),
           },
         });
@@ -385,19 +531,70 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
 
       {/* Price */}
       <div>
-        <Label htmlFor="price">Price (USD) *</Label>
-        <Input
-          id="price"
-          type="number"
-          step="0.01"
-          min="0"
-          value={formData.price}
-          onChange={(e) =>
-            setFormData((prev) => ({ ...prev, price: e.target.value }))
-          }
-          placeholder="29.99"
-          required
-        />
+        <Label>Price *</Label>
+        <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="sm:col-span-1">
+            <Select
+              value={formData.currency}
+              onValueChange={(value) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  currency: value,
+                  customCurrency: value === "Other" ? prev.customCurrency : "",
+                }))
+              }
+              required
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Currency" />
+              </SelectTrigger>
+              <SelectContent>
+                {CURRENCY_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="sm:col-span-2">
+            <Input
+              id="price"
+              type="number"
+              step="0.01"
+              min="0"
+              value={formData.price}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, price: e.target.value }))
+              }
+              placeholder={
+                formData.currency === "KES"
+                  ? "e.g., 3500"
+                  : formData.currency === "EUR"
+                    ? "e.g., 25.00"
+                    : "e.g., 29.99"
+              }
+              required
+            />
+          </div>
+        </div>
+        {formData.currency === "Other" && (
+          <Input
+            className="mt-3"
+            value={formData.customCurrency}
+            onChange={(e) =>
+              setFormData((prev) => ({
+                ...prev,
+                customCurrency: e.target.value.toUpperCase(),
+              }))
+            }
+            placeholder="Enter currency code or name (e.g., GBP)"
+            required
+          />
+        )}
+        <p className="mt-2 text-xs text-gray-600">
+          Select currency first, then enter the numeric amount.
+        </p>
       </div>
 
       {/* Voice Parts */}
@@ -420,6 +617,41 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
             </div>
           ))}
         </div>
+        <div className="mt-3 flex gap-2">
+          <Input
+            value={formData.customVoicePart}
+            onChange={(e) =>
+              setFormData((prev) => ({ ...prev, customVoicePart: e.target.value }))
+            }
+            placeholder="Add custom voice part"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleAddCustomVoicePart}
+            disabled={!formData.customVoicePart.trim()}
+          >
+            Add
+          </Button>
+        </div>
+        {formData.voiceParts.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {formData.voiceParts.map((part) => (
+              <button
+                key={part}
+                type="button"
+                className="rounded-full border border-border bg-muted px-3 py-1 text-xs hover:bg-muted/80"
+                onClick={() => handleRemoveVoicePart(part)}
+              >
+                {part} x
+              </button>
+            ))}
+          </div>
+        )}
+        <p className="text-xs text-gray-600 mt-2">
+          Use the custom field for non-standard divisions. Click a selected part
+          to remove it.
+        </p>
       </div>
 
       {/* Difficulty */}
@@ -428,7 +660,11 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
         <Select
           value={formData.difficulty}
           onValueChange={(value) =>
-            setFormData((prev) => ({ ...prev, difficulty: value }))
+            setFormData((prev) => ({
+              ...prev,
+              difficulty: value,
+              customDifficulty: value === "Other" ? prev.customDifficulty : "",
+            }))
           }
           required
         >
@@ -436,11 +672,27 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
             <SelectValue placeholder="Select difficulty" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="Easy">Easy</SelectItem>
-            <SelectItem value="Intermediate">Intermediate</SelectItem>
-            <SelectItem value="Advanced">Advanced</SelectItem>
+            {DIFFICULTY_OPTIONS.map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
+        {formData.difficulty === "Other" && (
+          <Input
+            className="mt-3"
+            value={formData.customDifficulty}
+            onChange={(e) =>
+              setFormData((prev) => ({
+                ...prev,
+                customDifficulty: e.target.value,
+              }))
+            }
+            placeholder="Specify custom difficulty"
+            required
+          />
+        )}
       </div>
 
       {/* Duration */}
@@ -463,7 +715,11 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
         <Select
           value={formData.language}
           onValueChange={(value) =>
-            setFormData((prev) => ({ ...prev, language: value }))
+            setFormData((prev) => ({
+              ...prev,
+              language: value,
+              customLanguage: value === "Other" ? prev.customLanguage : "",
+            }))
           }
           required
         >
@@ -471,14 +727,27 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
             <SelectValue placeholder="Select language" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="English">English</SelectItem>
-            <SelectItem value="Latin">Latin</SelectItem>
-            <SelectItem value="German">German</SelectItem>
-            <SelectItem value="French">French</SelectItem>
-            <SelectItem value="Italian">Italian</SelectItem>
-            <SelectItem value="Spanish">Spanish</SelectItem>
+            {LANGUAGE_OPTIONS.map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
+        {formData.language === "Other" && (
+          <Input
+            className="mt-3"
+            value={formData.customLanguage}
+            onChange={(e) =>
+              setFormData((prev) => ({
+                ...prev,
+                customLanguage: e.target.value,
+              }))
+            }
+            placeholder="Specify language"
+            required
+          />
+        )}
       </div>
 
       {/* Accompaniment */}
@@ -487,7 +756,12 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
         <Select
           value={formData.accompaniment}
           onValueChange={(value) =>
-            setFormData((prev) => ({ ...prev, accompaniment: value }))
+            setFormData((prev) => ({
+              ...prev,
+              accompaniment: value,
+              customAccompaniment:
+                value === "Other" ? prev.customAccompaniment : "",
+            }))
           }
           required
         >
@@ -495,13 +769,27 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
             <SelectValue placeholder="Select accompaniment" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="A cappella">A cappella</SelectItem>
-            <SelectItem value="Piano">Piano</SelectItem>
-            <SelectItem value="Organ">Organ</SelectItem>
-            <SelectItem value="String Quartet">String Quartet</SelectItem>
-            <SelectItem value="Orchestra">Orchestra</SelectItem>
+            {ACCOMPANIMENT_OPTIONS.map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
+        {formData.accompaniment === "Other" && (
+          <Input
+            className="mt-3"
+            value={formData.customAccompaniment}
+            onChange={(e) =>
+              setFormData((prev) => ({
+                ...prev,
+                customAccompaniment: e.target.value,
+              }))
+            }
+            placeholder="Specify accompaniment"
+            required
+          />
+        )}
       </div>
 
       {/* File Upload */}

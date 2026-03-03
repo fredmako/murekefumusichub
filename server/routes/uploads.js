@@ -96,13 +96,33 @@ router.post(
 
       if (error) throw error;
 
-      // generate a signed URL (valid for e.g., 1 hour) — useful if bucket is private
+      if (bucket === "avatars") {
+        const { data: publicData } = supabaseAdmin.storage
+          .from(bucket)
+          .getPublicUrl(filename);
+
+        if (publicData?.publicUrl) {
+          console.log("[upload] success with public avatar URL", {
+            bucket,
+            filename,
+          });
+          return res.json({ success: true, url: publicData.publicUrl });
+        }
+
+        console.warn(
+          "[upload] avatar public URL missing, falling back to signed URL",
+          {
+            filename,
+          },
+        );
+      }
+
+      // Private assets still use signed URLs.
       const { data: signedData, error: signedErr } = await supabaseAdmin.storage
         .from(bucket)
         .createSignedUrl(filename, 3600);
 
       if (signedErr) {
-        // fallback to public URL if createSignedUrl not allowed
         console.warn("[upload] createSignedUrl failed, falling back to public URL", {
           bucket,
           filename,
@@ -111,19 +131,9 @@ router.post(
         const { data: pub } = supabaseAdmin.storage
           .from(bucket)
           .getPublicUrl(filename);
-        console.log("[upload] success via public URL fallback", {
-          bucket,
-          filename,
-          hasPublicUrl: Boolean(pub?.publicUrl),
-        });
         return res.json({ success: true, url: pub.publicUrl });
       }
 
-      console.log("[upload] success with signed URL", {
-        bucket,
-        filename,
-        hasSignedUrl: Boolean(signedData?.signedUrl),
-      });
       return res.json({ success: true, url: signedData?.signedUrl || null });
     } catch (err) {
       console.error("[upload] failed", err);

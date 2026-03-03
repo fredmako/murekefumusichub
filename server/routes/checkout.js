@@ -7,7 +7,9 @@ import { serverError } from "../utils/errors.js";
 const router = express.Router();
 
 const MPESA_BUSINESS_NUMBER =
-  process.env.MPESA_BUSINESS_NUMBER || process.env.MPESA_ACCOUNT_NO || "400200";
+  process.env.MPESA_BUSINESS_NUMBER || "400200";
+const MPESA_ACCOUNT_NUMBER =
+  process.env.MPESA_ACCOUNT_NO || process.env.MPESA_ACCOUNT_NUMBER || "11317282";
 const MPESA_BUSINESS_NAME =
   process.env.MPESA_BUSINESS_NAME || "Murekefu Music Hub";
 const MPESA_PAYMENT_URL =
@@ -217,7 +219,7 @@ router.post("/submit", verifySupabaseToken, async (req, res) => {
       totalAmount,
       mpesa: {
         businessNumber: MPESA_BUSINESS_NUMBER,
-        accountNo: MPESA_BUSINESS_NUMBER,
+        accountNo: MPESA_ACCOUNT_NUMBER,
         businessName: MPESA_BUSINESS_NAME,
         paymentUrl: MPESA_PAYMENT_URL,
       },

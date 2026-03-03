@@ -4,6 +4,7 @@ import {
   verifySupabaseToken,
   adminOnly,
 } from "../middleware/verifySupabaseToken.js";
+import { withNormalizedAvatar } from "../utils/avatarUrl.js";
 
 const router = express.Router();
 
@@ -19,6 +20,27 @@ function isMissingPaymentSubmissionsError(err) {
     code === "PGRST205" ||
     message.includes("payment_submissions")
   );
+}
+
+function isMissingEnrollmentsError(err) {
+  const code = String(err?.code || "").toUpperCase();
+  const message = String(err?.message || "").toLowerCase();
+  return (
+    code === "42P01" ||
+    code === "PGRST204" ||
+    code === "PGRST205" ||
+    code === "42703" ||
+    message.includes("enrollments") ||
+    message.includes("admitted_by") ||
+    message.includes("admitted_at")
+  );
+}
+
+function missingEnrollmentsResponse(res) {
+  return res.status(500).json({
+    message:
+      "Enrollments table/columns are missing. Run migration 021_create_enrollments_table.sql, then retry.",
+  });
 }
 
 function parseLimit(raw, fallback = 200, max = 1000) {
@@ -200,7 +222,10 @@ router.get("/users", async (req, res) => {
       .from("user_roles")
       .select("user_id, role_id, roles(name)");
     if (userRolesErr) console.warn("user_roles fetch warning:", userRolesErr);
-    return res.json({ users: users || [], userRoles: userRoles || [] });
+    return res.json({
+      users: (users || []).map((user) => withNormalizedAvatar(user)),
+      userRoles: userRoles || [],
+    });
   } catch (err) {
     console.error("[admin-users] Error:", err);
     return res.status(500).json({ error: err.message });
@@ -387,6 +412,139 @@ router.get("/transactions", async (req, res) => {
     return res.json(formatted);
   } catch (err) {
     console.error("[admin-transactions] Error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/enrollments", async (req, res) => {
+  try {
+    const limit = parseLimit(req.query.limit, 300, 1000);
+    const requestedStatus = String(req.query.status || "all")
+      .trim()
+      .toLowerCase();
+    const allowedStatuses = new Set(["all", "pending", "admitted", "rejected"]);
+    if (!allowedStatuses.has(requestedStatus)) {
+      return res.status(400).json({
+        message: "status must be one of: all, pending, admitted, rejected",
+      });
+    }
+
+    let query = supabase
+      .from("enrollments")
+      .select(
+        "id, user_id, full_name, email, music_class, skill_level, notes, status, admitted_by, admitted_at, created_at, updated_at",
+      )
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (requestedStatus !== "all") {
+      query = query.eq("status", requestedStatus);
+    }
+
+    const { data: rows, error } = await query;
+    if (error) throw error;
+
+    const enrollmentRows = rows || [];
+    const relatedUserIds = [
+      ...new Set(
+        enrollmentRows
+          .flatMap((row) => [row.user_id, row.admitted_by])
+          .filter(Boolean),
+      ),
+    ];
+
+    let usersById = {};
+    if (relatedUserIds.length > 0) {
+      const { data: usersData, error: usersErr } = await supabase
+        .from("users")
+        .select("id, email, display_name, avatar_url")
+        .in("id", relatedUserIds);
+      if (usersErr) throw usersErr;
+
+      (usersData || []).forEach((user) => {
+        usersById[user.id] = withNormalizedAvatar(user);
+      });
+    }
+
+    const response = enrollmentRows.map((row) => ({
+      ...row,
+      requester: row.user_id ? usersById[row.user_id] || null : null,
+      admitted_admin: row.admitted_by ? usersById[row.admitted_by] || null : null,
+    }));
+
+    return res.json(response);
+  } catch (err) {
+    console.error("[admin-enrollments] Error:", err);
+    if (isMissingEnrollmentsError(err)) {
+      return missingEnrollmentsResponse(res);
+    }
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/enrollments/:enrollmentId/admit", async (req, res) => {
+  try {
+    const { enrollmentId } = req.params;
+    if (!enrollmentId) {
+      return res.status(400).json({ error: "enrollmentId is required" });
+    }
+
+    const adminUser = await resolveDbUser(req.authUid);
+    if (!adminUser?.id) {
+      return res.status(404).json({ error: "Admin user not found" });
+    }
+
+    const { data: current, error: currentErr } = await supabase
+      .from("enrollments")
+      .select("*")
+      .eq("id", enrollmentId)
+      .maybeSingle();
+    if (currentErr) throw currentErr;
+    if (!current) {
+      return res.status(404).json({ error: "Enrollment not found" });
+    }
+
+    if (current.status === "admitted") {
+      return res.json({
+        success: true,
+        alreadyAdmitted: true,
+        enrollment: current,
+      });
+    }
+
+    const nowIso = new Date().toISOString();
+    const { data: updated, error: updateErr } = await supabase
+      .from("enrollments")
+      .update({
+        status: "admitted",
+        admitted_by: adminUser.id,
+        admitted_at: nowIso,
+      })
+      .eq("id", enrollmentId)
+      .select("*")
+      .maybeSingle();
+    if (updateErr) throw updateErr;
+    if (!updated) {
+      return res.status(404).json({ error: "Enrollment not found" });
+    }
+
+    return res.json({
+      success: true,
+      message: "Enrollment admitted",
+      enrollment: {
+        ...updated,
+        admitted_admin: {
+          id: adminUser.id,
+          email: adminUser.email || null,
+          display_name: adminUser.display_name || null,
+        },
+      },
+    });
+  } catch (err) {
+    console.error("[admin-enrollments-admit] Error:", err);
+    if (isMissingEnrollmentsError(err)) {
+      return missingEnrollmentsResponse(res);
+    }
     return res.status(500).json({ error: err.message });
   }
 });

@@ -35,21 +35,18 @@ import {
   TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { Separator } from "@/app/components/ui/separator";
+import { SupportIssueButton } from "@/app/components/SupportIssueButton";
 import { toast } from "sonner";
 import { purchaseService } from "@/services/api";
 import { CartItem } from "../types";
 
 interface BuyerDashboardProps {
-  currentUser?: any;
   cart: CartItem[];
-  onClearCart: () => void;
   onRemoveFromCart?: (compositionId: string) => void;
 }
 
 export function BuyerDashboard({
-  currentUser,
   cart,
-  onClearCart,
   onRemoveFromCart,
 }: BuyerDashboardProps) {
   const navigate = useNavigate();
@@ -151,13 +148,16 @@ export function BuyerDashboard({
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            My Dashboard
-          </h1>
-          <p className="text-gray-600">
-            Access your purchased music and manage your account
-          </p>
+        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              My Dashboard
+            </h1>
+            <p className="text-gray-600">
+              Access your purchased music and manage your account
+            </p>
+          </div>
+          <SupportIssueButton context="buyer-dashboard" />
         </div>
 
         {/* Stats Cards */}

@@ -264,6 +264,7 @@ export const compositionService = {
     description: string;
     category_id?: number;
     price: number;
+    price_currency?: string;
     pdf_url: string;
     thumbnail_url?: string;
     duration?: string;
@@ -284,7 +285,15 @@ export const compositionService = {
       description: string;
       category_id: number;
       price: number;
+      price_currency: string;
       is_published: boolean;
+      difficulty: string | null;
+      duration: string | null;
+      language: string | null;
+      accompaniment: string | null;
+      voice_parts: string[] | null;
+      pdf_url: string | null;
+      thumbnail_url: string | null;
     }>,
   ) {
     return await apiRequest(`/compositions/${id}`, {
@@ -294,7 +303,7 @@ export const compositionService = {
   },
 
   async delete(id: string) {
-    await apiRequest(`/compositions/${id}`, {
+    await apiRequest(`/compositions/${id}?hard=true`, {
       method: "DELETE",
     });
   },
@@ -398,6 +407,33 @@ export const categoryService = {
     return await apiRequest(`/categories`, {
       method: "POST",
       body: JSON.stringify({ name, description }),
+    });
+  },
+};
+
+export const enrollmentService = {
+  async submit(payload: {
+    full_name: string;
+    email: string;
+    music_class: string;
+    skill_level: string;
+    notes?: string;
+  }) {
+    return await apiRequest<{
+      success: boolean;
+      message: string;
+      enrollment: any;
+    }>(`/enrollments`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      timeoutMs: 30000,
+    });
+  },
+
+  async getMine(limit: number = 100) {
+    return await apiRequest<any[]>(`/enrollments/my?limit=${limit}`, {
+      method: "GET",
+      timeoutMs: 30000,
     });
   },
 };
@@ -678,6 +714,7 @@ export const api = {
   checkout: checkoutService,
   fyp: fypService,
   categories: categoryService,
+  enrollments: enrollmentService,
   media: mediaService,
   reports: reportService,
   storage: storageService,

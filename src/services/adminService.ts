@@ -80,6 +80,25 @@ export const adminService = {
     }
   },
 
+  async fetchEnrollments(options?: {
+    limit?: number;
+    status?: "pending" | "admitted" | "rejected" | "all";
+  }) {
+    try {
+      const params = new URLSearchParams();
+      if (options?.limit) params.set("limit", String(options.limit));
+      if (options?.status && options.status !== "all") {
+        params.set("status", options.status);
+      }
+      const endpoint = `/admin/enrollments${params.toString() ? `?${params.toString()}` : ""}`;
+      const enrollments = await apiRequest<any>(endpoint);
+      return enrollments || [];
+    } catch (err: any) {
+      console.warn("fetchEnrollments error:", err);
+      return [];
+    }
+  },
+
   async fetchInvites() {
     try {
       const invites = await apiRequest<any>("/admin/invites");
@@ -261,6 +280,23 @@ export const adminService = {
     } catch (err: any) {
       console.error("rejectPaymentSubmission error:", err);
       toast.error(err.message || "Failed to reject payment");
+      throw err;
+    }
+  },
+
+  async admitEnrollment(enrollmentId: string) {
+    try {
+      const result = await apiRequest<any>(
+        `/admin/enrollments/${enrollmentId}/admit`,
+        {
+          method: "POST",
+        },
+      );
+      toast.success("Enrollment admitted");
+      return result;
+    } catch (err: any) {
+      console.error("admitEnrollment error:", err);
+      toast.error(err.message || "Failed to admit enrollment");
       throw err;
     }
   },

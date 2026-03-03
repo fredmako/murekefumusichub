@@ -6,7 +6,6 @@ import {
   Routes,
   Route,
   Navigate,
-  useSearchParams,
   useNavigate,
   useLocation,
 } from "react-router-dom";
@@ -137,12 +136,8 @@ const DashboardWrapper = ({
   onClearCart: () => void;
   onRemoveFromCart: (id: string) => void;
 }) => {
-  const [searchParams] = useSearchParams();
-  const uid = searchParams.get("uid") ?? undefined;
-
   return (
     <Component
-      uid={uid}
       cart={cart}
       onClearCart={onClearCart}
       onRemoveFromCart={onRemoveFromCart}

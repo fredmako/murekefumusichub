@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { normalizeAvatarUrl } from "../lib/avatarUrl";
 import type { ThemePreset } from "./ThemeContext";
 
 export interface AppUser {
@@ -231,13 +232,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         roles = await resolveFallbackRoles(finalUser.id, finalUser.email || null);
       }
       const isComposer = roles.includes("composer");
+      const normalizedAvatarUrl = normalizeAvatarUrl(finalUser.avatar_url);
 
       setAppUser({
         id: finalUser.id,
         auth_uid: finalUser.auth_uid,
         email: finalUser.email,
         display_name: finalUser.display_name,
-        avatar_url: finalUser.avatar_url,
+        avatar_url: normalizedAvatarUrl,
         theme_settings: finalUser.theme_settings || null,
         roles,
         isComposer,
@@ -323,19 +325,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
    */
   const signUpWithEmail = async (email: string, password: string) => {
     try {
+      const emailRedirectTo = `${window.location.origin}/login`;
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          emailRedirectTo,
+        },
       });
 
       if (error || !data.user) throw error;
 
-      // User created but may not be confirmed yet, try to get session
+      // Keep signup flow on sign-in state; user should verify email then sign in.
       if (data.session) {
-        await syncUserProfile(data.user.id);
-      } else {
-        // Email confirmation required - user will verify and then login
-        console.log("[signUpWithEmail] Email confirmation required");
+        await supabase.auth.signOut().catch(() => null);
       }
     } catch (err: any) {
       console.error("[signUpWithEmail] error:", err);

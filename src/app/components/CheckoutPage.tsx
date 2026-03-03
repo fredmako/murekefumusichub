@@ -18,6 +18,7 @@ import { Separator } from "@/app/components/ui/separator";
 import { CartItem } from "../types";
 
 const MPESA_BUSINESS_NUMBER = "400200";
+const MPESA_ACCOUNT_NUMBER = "11317282";
 const MPESA_BUSINESS_NAME = "Murekefu Music Hub";
 const MPESA_PAYMENT_URL = "https://paynecta.co.ke/pay/music-hub";
 
@@ -161,6 +162,10 @@ export function CheckoutPage({
                 <p className="text-2xl font-bold tracking-wide">
                   {MPESA_BUSINESS_NUMBER}
                 </p>
+                <p className="text-sm text-gray-600 mt-3">Account Number</p>
+                <p className="text-xl font-bold tracking-wide">
+                  {MPESA_ACCOUNT_NUMBER}
+                </p>
                 <p className="text-sm text-gray-600 mt-3">Paynecta Link</p>
                 <a
                   href={MPESA_PAYMENT_URL}
@@ -178,6 +183,7 @@ export function CheckoutPage({
                   Complete the payment to business number {MPESA_BUSINESS_NUMBER} for
                   your cart total.
                 </li>
+                <li>Use account number {MPESA_ACCOUNT_NUMBER} when prompted.</li>
                 <li>
                   Copy the transaction code from the M-Pesa confirmation SMS.
                 </li>

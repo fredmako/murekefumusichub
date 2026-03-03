@@ -1,5 +1,5 @@
 // src/app/components/Navbar.tsx
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { navbarService } from "@/services/navbarService";
 import { useLocation, NavLink, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -223,15 +223,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     },
   ];
 
-  const getDashboardPath = () => {
-    if (!roles || roles.length === 0) return "/";
-    if (roles.includes("admin")) return "/admin";
-    if (roles.includes("composer")) return "/composer";
-    if (roles.includes("buyer")) return "/buyer";
-    return "/";
-  };
-
-  const getDashboardPaths = () => {
+  const dashboardPaths = useMemo(() => {
     const dashboards: Array<{ label: string; path: string; role: string }> = [];
     if (roles.includes("admin"))
       dashboards.push({
@@ -252,7 +244,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
         role: "buyer",
       });
     return dashboards;
-  };
+  }, [roles]);
 
   // helper: build avatar / initials
   const avatarUrl = appUser?.avatar_url ?? null;
@@ -609,19 +601,17 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                     <DropdownMenuSeparator />
 
                     {/* Dashboard(s) - Show all available dashboards for user roles */}
-                    {getDashboardPaths().length > 0 && (
+                    {dashboardPaths.length > 0 && (
                       <>
-                        {getDashboardPaths().length === 1 ? (
+                        {dashboardPaths.length === 1 ? (
                           <DropdownMenuItem
-                            onClick={() =>
-                              navigate(getDashboardPaths()[0].path)
-                            }
+                            onClick={() => navigate(dashboardPaths[0].path)}
                           >
-                            {getDashboardPaths()[0].label}
+                            {dashboardPaths[0].label}
                           </DropdownMenuItem>
                         ) : (
                           <>
-                            {getDashboardPaths().map((dashboard) => (
+                            {dashboardPaths.map((dashboard) => (
                               <DropdownMenuItem
                                 key={dashboard.role}
                                 onClick={() => navigate(dashboard.path)}

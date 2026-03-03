@@ -15,6 +15,10 @@ import {
   Plus,
   Check,
   X,
+  MessageSquare,
+  Send,
+  Trash2,
+  GraduationCap,
 } from "lucide-react";
 import {
   Card,
@@ -47,10 +51,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
+import { Textarea } from "@/app/components/ui/textarea";
 import { toast } from "sonner";
 import { useAuth } from "../../context/AuthContext";
 import { adminService } from "@/services/adminService";
 import { compositionService } from "@/services/api";
+import { SupportIssueButton } from "@/app/components/SupportIssueButton";
+import { supportService } from "@/services/supportService";
+import { supabase } from "@/lib/supabase";
 
 /* --------- CONFIG --------- */
 const normalizeEmail = (e: string) => e?.toLowerCase().trim() ?? "";
@@ -66,6 +74,13 @@ function getInitials(displayName?: string | null, email?: string | null) {
   const parts = source.split(/\s+/).filter(Boolean);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString();
 }
 
 /* --------- TYPES --------- */
@@ -84,6 +99,7 @@ export function AdminPanel() {
   const [users, setUsers] = useState<any[]>([]);
   const [compositions, setCompositions] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [enrollments, setEnrollments] = useState<any[]>([]);
   const [userRoles, setUserRoles] = useState<any[]>([]);
   const [invites, setInvites] = useState<any[]>([]);
 
@@ -100,8 +116,25 @@ export function AdminPanel() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [compositionsLoading, setCompositionsLoading] = useState(false);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [enrollmentsLoading, setEnrollmentsLoading] = useState(false);
+  const [supportTicketsLoading, setSupportTicketsLoading] = useState(false);
+  const [supportThreadsLoading, setSupportThreadsLoading] = useState(false);
+  const [supportMessagesLoading, setSupportMessagesLoading] = useState(false);
   const [processingAction, setProcessingAction] = useState<string | null>(null);
   const [newInviteEmail, setNewInviteEmail] = useState("");
+  const [supportStateFilter, setSupportStateFilter] = useState<
+    "all" | "unread" | "read"
+  >("unread");
+  const [enrollmentStatusFilter, setEnrollmentStatusFilter] = useState<
+    "pending" | "admitted" | "rejected" | "all"
+  >("pending");
+  const [supportTickets, setSupportTickets] = useState<any[]>([]);
+  const [supportThreads, setSupportThreads] = useState<any[]>([]);
+  const [selectedSupportThreadId, setSelectedSupportThreadId] = useState<
+    string | null
+  >(null);
+  const [supportMessages, setSupportMessages] = useState<any[]>([]);
+  const [supportReply, setSupportReply] = useState("");
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [compositionsLoadLevel, setCompositionsLoadLevel] =
     useState<DataLoadLevel>("none");
@@ -219,6 +252,23 @@ export function AdminPanel() {
     }
   };
 
+  const fetchEnrollments = async (
+    statusOverride: "pending" | "admitted" | "rejected" | "all" = enrollmentStatusFilter,
+    force = false,
+  ) => {
+    if (enrollmentsLoading && !force) return;
+    setEnrollmentsLoading(true);
+    try {
+      const data = await adminService.fetchEnrollments({
+        limit: 1000,
+        status: statusOverride,
+      });
+      setEnrollments(data || []);
+    } finally {
+      setEnrollmentsLoading(false);
+    }
+  };
+
   const fetchInvites = async () => {
     const data = await adminService.fetchInvites();
     setInvites(data || []);
@@ -227,6 +277,63 @@ export function AdminPanel() {
   const fetchRequests = async () => {
     const data = await adminService.fetchRequests();
     setRequests(data || []);
+  };
+
+  const fetchSupportTickets = async () => {
+    if (supportTicketsLoading) return;
+    setSupportTicketsLoading(true);
+    try {
+      const tickets = await supportService.getAdminTicketQueue();
+      setSupportTickets(tickets || []);
+    } catch (error: any) {
+      console.error("[admin-support] fetch tickets failed:", error);
+      toast.error(error?.message || "Failed to load support tickets");
+    } finally {
+      setSupportTicketsLoading(false);
+    }
+  };
+
+  const fetchSupportThreads = async (
+    stateOverride: "all" | "unread" | "read" = supportStateFilter,
+  ) => {
+    if (supportThreadsLoading) return;
+    setSupportThreadsLoading(true);
+    try {
+      const threads = await supportService.getAdminThreads(stateOverride);
+      const nextThreads = threads || [];
+      setSupportThreads(nextThreads);
+      setSelectedSupportThreadId((currentSelected) => {
+        if (!currentSelected) return nextThreads[0]?.id || null;
+        const stillExists = nextThreads.some(
+          (thread) => thread.id === currentSelected,
+        );
+        return stillExists ? currentSelected : nextThreads[0]?.id || null;
+      });
+    } catch (error: any) {
+      console.error("[admin-support] fetch threads failed:", error);
+      toast.error(error?.message || "Failed to load support chats");
+    } finally {
+      setSupportThreadsLoading(false);
+    }
+  };
+
+  const fetchSupportMessages = async (threadId: string, markRead = true) => {
+    if (!threadId) return;
+    setSupportMessagesLoading(true);
+    try {
+      const response = await supportService.getThreadMessages(threadId);
+      setSupportMessages(response?.messages || []);
+
+      if (markRead && response?.thread?.is_admin_unread) {
+        await supportService.markThreadRead(threadId).catch(() => null);
+        await fetchSupportThreads();
+      }
+    } catch (error: any) {
+      console.error("[admin-support] fetch messages failed:", error);
+      toast.error(error?.message || "Failed to load support messages");
+    } finally {
+      setSupportMessagesLoading(false);
+    }
   };
 
   /* ---------------- compute summary stats ---------------- */
@@ -266,11 +373,96 @@ export function AdminPanel() {
     if (activeTab === "transactions") {
       void fetchTransactions(true);
     }
+    if (activeTab === "enrollments") {
+      void fetchEnrollments();
+    }
+    if (activeTab === "support") {
+      void fetchSupportTickets();
+      void fetchSupportThreads();
+    }
     if (activeTab === "requests" && requests.length === 0) {
       void fetchRequests();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, loading]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (activeTab !== "support") return;
+    void fetchSupportThreads();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supportStateFilter]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (activeTab !== "enrollments") return;
+    void fetchEnrollments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enrollmentStatusFilter]);
+
+  useEffect(() => {
+    if (activeTab !== "support") {
+      setSupportMessages([]);
+      return;
+    }
+    if (!selectedSupportThreadId) {
+      setSupportMessages([]);
+      return;
+    }
+    void fetchSupportMessages(selectedSupportThreadId, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, selectedSupportThreadId]);
+
+  useEffect(() => {
+    if (activeTab !== "support") return;
+
+    const threadChannel = supabase
+      .channel("admin-support-threads")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "support_chat_threads",
+        },
+        () => {
+          void fetchSupportTickets();
+          void fetchSupportThreads();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(threadChannel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, supportStateFilter]);
+
+  useEffect(() => {
+    if (activeTab !== "support" || !selectedSupportThreadId) return;
+
+    const messageChannel = supabase
+      .channel(`admin-support-messages-${selectedSupportThreadId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "support_chat_messages",
+          filter: `thread_id=eq.${selectedSupportThreadId}`,
+        },
+        () => {
+          void fetchSupportMessages(selectedSupportThreadId, true);
+          void fetchSupportThreads();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(messageChannel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, selectedSupportThreadId]);
 
   /* ---------------- utility: build role maps ---------------- */
   const userIdToRole = useMemo((): UserRoleMap => {
@@ -324,6 +516,41 @@ export function AdminPanel() {
     );
   }, [requests]);
 
+  const selectedSupportThread = useMemo(
+    () =>
+      supportThreads.find((thread: any) => thread.id === selectedSupportThreadId) ||
+      null,
+    [supportThreads, selectedSupportThreadId],
+  );
+
+  const supportUnreadCount = useMemo(
+    () =>
+      (supportThreads || []).filter((thread: any) => thread.is_admin_unread)
+        .length + (supportTickets || []).length,
+    [supportThreads, supportTickets],
+  );
+
+  const resolveRequestedRole = (
+    request: any,
+  ): "composer" | "admin" =>
+    request?.requested_role === "admin" || request?.requestedRole === "admin"
+      ? "admin"
+      : "composer";
+
+  const resolveRequestUserId = (request: any): string | null =>
+    typeof request === "string"
+      ? request
+      : request?.user_id || request?.id || null;
+
+  const refreshAfterRoleChange = async () =>
+    Promise.all([fetchUsers(true), fetchRequests(), fetchExactStats()]);
+
+  const refreshAfterPaymentReview = async () =>
+    Promise.all([fetchTransactions(true, true), fetchExactStats()]);
+
+  const refreshAfterCompositionRemoval = async () =>
+    Promise.all([fetchCompositions(true, true), fetchExactStats()]);
+
   /* ---------------- actions ---------------- */
   async function addComposerInvite(email: string) {
     const normalized = normalizeEmail(email);
@@ -350,14 +577,14 @@ export function AdminPanel() {
   async function promoteUserToComposer(userId: string) {
     await runAction(`user:promote-composer:${userId}`, async () => {
       await adminService.promoteUserToComposer(userId);
-      await Promise.all([fetchUsers(true), fetchRequests(), fetchExactStats()]);
+      await refreshAfterRoleChange();
     });
   }
 
   async function promoteUserToAdmin(userId: string) {
     await runAction(`user:promote-admin:${userId}`, async () => {
       await adminService.promoteUserToAdmin(userId);
-      await Promise.all([fetchUsers(true), fetchRequests(), fetchExactStats()]);
+      await refreshAfterRoleChange();
     });
   }
 
@@ -369,11 +596,8 @@ export function AdminPanel() {
   }
 
   async function approveRequest(request: any) {
-    const userId = request?.user_id || request?.id;
-    const requestedRole =
-      request?.requested_role === "admin" || request?.requestedRole === "admin"
-        ? "admin"
-        : "composer";
+    const userId = resolveRequestUserId(request);
+    const requestedRole = resolveRequestedRole(request);
 
     if (!userId) {
       toast.error("Missing user id for request approval");
@@ -387,17 +611,13 @@ export function AdminPanel() {
         await adminService.promoteUserToComposer(userId);
       }
       toast.success(`Approved ${requestedRole} request for ${request?.email || "user"}`);
-      await Promise.all([fetchUsers(true), fetchRequests(), fetchExactStats()]);
+      await refreshAfterRoleChange();
     });
   }
 
   async function rejectRequest(request: any) {
-    const userId =
-      typeof request === "string" ? request : request?.user_id || request?.id;
-    const requestedRole =
-      request?.requested_role === "admin" || request?.requestedRole === "admin"
-        ? "admin"
-        : "composer";
+    const userId = resolveRequestUserId(request);
+    const requestedRole = resolveRequestedRole(request);
 
     if (!userId) {
       toast.error("Missing user id for request rejection");
@@ -413,14 +633,27 @@ export function AdminPanel() {
   async function approvePaymentSubmission(submissionId: string) {
     await runAction(`payment:approve:${submissionId}`, async () => {
       await adminService.approvePaymentSubmission(submissionId);
-      await Promise.all([fetchTransactions(true, true), fetchExactStats()]);
+      await refreshAfterPaymentReview();
     });
   }
 
   async function rejectPaymentSubmission(submissionId: string) {
     await runAction(`payment:reject:${submissionId}`, async () => {
       await adminService.rejectPaymentSubmission(submissionId);
-      await Promise.all([fetchTransactions(true, true), fetchExactStats()]);
+      await refreshAfterPaymentReview();
+    });
+  }
+
+  async function admitEnrollment(enrollment: any) {
+    const enrollmentId = enrollment?.id;
+    if (!enrollmentId) {
+      toast.error("Missing enrollment id");
+      return;
+    }
+
+    await runAction(`enrollment:admit:${enrollmentId}`, async () => {
+      await adminService.admitEnrollment(enrollmentId);
+      await fetchEnrollments(enrollmentStatusFilter, true);
     });
   }
 
@@ -433,7 +666,7 @@ export function AdminPanel() {
 
     await runAction(`composition:remove:${compositionId}`, async () => {
       await adminService.removeComposition(compositionId);
-      await Promise.all([fetchCompositions(true, true), fetchExactStats()]);
+      await refreshAfterCompositionRemoval();
     });
   }
 
@@ -459,6 +692,73 @@ export function AdminPanel() {
       console.error("[admin-panel] open composition failed:", error);
       toast.error(error?.message || "Failed to open composition PDF");
     }
+  }
+
+  async function pickSupportTicket(threadId: string) {
+    await runAction(`support:pick:${threadId}`, async () => {
+      const response = await supportService.pickAdminTicket(threadId);
+      const pickedId = response?.thread?.id || threadId;
+      setSelectedSupportThreadId(pickedId);
+      setSupportReply("");
+      await Promise.all([fetchSupportTickets(), fetchSupportThreads()]);
+      await fetchSupportMessages(pickedId, false);
+      toast.success("Ticket assigned to your support chats");
+    });
+  }
+
+  async function rejectSupportTicket(threadId: string) {
+    await runAction(`support:reject:${threadId}`, async () => {
+      const response = await supportService.rejectAdminTicket(threadId);
+      await fetchSupportTickets();
+      if (response?.rejectedByAllAdmins) {
+        toast.info("Ticket rejected by all admins. Requester has been notified.");
+      }
+    });
+  }
+
+  async function sendSupportReply() {
+    if (!selectedSupportThreadId) {
+      toast.error("Select a support thread first");
+      return;
+    }
+    const message = supportReply.trim();
+    if (!message) {
+      toast.error("Type a reply before sending");
+      return;
+    }
+
+    await runAction(`support:reply:${selectedSupportThreadId}`, async () => {
+      await supportService.sendMessage(selectedSupportThreadId, message);
+      setSupportReply("");
+      await fetchSupportMessages(selectedSupportThreadId, false);
+      await fetchSupportThreads();
+    });
+  }
+
+  async function markSupportThreadRead(threadId: string) {
+    await runAction(`support:read:${threadId}`, async () => {
+      await supportService.markThreadRead(threadId);
+      await fetchSupportThreads();
+      if (threadId === selectedSupportThreadId) {
+        await fetchSupportMessages(threadId, false);
+      }
+    });
+  }
+
+  async function deleteSupportThread(threadId: string) {
+    const confirmed = window.confirm(
+      "Delete this assigned support chat?",
+    );
+    if (!confirmed) return;
+
+    await runAction(`support:delete:${threadId}`, async () => {
+      await supportService.deleteAdminThread(threadId);
+      if (selectedSupportThreadId === threadId) {
+        setSelectedSupportThreadId(null);
+        setSupportMessages([]);
+      }
+      await fetchSupportThreads();
+    });
   }
 
   /* ---------------- composer stats derived from compositions/purchases ---------------- */
@@ -542,11 +842,14 @@ export function AdminPanel() {
 
   return (
     <div className="p-6 space-y-8">
-      <div className="mb-4">
-        <h1 className="text-3xl font-bold">Admin Panel</h1>
-        <p className="text-gray-600">
-          Manage platform operations and monitor activity
-        </p>
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Admin Panel</h1>
+          <p className="text-gray-600">
+            Manage platform operations and monitor activity
+          </p>
+        </div>
+        <SupportIssueButton context="admin-dashboard" />
       </div>
 
       {/* STATS */}
@@ -671,12 +974,21 @@ export function AdminPanel() {
 
       {/* TABS */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v)}>
-        <TabsList className="grid grid-cols-5 gap-2">
+        <TabsList className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="requests">Requests</TabsTrigger>
+          <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
           <TabsTrigger value="compositions">Compositions</TabsTrigger>
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
+          <TabsTrigger value="support" className="gap-2">
+            Support
+            {supportUnreadCount > 0 && (
+              <Badge className="bg-amber-100 text-amber-800">
+                {supportUnreadCount}
+              </Badge>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         {/* Overview */}
@@ -976,6 +1288,141 @@ export function AdminPanel() {
           </Card>
         </TabsContent>
 
+        {/* Enrollments */}
+        <TabsContent value="enrollments" className="mt-6">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <GraduationCap className="size-5 text-primary" />
+                    Enrollment Requests
+                  </CardTitle>
+                  <CardDescription>
+                    Review new class enrollments and admit approved students.
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={
+                      enrollmentStatusFilter === "pending" ? "default" : "outline"
+                    }
+                    onClick={() => setEnrollmentStatusFilter("pending")}
+                  >
+                    Pending
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={
+                      enrollmentStatusFilter === "admitted" ? "default" : "outline"
+                    }
+                    onClick={() => setEnrollmentStatusFilter("admitted")}
+                  >
+                    Admitted
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={
+                      enrollmentStatusFilter === "all" ? "default" : "outline"
+                    }
+                    onClick={() => setEnrollmentStatusFilter("all")}
+                  >
+                    All
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Class</TableHead>
+                    <TableHead>Level</TableHead>
+                    <TableHead>Notes</TableHead>
+                    <TableHead>Submitted</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Admitted</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {enrollmentsLoading && enrollments.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center text-gray-500">
+                        Loading enrollments...
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {!enrollmentsLoading && enrollments.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center text-gray-500">
+                        No enrollments found.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {enrollments.map((enrollment: any) => (
+                    <TableRow key={enrollment.id}>
+                      <TableCell className="font-medium">
+                        {enrollment.full_name ||
+                          enrollment.requester?.display_name ||
+                          "N/A"}
+                      </TableCell>
+                      <TableCell>
+                        {enrollment.email || enrollment.requester?.email || "N/A"}
+                      </TableCell>
+                      <TableCell>{enrollment.music_class || "N/A"}</TableCell>
+                      <TableCell className="capitalize">
+                        {String(enrollment.skill_level || "N/A")}
+                      </TableCell>
+                      <TableCell className="max-w-[220px] truncate text-sm text-gray-600">
+                        {enrollment.notes || "-"}
+                      </TableCell>
+                      <TableCell>
+                        {formatDateTime(enrollment.created_at) || "-"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            enrollment.status === "admitted"
+                              ? "bg-green-100 text-green-800"
+                              : enrollment.status === "rejected"
+                                ? "bg-red-100 text-red-800"
+                                : "bg-amber-100 text-amber-800"
+                          }
+                        >
+                          {String(enrollment.status || "pending").toUpperCase()}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-gray-600">
+                        {enrollment.admitted_at
+                          ? `${enrollment.admitted_admin?.display_name || enrollment.admitted_admin?.email || "Admin"} - ${formatDateTime(enrollment.admitted_at)}`
+                          : "-"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {enrollment.status === "pending" ? (
+                          <Button
+                            size="sm"
+                            onClick={() => admitEnrollment(enrollment)}
+                            disabled={isProcessing}
+                          >
+                            <Check className="mr-2 size-4" />
+                            Admit
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-gray-500">-</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* Compositions */}
         <TabsContent value="compositions" className="mt-6">
           <Card>
@@ -1160,6 +1607,310 @@ export function AdminPanel() {
                   ))}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Support Panel */}
+        <TabsContent value="support" className="mt-6">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <MessageSquare className="size-5 text-primary" />
+                    Support Panel
+                  </CardTitle>
+                  <CardDescription>
+                    Ticket requests are queued. Picked tickets become private chats assigned to you.
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={supportStateFilter === "unread" ? "default" : "outline"}
+                    onClick={() => setSupportStateFilter("unread")}
+                  >
+                    Unread
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={supportStateFilter === "read" ? "default" : "outline"}
+                    onClick={() => setSupportStateFilter("read")}
+                  >
+                    Read
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={supportStateFilter === "all" ? "default" : "outline"}
+                    onClick={() => setSupportStateFilter("all")}
+                  >
+                    All
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[380px_1fr]">
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-border/70">
+                    <div className="border-b border-border/60 px-3 py-2 text-sm font-semibold">
+                      Ticket Requests ({supportTickets.length})
+                    </div>
+                    <div className="max-h-[280px] overflow-y-auto p-2">
+                      {supportTicketsLoading ? (
+                        <div className="flex items-center gap-2 px-2 py-3 text-sm text-muted-foreground">
+                          <Loader className="size-4 animate-spin" />
+                          Loading tickets...
+                        </div>
+                      ) : supportTickets.length === 0 ? (
+                        <p className="px-2 py-3 text-sm text-muted-foreground">
+                          No open tickets in queue.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {supportTickets.map((ticket: any) => (
+                            <div
+                              key={ticket.id}
+                              className="rounded-lg border border-border/70 bg-card px-3 py-2"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="line-clamp-1 text-sm font-semibold">
+                                  {ticket.subject || "Support Request"}
+                                </p>
+                                <Badge className="bg-sky-100 text-sky-800">Open</Badge>
+                              </div>
+                              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                                {ticket.last_message_preview || "No messages"}
+                              </p>
+                              <p className="mt-1 text-[11px] text-muted-foreground">
+                                {ticket.requester?.display_name ||
+                                  ticket.requester?.email ||
+                                  "Unknown user"}{" "}
+                                - {formatDateTime(ticket.last_message_at)}
+                              </p>
+                              {Number(ticket.ticket_rejection_count || 0) > 0 && (
+                                <p className="mt-1 text-[11px] text-amber-700">
+                                  Rejections: {Number(ticket.ticket_rejection_count || 0)}
+                                </p>
+                              )}
+                              <div className="mt-2 flex gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => void pickSupportTicket(ticket.id)}
+                                  disabled={isProcessing}
+                                >
+                                  <Check className="mr-2 size-4" />
+                                  Pick
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => void rejectSupportTicket(ticket.id)}
+                                  disabled={isProcessing}
+                                >
+                                  <X className="mr-2 size-4" />
+                                  Reject
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-border/70">
+                    <div className="border-b border-border/60 px-3 py-2 text-sm font-semibold">
+                      Assigned Chats ({supportThreads.length})
+                    </div>
+                    <div className="max-h-[280px] overflow-y-auto p-2">
+                      {supportThreadsLoading ? (
+                        <div className="flex items-center gap-2 px-2 py-3 text-sm text-muted-foreground">
+                          <Loader className="size-4 animate-spin" />
+                          Loading assigned chats...
+                        </div>
+                      ) : supportThreads.length === 0 ? (
+                        <p className="px-2 py-3 text-sm text-muted-foreground">
+                          You have no assigned chats in this filter.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {supportThreads.map((thread: any) => {
+                            const active = thread.id === selectedSupportThreadId;
+                            return (
+                              <button
+                                key={thread.id}
+                                type="button"
+                                className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                                  active
+                                    ? "border-primary bg-primary/10"
+                                    : "border-border/70 bg-card hover:bg-muted/40"
+                                }`}
+                                onClick={() => setSelectedSupportThreadId(thread.id)}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <p className="line-clamp-1 text-sm font-semibold">
+                                    {thread.subject || "Support Request"}
+                                  </p>
+                                  <Badge
+                                    className={
+                                      thread.is_admin_unread
+                                        ? "bg-amber-100 text-amber-800"
+                                        : "bg-emerald-100 text-emerald-800"
+                                    }
+                                  >
+                                    {thread.is_admin_unread ? "Unread" : "Read"}
+                                  </Badge>
+                                </div>
+                                <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                                  {thread.last_message_preview || "No messages"}
+                                </p>
+                                <p className="mt-1 text-[11px] text-muted-foreground">
+                                  {thread.requester?.display_name ||
+                                    thread.requester?.email ||
+                                    "Unknown user"}{" "}
+                                  - {formatDateTime(thread.last_message_at)}
+                                </p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-border/70">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
+                    <div>
+                      <p className="font-semibold">
+                        {selectedSupportThread?.subject || "Select an assigned support chat"}
+                      </p>
+                      {selectedSupportThread && (
+                        <p className="text-xs text-muted-foreground">
+                          {selectedSupportThread.requester?.display_name ||
+                            selectedSupportThread.requester?.email ||
+                            "Unknown user"}{" "}
+                          - {selectedSupportThread.context || "dashboard"}
+                        </p>
+                      )}
+                    </div>
+                    {selectedSupportThread && (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => markSupportThreadRead(selectedSupportThread.id)}
+                          disabled={isProcessing}
+                        >
+                          Mark Read
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-600"
+                          onClick={() => deleteSupportThread(selectedSupportThread.id)}
+                          disabled={isProcessing}
+                        >
+                          <Trash2 className="mr-2 size-4" />
+                          Delete
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="max-h-[420px] min-h-[300px] overflow-y-auto bg-muted/20 p-4">
+                    {!selectedSupportThread ? (
+                      <p className="text-sm text-muted-foreground">
+                        Pick a ticket and then select it from Assigned Chats to reply.
+                      </p>
+                    ) : supportMessagesLoading ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader className="size-4 animate-spin" />
+                        Loading messages...
+                      </div>
+                    ) : supportMessages.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No messages yet in this conversation.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {supportMessages.map((message: any) => {
+                          const isAdminMessage = message.sender_role === "admin";
+                          return (
+                            <div
+                              key={message.id}
+                              className={`flex ${
+                                isAdminMessage ? "justify-end" : "justify-start"
+                              }`}
+                            >
+                              <div
+                                className={`max-w-[84%] rounded-xl px-3 py-2 text-sm ${
+                                  isAdminMessage
+                                    ? "bg-primary text-primary-foreground"
+                                    : "border border-border/70 bg-card text-foreground"
+                                }`}
+                              >
+                                <p className="whitespace-pre-wrap break-words">
+                                  {message.message}
+                                </p>
+                                <p
+                                  className={`mt-1 text-[11px] ${
+                                    isAdminMessage
+                                      ? "text-primary-foreground/80"
+                                      : "text-muted-foreground"
+                                  }`}
+                                >
+                                  {isAdminMessage ? "Admin" : "Member"} -{" "}
+                                  {formatDateTime(message.created_at)}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border-t border-border/60 p-4">
+                    <Textarea
+                      value={supportReply}
+                      onChange={(e) => setSupportReply(e.target.value)}
+                      placeholder={
+                        selectedSupportThread
+                          ? "Reply to member..."
+                          : "Select an assigned chat to reply"
+                      }
+                      rows={3}
+                      maxLength={4000}
+                      disabled={!selectedSupportThread || isProcessing}
+                    />
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        onClick={() => void sendSupportReply()}
+                        disabled={
+                          !selectedSupportThread ||
+                          !supportReply.trim() ||
+                          isProcessing
+                        }
+                      >
+                        {isProcessing ? (
+                          <>
+                            <Loader className="mr-2 size-4 animate-spin" />
+                            Sending...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="mr-2 size-4" />
+                            Send Reply
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
