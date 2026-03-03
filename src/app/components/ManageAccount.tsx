@@ -34,6 +34,7 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { storageService } from "@/services/api";
+import { API_BASE_URL } from "@/lib/apiBase";
 
 type RoleRequestState = "none" | "pending" | "approved" | "rejected";
 const MAX_AVATAR_SIZE_BYTES = 8 * 1024 * 1024;
@@ -97,9 +98,7 @@ export function ManageAccount() {
   } | null> => {
     try {
       const token = await getAuthToken();
-      const base =
-        (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
-      const res = await fetch(`${base}/request-role/status`, {
+      const res = await fetch(`${API_BASE_URL}/request-role/status`, {
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -198,9 +197,7 @@ export function ManageAccount() {
       // 2) send update to backend
       try {
         const token = await getAuthToken();
-        const base =
-          (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
-        const res = await fetch(`${base}/account`, {
+        const res = await fetch(`${API_BASE_URL}/account`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -226,9 +223,7 @@ export function ManageAccount() {
 
       // 3) refetch user row from your API to get persisted values
       try {
-        const base =
-          (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
-        const refetchRes = await fetch(`${base}/users/${supabaseId}`, {
+        const refetchRes = await fetch(`${API_BASE_URL}/users/${supabaseId}`, {
           headers: { "Content-Type": "application/json" },
         });
         if (refetchRes.ok) {
@@ -286,10 +281,7 @@ export function ManageAccount() {
     setRoleLoading(true);
     try {
       const token = await getAuthToken();
-      const base =
-        (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
-
-      const res = await fetch(`${base}/request-role`, {
+      const res = await fetch(`${API_BASE_URL}/request-role`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -373,16 +365,14 @@ export function ManageAccount() {
 
       // refresh user record from server
       try {
-        const base =
-          (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
         let resp: Response | undefined;
         if (supabaseId) {
-          resp = await fetch(`${base}/users/${supabaseId}?_ts=${Date.now()}`, {
+          resp = await fetch(`${API_BASE_URL}/users/${supabaseId}?_ts=${Date.now()}`, {
             headers: { "Content-Type": "application/json" },
           });
         } else if (authUid) {
           resp = await fetch(
-            `${base}/users/by-auth-uid/${authUid}?_ts=${Date.now()}`,
+            `${API_BASE_URL}/users/by-auth-uid/${authUid}?_ts=${Date.now()}`,
             {
               headers: { "Content-Type": "application/json" },
             },
@@ -416,10 +406,7 @@ export function ManageAccount() {
     try {
       setLoading(true);
       const token = await getAuthToken();
-      const base =
-        (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
-
-      const res = await fetch(`${base}/account`, {
+      const res = await fetch(`${API_BASE_URL}/account`, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",

@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import http from "http";
+import fs from "fs";
+import path from "path";
 import { fileURLToPath } from "url";
 import usersRouter from "./routes/users.js";
 import accountRouter from "./routes/account.js";
@@ -18,8 +20,36 @@ import supportRouter from "./routes/support.js";
 import enrollmentsRouter from "./routes/enrollments.js";
 
 dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
+
+function parseAllowedOrigins(rawValue) {
+  return String(rawValue || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
+const configuredOrigins = [
+  ...parseAllowedOrigins(process.env.CORS_ORIGIN),
+  ...parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
+];
+const allowAnyOrigin = configuredOrigins.includes("*");
+const allowedOriginSet = new Set(configuredOrigins.filter((origin) => origin !== "*"));
+
+function resolveCorsOrigin(origin, callback) {
+  if (!origin || allowAnyOrigin || allowedOriginSet.size === 0) {
+    return callback(null, true);
+  }
+
+  if (allowedOriginSet.has(origin)) {
+    return callback(null, true);
+  }
+
+  return callback(new Error(`CORS blocked for origin: ${origin}`), false);
+}
 
 app.use(express.json({ limit: "10mb" }));
 app.use((req, res, next) => {
@@ -32,7 +62,7 @@ app.use((req, res, next) => {
 });
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || true,
+    origin: resolveCorsOrigin,
     credentials: true,
   }),
 );
@@ -54,7 +84,30 @@ app.use("/api/enrollments", enrollmentsRouter);
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
+const shouldServeStatic =
+  String(process.env.SERVE_STATIC || "")
+    .trim()
+    .toLowerCase() === "true";
+
+if (shouldServeStatic) {
+  const distPath = path.resolve(__dirname, "..", "dist");
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    app.get("*", (req, res, next) => {
+      if (req.path.startsWith("/api")) return next();
+      return res.sendFile(path.join(distPath, "index.html"));
+    });
+    console.log(`[server] serving frontend static files from ${distPath}`);
+  } else {
+    console.warn(`[server] SERVE_STATIC=true but dist directory was not found at ${distPath}`);
+  }
+}
+
 app.use((err, _req, res, _next) => {
+  if (String(err?.message || "").startsWith("CORS blocked")) {
+    return res.status(403).json({ message: err.message });
+  }
+
   console.error("[server] Unhandled error:", err);
   res.status(500).json({ message: "Internal server error" });
 });
@@ -68,7 +121,7 @@ export function startServer(port = PORT) {
   const server = http.createServer(app);
 
   server.on("listening", () => {
-    console.log(`[server] listening on http://localhost:${port}`);
+    console.log(`[server] listening on port ${port}`);
   });
 
   server.on("error", (error) => {
@@ -112,7 +165,7 @@ function registerShutdownHandlers() {
   });
 }
 
-const isMainModule = process.argv[1] === fileURLToPath(import.meta.url);
+const isMainModule = process.argv[1] === __filename;
 if (isMainModule) {
   registerShutdownHandlers();
   startServer(PORT);

@@ -13,11 +13,8 @@ import {
 } from "@/app/components/ui/select";
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { supabase } from "@/lib/supabase";
+import { API_BASE_URL } from "@/lib/apiBase";
 import { toast } from "sonner";
-
-// API Configuration - matches the backend
-const API_BASE_URL =
-  (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
 
 interface UploadCompositionProps {
   onClose: () => void;

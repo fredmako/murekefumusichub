@@ -9,6 +9,7 @@ import React, {
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { normalizeAvatarUrl } from "../lib/avatarUrl";
+import { API_BASE_URL } from "@/lib/apiBase";
 import type { ThemePreset } from "./ThemeContext";
 
 export interface AppUser {
@@ -43,8 +44,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const navigate = useNavigate();
   const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const API_BASE_URL =
-    (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
   const ADMIN_IDENTIFIERS = String(
     (import.meta as any).env?.VITE_ADMIN_IDENTIFIERS || "",
   )
@@ -158,13 +157,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const avatarUrl =
             (authUser?.user?.user_metadata as any)?.picture ?? null;
 
-          const base =
-            (import.meta as any).env?.VITE_API_BASE_URL ||
-            "http://localhost:3001/api";
-
           // Call server endpoint to ensure a users row exists (server uses service role key)
           try {
-            const resp = await fetch(`${base}/users/ensure`, {
+            const resp = await fetch(`${API_BASE_URL}/users/ensure`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({

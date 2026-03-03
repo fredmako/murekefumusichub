@@ -1,7 +1,5 @@
 import { supabase } from "@/lib/supabase";
-
-const API_BASE_URL =
-  (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:3001/api";
+import { buildApiUrl } from "@/lib/apiBase";
 
 async function getAccessToken(): Promise<string | null> {
   try {
@@ -75,7 +73,7 @@ export async function apiRequest<T>(
     ...(requestOptions.headers || {}),
   };
 
-  const url = `${API_BASE_URL.replace(/\/+$/, "")}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+  const url = buildApiUrl(endpoint);
   const externalSignal = requestOptions.signal;
 
   const executeFetch = async (bearerToken: string | null): Promise<Response> => {
@@ -583,7 +581,7 @@ export const storageService = {
     const formData = new FormData();
     formData.append("file", file);
 
-    const url = `${API_BASE_URL.replace(/\/+$/, "")}/upload/${bucket}`;
+    const url = buildApiUrl(`/upload/${bucket}`);
     const timeoutMs = Math.max(5000, options?.timeoutMs ?? 30000);
     const controller = new AbortController();
     const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
