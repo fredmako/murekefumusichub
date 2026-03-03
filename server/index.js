@@ -14,6 +14,7 @@ import checkoutRouter from "./routes/checkout.js";
 import categoriesRouter from "./routes/categories.js";
 import adminRouter from "./routes/admin.js";
 import mediaRouter from "./routes/media.js";
+import supportRouter from "./routes/support.js";
 
 dotenv.config();
 
@@ -46,6 +47,7 @@ app.use("/api/checkout", checkoutRouter);
 app.use("/api/categories", categoriesRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/media", mediaRouter);
+app.use("/api/support", supportRouter);
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.get("/health", (_req, res) => res.json({ ok: true }));
