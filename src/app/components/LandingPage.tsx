@@ -44,19 +44,34 @@ interface LandingImage {
 
 const testimonials = [
   {
+    id: "ann-kianda",
     message:
-      "He took us from passion without technique to confident performances during Easter and Christmas cantatas.",
-    author: "Ann, Kianda School Parents Choir",
+      "We came together as Parents in Kianda school to sing together in support of our daughters. Most of us were passionate about singing without experience or training!\n\nOn the first day, I could read Sam's mind wondering what he had gotten himself into! He started from identifying who fit into which voice group and patiently training us as individuals and groups. With his determination and great teaching/coaching skills, we were able to perform during Easter and Christmas cantatas.\n\nThe joy in our girls' faces said it all. They were really proud of our beautiful singing. Memories were created that will last a life time.\n\nThank Sam!",
+    author: "Ann, Kianda Sch Parents Choir (2023 & 2024)",
   },
   {
+    id: "oduor-nairobi",
     message:
-      "With his guidance at The Nairobi School, participating at the national level became the standard.",
-    author: "Oduor Benedict, Nairobi School",
+      "My passion for choral music was ignited when I had the privilege of being trained by the incredible Murekefu Sam. It all began at The Nairobi School, where I discovered a singer within me I never knew existed. With him at the helm, participation at the national level wasn't just a possibility - it was a guarantee. Murekefu is someone I truly look up to in the world of music, crafting melodies that leave you wanting more. Five years under his tutelage was a transformative experience I'd highly recommend to any aspiring choral artist.",
+    author: "Oduor Benedict, Nairobi School (2020 - 2023) & JKUAT Choir (2025)",
   },
   {
+    id: "naserian-mku",
     message:
-      "Strong coaching, clear discipline, and practical vocal training transformed our choir’s sound.",
-    author: "Lilian, Maziwa Methodist Church",
+      "Working with Sam Murekefu has been one of the best pleasures I have enjoyed in my adult life. He has been such an amazing music trainer, director, composer and friend. Before I met Sam, I was the 'singing in the shower kinda girl' because I didn't know how to balance, warm, and sing from the stomach and he helped me with that.\n\nThe negative for me was that I never really got the chance to work with him longer but I get to call him a friend and that's good enough. Also, if you don't learn him well you might think he's always angry when he isn't, he's just concentrating on the music.",
+    author: "Naserian, MKU Main Campus Choir (2022 & 2023)",
+  },
+  {
+    id: "miriam-jkuat",
+    message:
+      "Mr. Sam Murekefu elevated our school choir to new heights with his expertise and passion for music. He demands excellence and pushes you to be your best - it's tough, but it works. It was his first time working with the JKUAT choir and his commitment to our growth and perfection pushed us to doing and being more. Literally took us out of our comfort zone. Though I didn't get to work with him one-on-one, I've seen how he brings out the best in our choir. He placed us on the map, musically speaking! Would love to learn from him more in the future.",
+    author: "Miriam Seka, JKUAT Choir (2025)",
+  },
+  {
+    id: "lilian-maziwa",
+    message:
+      "Murekefu Sam, thank you for your incredible dedication to Maziwa Methodist Choir in the year 2018 all through covid season. You took a group of passionate but untrained singers and, through individual voice coaching, discipline, and strict time keeping, turned us into a confident and effective choir.\n\nYou helped Maziwa Methodist Choir grow from raw passion into a structured and confident choir through individual coaching and strong emphasis on time keeping.\n\nAll the best!",
+    author: "Lilian, Maziwa Methodist Church (2018 - 2019)",
   },
 ];
 
@@ -132,6 +147,9 @@ export const LandingPage = () => {
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [landingImages, setLandingImages] = useState<LandingImage[]>([]);
   const [pexelsCredit, setPexelsCredit] = useState<string>("Pexels");
+  const [expandedTestimonials, setExpandedTestimonials] = useState<
+    Record<string, boolean>
+  >({});
 
   useEffect(() => {
     const accepted = localStorage.getItem("privacyAccepted");
@@ -471,23 +489,48 @@ export const LandingPage = () => {
           <h2 className="section-title">What choirs say</h2>
         </div>
         <div className="grid gap-5 lg:grid-cols-3">
-          {testimonials.map((testimonial, index) => (
-            <Card
-              key={testimonial.author}
-              className="lift-card motion-reveal texture-speckle"
-              style={{ animationDelay: `${index * 120}ms` }}
-            >
-              <CardContent className="p-6">
-                <Quote className="size-5 text-primary" />
-                <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                  {testimonial.message}
-                </p>
-                <p className="mt-5 text-sm font-semibold text-foreground">
-                  {testimonial.author}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
+                    {testimonials.map((testimonial, index) => {
+            const isExpanded = Boolean(expandedTestimonials[testimonial.id]);
+            const maxPreviewLength = 260;
+            const canExpand = testimonial.message.length > maxPreviewLength;
+            const messageToShow =
+              canExpand && !isExpanded
+                ? `${testimonial.message.slice(0, maxPreviewLength).trimEnd()}...`
+                : testimonial.message;
+
+            return (
+              <Card
+                key={testimonial.id}
+                className="lift-card motion-reveal texture-speckle"
+                style={{ animationDelay: `${index * 120}ms` }}
+              >
+                <CardContent className="p-6">
+                  <Quote className="size-5 text-primary" />
+                  <p className="mt-4 whitespace-pre-line text-sm leading-6 text-muted-foreground">
+                    {messageToShow}
+                  </p>
+                  {canExpand ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="mt-3 h-auto p-0 text-primary hover:bg-transparent hover:text-primary/80"
+                      onClick={() =>
+                        setExpandedTestimonials((prev) => ({
+                          ...prev,
+                          [testimonial.id]: !isExpanded,
+                        }))
+                      }
+                    >
+                      {isExpanded ? "Show less" : "Read more"}
+                    </Button>
+                  ) : null}
+                  <p className="mt-5 text-sm font-semibold text-foreground">
+                    {testimonial.author}
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </section>
 
@@ -549,3 +592,4 @@ export const LandingPage = () => {
 };
 
 export default LandingPage;
+

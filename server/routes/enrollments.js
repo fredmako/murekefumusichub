@@ -1,6 +1,15 @@
 import express from "express";
 import { supabaseAdmin } from "../lib/supabaseServer.js";
 import { verifySupabaseToken } from "../middleware/verifySupabaseToken.js";
+import {
+  REGISTRATION_TYPES,
+  ensureActiveRegistrationRegulations,
+  getRequiredRegistrationFee,
+  findApprovedUnconsumedRegistrationPayment,
+  consumeRegistrationPaymentSubmission,
+  isMissingRegistrationTablesError,
+  missingRegistrationTablesResponse,
+} from "../utils/registrationPayments.js";
 
 const router = express.Router();
 
@@ -117,6 +126,35 @@ router.post("/", async (req, res) => {
       });
     }
 
+    let approvedPayment = null;
+    const regulations = await ensureActiveRegistrationRegulations(supabaseAdmin);
+    const requiredEnrollmentFee = getRequiredRegistrationFee(
+      regulations,
+      REGISTRATION_TYPES.ENROLLMENT,
+    );
+
+    if (requiredEnrollmentFee > 0) {
+      approvedPayment = await findApprovedUnconsumedRegistrationPayment(
+        supabaseAdmin,
+        user.id,
+        REGISTRATION_TYPES.ENROLLMENT,
+      );
+
+      if (!approvedPayment?.id) {
+        return res.status(402).json({
+          code: "REGISTRATION_PAYMENT_REQUIRED",
+          message:
+            "Enrollment registration fee payment is required before submitting this enrollment.",
+          registrationType: REGISTRATION_TYPES.ENROLLMENT,
+          requiredFee: requiredEnrollmentFee,
+          bankName: regulations.bank_name || "I&M Bank",
+          bankAccountNumber:
+            regulations.bank_account_number || "0030 7335 5161 50",
+          accountName: regulations.account_name || "Murekefu Music Hub",
+        });
+      }
+    }
+
     const { data: enrollment, error: insertErr } = await supabaseAdmin
       .from("enrollments")
       .insert({
@@ -132,6 +170,23 @@ router.post("/", async (req, res) => {
       .single();
     if (insertErr) throw insertErr;
 
+    if (approvedPayment?.id) {
+      const consumedPayment = await consumeRegistrationPaymentSubmission(
+        supabaseAdmin,
+        approvedPayment.id,
+        REGISTRATION_TYPES.ENROLLMENT,
+        enrollment.id,
+      );
+      if (!consumedPayment?.id) {
+        await supabaseAdmin.from("enrollments").delete().eq("id", enrollment.id);
+        return res.status(409).json({
+          code: "REGISTRATION_PAYMENT_ALREADY_USED",
+          message:
+            "The approved enrollment payment was already used. Submit a new registration payment and try again.",
+        });
+      }
+    }
+
     return res.status(201).json({
       success: true,
       message: "Enrollment submitted successfully",
@@ -141,6 +196,9 @@ router.post("/", async (req, res) => {
     console.error("[enrollments-create] Error:", err);
     if (isMissingEnrollmentsError(err)) {
       return missingMigrationResponse(res);
+    }
+    if (isMissingRegistrationTablesError(err)) {
+      return missingRegistrationTablesResponse(res);
     }
     return res.status(500).json({
       message: err?.message || "Failed to submit enrollment",

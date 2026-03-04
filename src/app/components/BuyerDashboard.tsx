@@ -145,79 +145,81 @@ export function BuyerDashboard({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              My Dashboard
-            </h1>
-            <p className="text-gray-600">
-              Access your purchased music and manage your account
-            </p>
+    <main className="texture-linen min-h-screen overflow-hidden py-12">
+      <div className="mx-auto max-w-7xl space-y-6 px-4 sm:px-6 lg:px-8">
+        <div className="texture-fabric texture-speckle motion-reveal overflow-hidden rounded-3xl border border-border/70 bg-card/80 shadow-[0_24px_44px_-30px_rgba(15,23,42,0.85)]">
+          <div className="flex flex-col gap-5 p-6 sm:p-8 md:flex-row md:items-start md:justify-between">
+            <div>
+              <span className="soft-kicker">Buyer Workspace</span>
+              <h1 className="mt-5 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
+                My Library
+              </h1>
+              <p className="mt-3 text-sm text-muted-foreground sm:text-base">
+                Access purchased music, review checkout items, and download your files.
+              </p>
+            </div>
+            <SupportIssueButton context="buyer-dashboard" />
           </div>
-          <SupportIssueButton context="buyer-dashboard" />
         </div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300 bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+          <Card className="texture-speckle lift-card border-0 bg-gradient-to-br from-[#0f766e] to-[#0b4a52] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)]">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-blue-50">
+              <CardTitle className="text-sm font-medium text-emerald-50">
                 My Library
               </CardTitle>
-              <Music className="size-5 text-blue-100" />
+              <Music className="size-5 text-emerald-100" />
             </CardHeader>
             <CardContent>
               <div className="text-4xl font-bold">
                 {loading ? "..." : purchasedCompositions.length}
               </div>
-              <p className="text-xs text-blue-100 mt-1">Compositions owned</p>
+              <p className="text-xs text-emerald-100 mt-1">Compositions owned</p>
             </CardContent>
           </Card>
 
-          <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300 bg-gradient-to-br from-green-500 to-green-600 text-white">
+          <Card className="texture-speckle lift-card border-0 bg-gradient-to-br from-[#174f3b] to-[#1f7a59] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)]">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-green-50">
+              <CardTitle className="text-sm font-medium text-emerald-50">
                 Total Spent
               </CardTitle>
-              <DollarSign className="size-5 text-green-100" />
+              <DollarSign className="size-5 text-emerald-100" />
             </CardHeader>
             <CardContent>
               <div className="text-4xl font-bold">
                 ${loading ? "..." : totalSpent.toFixed(2)}
               </div>
-              <p className="text-xs text-green-100 mt-1">All-time purchases</p>
+              <p className="text-xs text-emerald-100 mt-1">All-time purchases</p>
             </CardContent>
           </Card>
 
-          <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300 bg-gradient-to-br from-purple-500 to-purple-600 text-white">
+          <Card className="texture-speckle lift-card border-0 bg-gradient-to-br from-[#7c4a03] to-[#b45309] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)]">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-purple-50">
+              <CardTitle className="text-sm font-medium text-amber-50">
                 Cart Items
               </CardTitle>
-              <ShoppingBag className="size-5 text-purple-100" />
+              <ShoppingBag className="size-5 text-amber-100" />
             </CardHeader>
             <CardContent>
               <div className="text-4xl font-bold">{cart.length}</div>
-              <p className="text-xs text-purple-100 mt-1">Ready to checkout</p>
+              <p className="text-xs text-amber-100 mt-1">Ready to checkout</p>
             </CardContent>
           </Card>
         </div>
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={handleTabChange}>
-          <TabsList className="grid w-full max-w-md grid-cols-2 bg-white shadow-md">
+          <TabsList className="grid w-full max-w-md grid-cols-2 rounded-xl border border-border/70 bg-card/85 p-1">
             <TabsTrigger
               value="library"
-              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+              className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
             >
               My Library
             </TabsTrigger>
             <TabsTrigger
               value="checkout"
-              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+              className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
             >
               Checkout{" "}
               {cart.length > 0 && (
@@ -230,8 +232,8 @@ export function BuyerDashboard({
 
           {/* Library Tab */}
           <TabsContent value="library" className="mt-6">
-            <Card className="border-0 shadow-lg">
-              <CardHeader className="bg-gradient-to-r from-blue-50 to-purple-50 border-b">
+            <Card className="lift-card texture-speckle border-border/70 bg-card/95">
+              <CardHeader className="border-b border-border/70 bg-card/80">
                 <CardTitle className="text-2xl">
                   Purchased Compositions
                 </CardTitle>
@@ -242,24 +244,21 @@ export function BuyerDashboard({
               <CardContent className="pt-6">
                 {loading ? (
                   <div className="text-center py-12">
-                    <Loader className="size-12 text-blue-600 mx-auto mb-4 animate-spin" />
-                    <p className="text-gray-500">Loading your library...</p>
+                    <Loader className="mx-auto mb-4 size-12 animate-spin text-primary" />
+                    <p className="text-muted-foreground">Loading your library...</p>
                   </div>
                 ) : purchasedCompositions.length === 0 ? (
                   <div className="text-center py-12">
-                    <div className="bg-blue-100 rounded-full p-6 w-24 h-24 mx-auto mb-4 flex items-center justify-center">
-                      <Music className="size-12 text-blue-600" />
+                    <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-secondary">
+                      <Music className="size-12 text-secondary-foreground" />
                     </div>
                     <h3 className="text-xl font-semibold mb-2">
                       Your library is empty
                     </h3>
-                    <p className="text-gray-500 mb-6">
+                    <p className="mb-6 text-muted-foreground">
                       Start building your collection of beautiful compositions
                     </p>
-                    <Button
-                      onClick={() => navigate("/marketplace")}
-                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-                    >
+                    <Button onClick={() => navigate("/marketplace")}>
                       Browse Marketplace
                       <ArrowRight className="size-4 ml-2" />
                     </Button>
@@ -268,7 +267,7 @@ export function BuyerDashboard({
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
-                        <TableRow className="bg-gray-50">
+                        <TableRow className="bg-muted/55">
                           <TableHead className="font-semibold">
                             Composition
                           </TableHead>
@@ -289,26 +288,26 @@ export function BuyerDashboard({
                           ({ composition, purchased_at, price_paid, id }) => (
                             <TableRow
                               key={id}
-                              className="hover:bg-blue-50 transition-colors"
+                              className="transition-colors hover:bg-muted/50"
                             >
                               <TableCell>
                                 <div>
-                                  <p className="font-semibold text-gray-900">
+                                  <p className="font-semibold text-foreground">
                                     {composition?.title || "Untitled"}
                                   </p>
-                                  <p className="text-sm text-gray-500">
+                                  <p className="text-sm text-muted-foreground">
                                     {composition?.voiceParts?.join(", ") ||
                                       "N/A"}
                                   </p>
                                 </div>
                               </TableCell>
-                              <TableCell className="text-gray-700">
+                              <TableCell className="text-muted-foreground">
                                 {composition?.composerName || "Unknown"}
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-2">
-                                  <Calendar className="size-4 text-gray-400" />
-                                  <span className="text-gray-700">
+                                  <Calendar className="size-4 text-muted-foreground" />
+                                  <span className="text-muted-foreground">
                                     {new Date(purchased_at).toLocaleDateString(
                                       "en-US",
                                       {
@@ -320,14 +319,14 @@ export function BuyerDashboard({
                                   </span>
                                 </div>
                               </TableCell>
-                              <TableCell className="font-semibold text-green-600">
+                              <TableCell className="font-semibold text-emerald-700">
                                 ${(price_paid || 0).toFixed(2)}
                               </TableCell>
                               <TableCell className="text-right">
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-colors"
+                                  className="transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
                                 >
                                   <Download className="size-4 mr-2" />
                                   Download
@@ -349,8 +348,8 @@ export function BuyerDashboard({
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Cart Items */}
               <div className="lg:col-span-2">
-                <Card className="border-0 shadow-lg">
-                  <CardHeader className="bg-gradient-to-r from-purple-50 to-blue-50 border-b">
+                <Card className="lift-card texture-speckle border-border/70 bg-card/95">
+                  <CardHeader className="border-b border-border/70 bg-card/80">
                     <CardTitle className="text-2xl">Shopping Cart</CardTitle>
                     <CardDescription>
                       Review your items before checkout
@@ -359,19 +358,19 @@ export function BuyerDashboard({
                   <CardContent className="pt-6">
                     {cart.length === 0 ? (
                       <div className="text-center py-12">
-                        <div className="bg-purple-100 rounded-full p-6 w-24 h-24 mx-auto mb-4 flex items-center justify-center">
-                          <ShoppingBag className="size-12 text-purple-600" />
+                        <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-secondary">
+                          <ShoppingBag className="size-12 text-secondary-foreground" />
                         </div>
                         <h3 className="text-xl font-semibold mb-2">
                           Your cart is empty
                         </h3>
-                        <p className="text-gray-500 mb-6">
+                        <p className="mb-6 text-muted-foreground">
                           Add compositions to get started
                         </p>
                         <Button
                           onClick={() => navigate("/marketplace")}
                           variant="outline"
-                          className="border-purple-600 text-purple-600 hover:bg-purple-600 hover:text-white"
+                          className="hover:border-primary hover:bg-primary hover:text-primary-foreground"
                         >
                           Browse Marketplace
                           <ArrowRight className="size-4 ml-2" />
@@ -382,25 +381,25 @@ export function BuyerDashboard({
                         {cart.map((item) => (
                           <div
                             key={item.composition.id}
-                            className="flex items-start gap-4 p-4 border-2 rounded-xl hover:border-blue-300 hover:shadow-md transition-all duration-200 bg-white"
+                            className="flex items-start gap-4 rounded-xl border border-border/80 bg-card p-4 transition-all duration-200 hover:border-primary/40 hover:shadow-md"
                           >
-                            <div className="bg-blue-100 rounded-lg p-3">
-                              <Music className="size-8 text-blue-600" />
+                            <div className="rounded-lg bg-secondary p-3">
+                              <Music className="size-8 text-secondary-foreground" />
                             </div>
                             <div className="flex-1">
-                              <h4 className="font-semibold text-lg text-gray-900">
+                              <h4 className="text-lg font-semibold text-foreground">
                                 {item.composition.title}
                               </h4>
-                              <p className="text-sm text-gray-600 font-medium">
+                              <p className="text-sm font-medium text-muted-foreground">
                                 {item.composition.composerName}
                               </p>
-                              <p className="text-sm text-gray-500 mt-1">
-                                {item.composition.voiceParts.join(", ")} •{" "}
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                {item.composition.voiceParts.join(", ")} -{" "}
                                 {item.composition.difficulty}
                               </p>
                             </div>
                             <div className="text-right flex flex-col items-end gap-2">
-                              <p className="font-bold text-xl text-green-600">
+                              <p className="text-xl font-bold text-emerald-700">
                                 ${item.composition.price.toFixed(2)}
                               </p>
                               {onRemoveFromCart && (
@@ -410,7 +409,7 @@ export function BuyerDashboard({
                                   onClick={() =>
                                     handleRemoveItem(item.composition.id)
                                   }
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                                 >
                                   <Trash2 className="size-4 mr-1" />
                                   Remove
@@ -427,14 +426,14 @@ export function BuyerDashboard({
 
               {/* Order Summary */}
               <div>
-                <Card className="border-0 shadow-lg sticky top-6">
-                  <CardHeader className="bg-gradient-to-r from-green-50 to-blue-50 border-b">
+                <Card className="sticky top-6 lift-card texture-speckle border-border/70 bg-card/95">
+                  <CardHeader className="border-b border-border/70 bg-card/80">
                     <CardTitle className="text-2xl">Order Summary</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4 pt-6">
                     <div className="space-y-3">
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">
+                        <span className="text-muted-foreground">
                           Subtotal ({cart.length}{" "}
                           {cart.length === 1 ? "item" : "items"})
                         </span>
@@ -443,22 +442,22 @@ export function BuyerDashboard({
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Processing Fee</span>
-                        <span className="font-semibold text-green-600">
+                        <span className="text-muted-foreground">Processing Fee</span>
+                        <span className="font-semibold text-emerald-700">
                           FREE
                         </span>
                       </div>
                       <Separator />
                       <div className="flex justify-between font-bold text-xl">
                         <span>Total</span>
-                        <span className="text-green-600">
+                        <span className="text-emerald-700">
                           ${cartTotal.toFixed(2)}
                         </span>
                       </div>
                     </div>
 
                     <Button
-                      className="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white shadow-lg"
+                      className="w-full"
                       size="lg"
                       disabled={cart.length === 0}
                       onClick={handleCheckout}
@@ -467,17 +466,17 @@ export function BuyerDashboard({
                       Proceed to Checkout
                     </Button>
 
-                    <div className="bg-blue-50 rounded-lg p-4 space-y-2">
-                      <div className="flex items-center gap-2 text-sm text-gray-700">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <div className="space-y-2 rounded-lg border border-border/70 bg-muted/55 p-4">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <div className="h-2 w-2 rounded-full bg-emerald-600"></div>
                         <span>Secure checkout</span>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-700">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <div className="h-2 w-2 rounded-full bg-emerald-600"></div>
                         <span>Instant download</span>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-700">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <div className="h-2 w-2 rounded-full bg-emerald-600"></div>
                         <span>Lifetime access</span>
                       </div>
                     </div>
@@ -488,6 +487,7 @@ export function BuyerDashboard({
           </TabsContent>
         </Tabs>
       </div>
-    </div>
+    </main>
   );
 }
+

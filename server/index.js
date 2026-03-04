@@ -18,6 +18,7 @@ import adminRouter from "./routes/admin.js";
 import mediaRouter from "./routes/media.js";
 import supportRouter from "./routes/support.js";
 import enrollmentsRouter from "./routes/enrollments.js";
+import registrationRouter from "./routes/registration.js";
 
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
@@ -80,6 +81,7 @@ app.use("/api/admin", adminRouter);
 app.use("/api/media", mediaRouter);
 app.use("/api/support", supportRouter);
 app.use("/api/enrollments", enrollmentsRouter);
+app.use("/api/registration", registrationRouter);
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.get("/health", (_req, res) => res.json({ ok: true }));

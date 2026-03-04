@@ -1,5 +1,5 @@
 // src/app/App.tsx
-import React, { Suspense, useEffect, useState } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { PrivacyPolicy } from "./components/PrivacyPolicy";
 import {
@@ -17,6 +17,7 @@ import { ContactUs } from "./components/ContactUs";
 import { useAuth } from "@/context/AuthContext";
 import { THEME_PRESETS, ThemePreset, useTheme } from "@/context/ThemeContext";
 import { toast } from "sonner";
+import { SESSION_EXPIRED_EVENT } from "@/lib/sessionEvents";
 
 /* -----------------------------
    Lazy-loaded Pages
@@ -152,15 +153,65 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const prefersReducedMotion = useReducedMotion();
-  const { appUser } = useAuth();
+  const { appUser, signOut } = useAuth();
   const { setTheme } = useTheme();
   const [cart, setCart] = useState<CartItem[]>([]);
+  const lastSessionExpiredToastAt = useRef(0);
+  const handlingSessionExpiredRef = useRef(false);
 
   useEffect(() => {
     const preset = appUser?.theme_settings?.preset;
     if (!preset || !THEME_PRESETS.includes(preset as ThemePreset)) return;
     setTheme(preset as ThemePreset);
   }, [appUser?.theme_settings?.preset, setTheme]);
+
+  useEffect(() => {
+    const onSessionExpired = async () => {
+      if (!appUser) return;
+      if (handlingSessionExpiredRef.current) return;
+      handlingSessionExpiredRef.current = true;
+
+      try {
+        const currentPath = `${window.location.pathname}${window.location.search}`;
+        const isAuthPage =
+          currentPath.startsWith("/login") ||
+          currentPath.startsWith("/auth/callback") ||
+          currentPath.startsWith("/reset-password");
+        const now = Date.now();
+
+        if (now - lastSessionExpiredToastAt.current < 3500) return;
+        lastSessionExpiredToastAt.current = now;
+
+        if (!isAuthPage) {
+          try {
+            sessionStorage.setItem("post_login_redirect", currentPath);
+          } catch {
+            // ignore storage failures
+          }
+        }
+
+        await signOut(false);
+        toast.error("Your session has expired. Please log in again.");
+
+        if (!isAuthPage) {
+          const next = encodeURIComponent(currentPath || "/");
+          navigate(`/login?next=${next}&reason=session-expired`, {
+            replace: true,
+          });
+        }
+      } finally {
+        handlingSessionExpiredRef.current = false;
+      }
+    };
+
+    const listener = () => {
+      void onSessionExpired();
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, listener);
+    return () => {
+      window.removeEventListener(SESSION_EXPIRED_EVENT, listener);
+    };
+  }, [appUser, navigate, signOut]);
 
   const handleAddToCart = (composition: Composition) => {
     if (!appUser) {

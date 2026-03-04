@@ -101,13 +101,7 @@ export function CheckoutPage({
     } catch (err: any) {
       console.error("[checkout] submit error:", err);
       if (err?.status === 401) {
-        try {
-          sessionStorage.setItem("post_login_redirect", "/checkout");
-        } catch {
-          // ignore storage failures
-        }
-        toast.error("Your session expired. Please sign in again.");
-        navigate("/login?next=%2Fcheckout&intent=purchase", { replace: true });
+        // Global session-expired handler in App.tsx shows toast + redirects to login.
         return;
       }
       toast.error(err?.message || "Failed to submit payment code");

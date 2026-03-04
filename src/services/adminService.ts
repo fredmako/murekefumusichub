@@ -99,6 +99,94 @@ export const adminService = {
     }
   },
 
+  async fetchRegistrationRegulations() {
+    try {
+      return await apiRequest<any>("/admin/registration/regulations");
+    } catch (err: any) {
+      console.warn("fetchRegistrationRegulations error:", err);
+      throw err;
+    }
+  },
+
+  async updateRegistrationRegulations(payload: {
+    enrollmentFee: number;
+    composerRequestFee: number;
+    bankName: string;
+    bankAccountNumber: string;
+    accountName: string;
+  }) {
+    try {
+      const result = await apiRequest<any>("/admin/registration/regulations", {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+      toast.success("Registration regulations updated");
+      return result;
+    } catch (err: any) {
+      console.error("updateRegistrationRegulations error:", err);
+      toast.error(err.message || "Failed to update regulations");
+      throw err;
+    }
+  },
+
+  async fetchRegistrationPayments(options?: {
+    limit?: number;
+    status?: "all" | "pending" | "approved" | "rejected";
+    type?: "all" | "enrollment" | "composer_request";
+  }) {
+    try {
+      const params = new URLSearchParams();
+      if (options?.limit) params.set("limit", String(options.limit));
+      if (options?.status && options.status !== "all") {
+        params.set("status", options.status);
+      }
+      if (options?.type && options.type !== "all") {
+        params.set("type", options.type);
+      }
+      const endpoint = `/admin/registration/payments${params.toString() ? `?${params.toString()}` : ""}`;
+      return (await apiRequest<any>(endpoint)) || [];
+    } catch (err: any) {
+      console.warn("fetchRegistrationPayments error:", err);
+      throw err;
+    }
+  },
+
+  async approveRegistrationPayment(submissionId: string, adminNotes?: string) {
+    try {
+      const result = await apiRequest<any>(
+        `/admin/registration/payments/${submissionId}/approve`,
+        {
+          method: "POST",
+          body: JSON.stringify({ adminNotes: adminNotes || null }),
+        },
+      );
+      toast.success("Registration payment approved");
+      return result;
+    } catch (err: any) {
+      console.error("approveRegistrationPayment error:", err);
+      toast.error(err.message || "Failed to approve registration payment");
+      throw err;
+    }
+  },
+
+  async rejectRegistrationPayment(submissionId: string, adminNotes?: string) {
+    try {
+      const result = await apiRequest<any>(
+        `/admin/registration/payments/${submissionId}/reject`,
+        {
+          method: "POST",
+          body: JSON.stringify({ adminNotes: adminNotes || null }),
+        },
+      );
+      toast.success("Registration payment rejected");
+      return result;
+    } catch (err: any) {
+      console.error("rejectRegistrationPayment error:", err);
+      toast.error(err.message || "Failed to reject registration payment");
+      throw err;
+    }
+  },
+
   async fetchInvites() {
     try {
       const invites = await apiRequest<any>("/admin/invites");

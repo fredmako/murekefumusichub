@@ -3,6 +3,14 @@ import express from "express";
 import { verifySupabaseToken } from "../middleware/verifySupabaseToken.js";
 import { supabaseAdmin } from "../lib/supabaseServer.js";
 import { serverError } from "../utils/errors.js";
+import {
+  REGISTRATION_TYPES,
+  ensureActiveRegistrationRegulations,
+  getRequiredRegistrationFee,
+  findApprovedUnconsumedRegistrationPayment,
+  consumeRegistrationPaymentSubmission,
+  isMissingRegistrationTablesError,
+} from "../utils/registrationPayments.js";
 
 const router = express.Router();
 const ADMIN_IDENTIFIERS = new Set(
@@ -166,6 +174,36 @@ router.post("/request-role", verifySupabaseToken, async (req, res) => {
       });
     }
 
+    let approvedPayment = null;
+    if (requestedRole === "composer") {
+      const regulations = await ensureActiveRegistrationRegulations(supabaseAdmin);
+      const requiredComposerFee = getRequiredRegistrationFee(
+        regulations,
+        REGISTRATION_TYPES.COMPOSER_REQUEST,
+      );
+
+      if (requiredComposerFee > 0) {
+        approvedPayment = await findApprovedUnconsumedRegistrationPayment(
+          supabaseAdmin,
+          userRow.id,
+          REGISTRATION_TYPES.COMPOSER_REQUEST,
+        );
+        if (!approvedPayment?.id) {
+          return res.status(402).json({
+            code: "REGISTRATION_PAYMENT_REQUIRED",
+            message:
+              "Composer request payment is required before submitting this role request.",
+            registrationType: REGISTRATION_TYPES.COMPOSER_REQUEST,
+            requiredFee: requiredComposerFee,
+            bankName: regulations.bank_name || "I&M Bank",
+            bankAccountNumber:
+              regulations.bank_account_number || "0030 7335 5161 50",
+            accountName: regulations.account_name || "Murekefu Music Hub",
+          });
+        }
+      }
+    }
+
     // Re-open rejected request if it exists, otherwise create a new one.
     if (existing?.id) {
       const { data: updated, error: updateErr } = await supabaseAdmin
@@ -185,6 +223,42 @@ router.post("/request-role", verifySupabaseToken, async (req, res) => {
           .from("users")
           .update({ composer_request: true })
           .eq("id", userRow.id);
+
+        if (approvedPayment?.id) {
+          try {
+            const consumedPayment = await consumeRegistrationPaymentSubmission(
+              supabaseAdmin,
+              approvedPayment.id,
+              REGISTRATION_TYPES.COMPOSER_REQUEST,
+              updated?.id || existing.id,
+            );
+            if (!consumedPayment?.id) {
+              await supabaseAdmin
+                .from("role_requests")
+                .update({ status: "rejected" })
+                .eq("id", updated?.id || existing.id);
+              await supabaseAdmin
+                .from("users")
+                .update({ composer_request: false })
+                .eq("id", userRow.id);
+              return res.status(409).json({
+                code: "REGISTRATION_PAYMENT_ALREADY_USED",
+                message:
+                  "The approved composer registration payment was already used. Submit a new payment and try again.",
+              });
+            }
+          } catch (consumeErr) {
+            await supabaseAdmin
+              .from("role_requests")
+              .update({ status: "rejected" })
+              .eq("id", updated?.id || existing.id);
+            await supabaseAdmin
+              .from("users")
+              .update({ composer_request: false })
+              .eq("id", userRow.id);
+            throw consumeErr;
+          }
+        }
       }
 
       return res.status(200).json({
@@ -213,6 +287,40 @@ router.post("/request-role", verifySupabaseToken, async (req, res) => {
         .from("users")
         .update({ composer_request: true })
         .eq("id", userRow.id);
+
+      if (approvedPayment?.id) {
+        try {
+          const consumedPayment = await consumeRegistrationPaymentSubmission(
+            supabaseAdmin,
+            approvedPayment.id,
+            REGISTRATION_TYPES.COMPOSER_REQUEST,
+            created?.id || null,
+          );
+          if (!consumedPayment?.id) {
+            if (created?.id) {
+              await supabaseAdmin.from("role_requests").delete().eq("id", created.id);
+            }
+            await supabaseAdmin
+              .from("users")
+              .update({ composer_request: false })
+              .eq("id", userRow.id);
+            return res.status(409).json({
+              code: "REGISTRATION_PAYMENT_ALREADY_USED",
+              message:
+                "The approved composer registration payment was already used. Submit a new payment and try again.",
+            });
+          }
+        } catch (consumeErr) {
+          if (created?.id) {
+            await supabaseAdmin.from("role_requests").delete().eq("id", created.id);
+          }
+          await supabaseAdmin
+            .from("users")
+            .update({ composer_request: false })
+            .eq("id", userRow.id);
+          throw consumeErr;
+        }
+      }
     }
 
     return res.status(201).json({
@@ -222,6 +330,12 @@ router.post("/request-role", verifySupabaseToken, async (req, res) => {
       status: created?.status || "pending",
     });
   } catch (err) {
+    if (isMissingRegistrationTablesError(err)) {
+      return res.status(500).json({
+        message:
+          "Registration payment tables are missing. Run migration 022_create_registration_payment_controls.sql and retry.",
+      });
+    }
     return serverError(res, err);
   }
 });

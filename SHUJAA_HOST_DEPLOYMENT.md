@@ -5,6 +5,10 @@ This project is now prepared for production hosting with:
 - backend CORS support for single or multiple allowed origins
 - optional static serving from `dist/` via `SERVE_STATIC=true`
 
+If you are switching from Node/Express to Laravel backend, use:
+- `LARAVEL_BACKEND_SETUP.md`
+- `laravel-backend/` as your backend app root
+
 Use one of the deployment paths below based on your Shujaa package.
 
 ## 1) Local Build (required)

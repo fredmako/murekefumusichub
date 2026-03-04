@@ -5,6 +5,13 @@ import {
   adminOnly,
 } from "../middleware/verifySupabaseToken.js";
 import { withNormalizedAvatar } from "../utils/avatarUrl.js";
+import {
+  REGISTRATION_TYPES,
+  ensureActiveRegistrationRegulations,
+  isMissingRegistrationTablesError,
+  missingRegistrationTablesResponse,
+  isRegulationsControllerUser,
+} from "../utils/registrationPayments.js";
 
 const router = express.Router();
 
@@ -71,6 +78,43 @@ async function resolveDbUser(userIdentifier) {
   if (byAuthUid) return byAuthUid;
 
   return null;
+}
+
+const REGULATIONS_CONTROLLER_FALLBACK = String(
+  process.env.REGISTRATION_CONTROLLER_IDENTIFIER || "fredrickmakori102",
+)
+  .trim()
+  .toLowerCase();
+
+async function requireRegulationsController(req, res) {
+  const adminUser = await resolveDbUser(req.authUid);
+  if (!adminUser?.id) {
+    res.status(404).json({ error: "Admin user not found" });
+    return null;
+  }
+
+  const regulations = await ensureActiveRegistrationRegulations(supabase);
+  const controllingIdentifier =
+    regulations?.controlling_admin_identifier ||
+    REGULATIONS_CONTROLLER_FALLBACK;
+  const canManage = isRegulationsControllerUser(
+    adminUser,
+    controllingIdentifier,
+  );
+
+  if (!canManage) {
+    res.status(403).json({
+      error: `Only ${controllingIdentifier} can manage registration regulations.`,
+      controllingAdminIdentifier: controllingIdentifier,
+    });
+    return null;
+  }
+
+  return {
+    adminUser,
+    regulations,
+    controllingIdentifier,
+  };
 }
 
 async function insertPurchaseWithFallback(payload) {
@@ -544,6 +588,335 @@ router.post("/enrollments/:enrollmentId/admit", async (req, res) => {
     console.error("[admin-enrollments-admit] Error:", err);
     if (isMissingEnrollmentsError(err)) {
       return missingEnrollmentsResponse(res);
+    }
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/registration/regulations", async (req, res) => {
+  try {
+    const context = await requireRegulationsController(req, res);
+    if (!context) return;
+
+    const regulations = context.regulations || {};
+    return res.json({
+      id: regulations.id || null,
+      enrollmentFee: Number(regulations.enrollment_fee || 0),
+      composerRequestFee: Number(regulations.composer_request_fee || 0),
+      bankName: regulations.bank_name || "I&M Bank",
+      bankAccountNumber:
+        regulations.bank_account_number || "0030 7335 5161 50",
+      accountName: regulations.account_name || "Murekefu Music Hub",
+      controllingAdminIdentifier:
+        regulations.controlling_admin_identifier ||
+        REGULATIONS_CONTROLLER_FALLBACK,
+      updatedAt: regulations.updated_at || null,
+    });
+  } catch (err) {
+    console.error("[admin-registration-regulations-get] Error:", err);
+    if (isMissingRegistrationTablesError(err)) {
+      return missingRegistrationTablesResponse(res);
+    }
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.put("/registration/regulations", async (req, res) => {
+  try {
+    const context = await requireRegulationsController(req, res);
+    if (!context) return;
+
+    const toMoney = (value, fallback) => {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0) return fallback;
+      return Number(n.toFixed(2));
+    };
+    const toText = (value, fallback, max = 160) => {
+      const next = String(value || "")
+        .trim()
+        .slice(0, max);
+      return next || fallback;
+    };
+
+    const nextEnrollmentFee = toMoney(
+      req.body?.enrollmentFee ?? req.body?.enrollment_fee,
+      Number(context.regulations?.enrollment_fee || 0),
+    );
+    const nextComposerRequestFee = toMoney(
+      req.body?.composerRequestFee ?? req.body?.composer_request_fee,
+      Number(context.regulations?.composer_request_fee || 0),
+    );
+    const nextBankName = toText(
+      req.body?.bankName ?? req.body?.bank_name,
+      context.regulations?.bank_name || "I&M Bank",
+      120,
+    );
+    const nextBankAccountNumber = toText(
+      req.body?.bankAccountNumber ?? req.body?.bank_account_number,
+      context.regulations?.bank_account_number || "0030 7335 5161 50",
+      64,
+    );
+    const nextAccountName = toText(
+      req.body?.accountName ?? req.body?.account_name,
+      context.regulations?.account_name || "Murekefu Music Hub",
+      160,
+    );
+
+    const updatePayload = {
+      enrollment_fee: nextEnrollmentFee,
+      composer_request_fee: nextComposerRequestFee,
+      bank_name: nextBankName,
+      bank_account_number: nextBankAccountNumber,
+      account_name: nextAccountName,
+      controlling_admin_identifier: context.controllingIdentifier,
+      is_active: true,
+      updated_by: context.adminUser.id,
+    };
+
+    let updated = null;
+    let updateErr = null;
+    if (context.regulations?.id) {
+      const updateRes = await supabase
+        .from("registration_regulations")
+        .update(updatePayload)
+        .eq("id", context.regulations.id)
+        .select("*")
+        .maybeSingle();
+      updated = updateRes.data;
+      updateErr = updateRes.error;
+    } else {
+      const insertRes = await supabase
+        .from("registration_regulations")
+        .insert(updatePayload)
+        .select("*")
+        .maybeSingle();
+      updated = insertRes.data;
+      updateErr = insertRes.error;
+    }
+    if (updateErr) throw updateErr;
+
+    return res.json({
+      success: true,
+      message: "Registration regulations updated",
+      regulations: {
+        id: updated?.id || context.regulations.id,
+        enrollmentFee: Number(updated?.enrollment_fee || nextEnrollmentFee),
+        composerRequestFee: Number(
+          updated?.composer_request_fee || nextComposerRequestFee,
+        ),
+        bankName: updated?.bank_name || nextBankName,
+        bankAccountNumber:
+          updated?.bank_account_number || nextBankAccountNumber,
+        accountName: updated?.account_name || nextAccountName,
+        controllingAdminIdentifier:
+          updated?.controlling_admin_identifier || context.controllingIdentifier,
+        updatedAt: updated?.updated_at || new Date().toISOString(),
+      },
+    });
+  } catch (err) {
+    console.error("[admin-registration-regulations-update] Error:", err);
+    if (isMissingRegistrationTablesError(err)) {
+      return missingRegistrationTablesResponse(res);
+    }
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/registration/payments", async (req, res) => {
+  try {
+    const context = await requireRegulationsController(req, res);
+    if (!context) return;
+
+    const statusFilter = String(req.query.status || "pending")
+      .trim()
+      .toLowerCase();
+    const allowedStatuses = new Set(["all", "pending", "approved", "rejected"]);
+    if (!allowedStatuses.has(statusFilter)) {
+      return res.status(400).json({
+        error: "status must be one of: all, pending, approved, rejected",
+      });
+    }
+
+    const typeFilter = String(req.query.type || "all")
+      .trim()
+      .toLowerCase();
+    const allowedTypes = new Set([
+      "all",
+      REGISTRATION_TYPES.ENROLLMENT,
+      REGISTRATION_TYPES.COMPOSER_REQUEST,
+    ]);
+    if (!allowedTypes.has(typeFilter)) {
+      return res.status(400).json({
+        error: "type must be one of: all, enrollment, composer_request",
+      });
+    }
+
+    const limit = parseLimit(req.query.limit, 300, 1000);
+    let query = supabase
+      .from("registration_payment_submissions")
+      .select(
+        "id, requester_id, registration_type, amount, payment_ref, status, is_consumed, consumed_for, consumed_target_id, consumed_at, reviewed_by, reviewed_at, admin_notes, submitted_at",
+      )
+      .order("submitted_at", { ascending: false })
+      .limit(limit);
+
+    if (statusFilter !== "all") query = query.eq("status", statusFilter);
+    if (typeFilter !== "all") query = query.eq("registration_type", typeFilter);
+
+    const { data: rows, error } = await query;
+    if (error) throw error;
+
+    const submissions = rows || [];
+    const relatedUserIds = [
+      ...new Set(
+        submissions
+          .flatMap((row) => [row.requester_id, row.reviewed_by])
+          .filter(Boolean),
+      ),
+    ];
+
+    let usersById = {};
+    if (relatedUserIds.length > 0) {
+      const { data: usersData, error: usersErr } = await supabase
+        .from("users")
+        .select("id, email, display_name, avatar_url")
+        .in("id", relatedUserIds);
+      if (usersErr) throw usersErr;
+      (usersData || []).forEach((user) => {
+        usersById[user.id] = withNormalizedAvatar(user);
+      });
+    }
+
+    const response = submissions.map((row) => ({
+      ...row,
+      requester: row.requester_id ? usersById[row.requester_id] || null : null,
+      reviewer: row.reviewed_by ? usersById[row.reviewed_by] || null : null,
+    }));
+
+    return res.json(response);
+  } catch (err) {
+    console.error("[admin-registration-payments] Error:", err);
+    if (isMissingRegistrationTablesError(err)) {
+      return missingRegistrationTablesResponse(res);
+    }
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/registration/payments/:submissionId/approve", async (req, res) => {
+  try {
+    const context = await requireRegulationsController(req, res);
+    if (!context) return;
+
+    const { submissionId } = req.params;
+    if (!submissionId) {
+      return res.status(400).json({ error: "submissionId is required" });
+    }
+
+    const adminNotes = req.body?.adminNotes
+      ? String(req.body.adminNotes).trim()
+      : null;
+
+    const { data: submission, error: submissionErr } = await supabase
+      .from("registration_payment_submissions")
+      .select("*")
+      .eq("id", submissionId)
+      .maybeSingle();
+    if (submissionErr) throw submissionErr;
+    if (!submission) {
+      return res.status(404).json({ error: "Registration payment not found" });
+    }
+    if (submission.status === "approved") {
+      return res.json({
+        success: true,
+        alreadyApproved: true,
+        submission,
+      });
+    }
+    if (submission.status === "rejected") {
+      return res
+        .status(409)
+        .json({ error: "Rejected submissions cannot be approved" });
+    }
+
+    const { data: updated, error: updateErr } = await supabase
+      .from("registration_payment_submissions")
+      .update({
+        status: "approved",
+        reviewed_by: context.adminUser.id,
+        reviewed_at: new Date().toISOString(),
+        admin_notes: adminNotes,
+      })
+      .eq("id", submissionId)
+      .select("*")
+      .maybeSingle();
+    if (updateErr) throw updateErr;
+
+    return res.json({
+      success: true,
+      message: "Registration payment approved",
+      submission: updated,
+    });
+  } catch (err) {
+    console.error("[admin-registration-payment-approve] Error:", err);
+    if (isMissingRegistrationTablesError(err)) {
+      return missingRegistrationTablesResponse(res);
+    }
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/registration/payments/:submissionId/reject", async (req, res) => {
+  try {
+    const context = await requireRegulationsController(req, res);
+    if (!context) return;
+
+    const { submissionId } = req.params;
+    if (!submissionId) {
+      return res.status(400).json({ error: "submissionId is required" });
+    }
+
+    const adminNotes = req.body?.adminNotes
+      ? String(req.body.adminNotes).trim()
+      : null;
+
+    const { data: submission, error: submissionErr } = await supabase
+      .from("registration_payment_submissions")
+      .select("id, status")
+      .eq("id", submissionId)
+      .maybeSingle();
+    if (submissionErr) throw submissionErr;
+    if (!submission) {
+      return res.status(404).json({ error: "Registration payment not found" });
+    }
+    if (submission.status === "approved") {
+      return res
+        .status(409)
+        .json({ error: "Approved submissions cannot be rejected" });
+    }
+
+    const { data: updated, error: updateErr } = await supabase
+      .from("registration_payment_submissions")
+      .update({
+        status: "rejected",
+        reviewed_by: context.adminUser.id,
+        reviewed_at: new Date().toISOString(),
+        admin_notes: adminNotes,
+      })
+      .eq("id", submissionId)
+      .select("*")
+      .maybeSingle();
+    if (updateErr) throw updateErr;
+
+    return res.json({
+      success: true,
+      message: "Registration payment rejected",
+      submission: updated,
+    });
+  } catch (err) {
+    console.error("[admin-registration-payment-reject] Error:", err);
+    if (isMissingRegistrationTablesError(err)) {
+      return missingRegistrationTablesResponse(res);
     }
     return res.status(500).json({ error: err.message });
   }

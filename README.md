@@ -57,6 +57,7 @@ Visit [http://localhost:5173](http://localhost:5173)
 - **[Quick Start Guide](./QUICKSTART.md)** - Get up and running in 10 minutes
 - **[Backend Setup](./BACKEND_SETUP.md)** - Complete backend configuration guide
 - **[Shujaa Host Deployment](./SHUJAA_HOST_DEPLOYMENT.md)** - Deploy frontend + API on Shujaa Host
+- **[Laravel Backend Setup](./LARAVEL_BACKEND_SETUP.md)** - Laravel API migration + Shujaa compatibility checklist
 - **[Implementation Summary](./IMPLEMENTATION_SUMMARY.md)** - Detailed architecture and features
 - **[System Documentation](./SYSTEM_DOCUMENTATION.md)** - Original system specs and flows
 

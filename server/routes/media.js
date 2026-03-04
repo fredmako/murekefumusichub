@@ -4,6 +4,7 @@ const router = express.Router();
 
 const PEXELS_SEARCH_URL = "https://api.pexels.com/v1/search";
 const CACHE_TTL_MS = 30 * 60 * 1000;
+const PEXELS_TIMEOUT_MS = 8000;
 const DEFAULT_QUERY = "choir music performance";
 const DEFAULT_PER_PAGE = 12;
 const DEFAULT_MODE = "instruments";
@@ -50,6 +51,7 @@ let cache = {
   expiresAt: 0,
   items: [],
 };
+let lastSuccessfulItems = [];
 
 function normalizePerPage(raw) {
   const value = Number(raw);
@@ -113,18 +115,41 @@ function normalizePhoto(photo) {
   };
 }
 
-async function fetchPexelsQuery({ query, perPage, apiKey }) {
+async function fetchPexelsQuery({
+  query,
+  perPage,
+  apiKey,
+  timeoutMs = PEXELS_TIMEOUT_MS,
+}) {
   const url = new URL(PEXELS_SEARCH_URL);
   url.searchParams.set("query", query);
   url.searchParams.set("per_page", String(perPage));
   url.searchParams.set("orientation", "landscape");
   url.searchParams.set("size", "large");
 
-  const response = await fetch(url.toString(), {
-    headers: {
-      Authorization: apiKey,
-    },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+
+  try {
+    response = await fetch(url.toString(), {
+      headers: {
+        Authorization: apiKey,
+      },
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      const timeoutError = new Error(
+        `Pexels query timed out (${query}) after ${timeoutMs}ms`,
+      );
+      timeoutError.code = "PEXELS_TIMEOUT";
+      throw timeoutError;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const details = await response.text();
@@ -174,7 +199,7 @@ router.get("/landing-images", async (req, res) => {
       20,
       Math.max(6, Math.ceil((perPage * 2) / activeQueries.length)),
     );
-    const batches = await Promise.all(
+    const settled = await Promise.allSettled(
       activeQueries.map((q) =>
         fetchPexelsQuery({
           query: q,
@@ -183,7 +208,43 @@ router.get("/landing-images", async (req, res) => {
         }),
       ),
     );
-    const merged = batches.flat();
+    const succeeded = settled
+      .filter((result) => result.status === "fulfilled")
+      .map((result) => result.value);
+    const failed = settled
+      .filter((result) => result.status === "rejected")
+      .map((result) => result.reason?.message || "Pexels request failed");
+
+    if (succeeded.length === 0) {
+      if (cache.key === cacheKey && cache.items.length > 0) {
+        return res.json({
+          source: "cache-stale",
+          mode,
+          warning: "Pexels unavailable; serving stale cache",
+          errors: failed.slice(0, 3),
+          items: cache.items,
+        });
+      }
+      if (lastSuccessfulItems.length > 0) {
+        const fallback = lastSuccessfulItems.slice(0, perPage);
+        return res.json({
+          source: "fallback",
+          mode,
+          warning: "Pexels unavailable; serving fallback images",
+          errors: failed.slice(0, 3),
+          items: fallback,
+        });
+      }
+      return res.json({
+        source: "fallback-empty",
+        mode,
+        warning: "Pexels unavailable; no cached images yet",
+        errors: failed.slice(0, 3),
+        items: [],
+      });
+    }
+
+    const merged = succeeded.flat();
     const deduped = [];
     const seen = new Set();
     for (const item of merged) {
@@ -213,16 +274,45 @@ router.get("/landing-images", async (req, res) => {
       expiresAt: now + CACHE_TTL_MS,
       items,
     };
+    if (items.length > 0) {
+      lastSuccessfulItems = items;
+    }
 
     return res.json({
       source: "pexels",
       mode,
+      ...(failed.length > 0
+        ? {
+            warning: "Some Pexels queries failed; showing partial results",
+            errors: failed.slice(0, 3),
+          }
+        : {}),
       items,
     });
   } catch (err) {
     console.error("[media/landing-images] error:", err);
-    return res.status(500).json({
-      message: err?.message || "Failed to load landing images",
+    const mode = normalizeMode(req.query.mode);
+    if (cache.items.length > 0) {
+      return res.json({
+        source: "cache-stale",
+        mode,
+        warning: err?.message || "Pexels request failed; serving stale cache",
+        items: cache.items,
+      });
+    }
+    if (lastSuccessfulItems.length > 0) {
+      return res.json({
+        source: "fallback",
+        mode,
+        warning: err?.message || "Pexels request failed; serving fallback images",
+        items: lastSuccessfulItems.slice(0, normalizePerPage(req.query.perPage)),
+      });
+    }
+    return res.json({
+      source: "fallback-empty",
+      mode,
+      warning: err?.message || "Failed to load landing images",
+      items: [],
     });
   }
 });

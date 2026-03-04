@@ -1,4 +1,4 @@
-// src/app/components/ManageAccount.tsx
+﻿// src/app/components/ManageAccount.tsx
 import { useAuth, AppUser } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/app/components/ui/button";
@@ -30,10 +30,11 @@ import {
   AlertCircle,
   Loader2,
   Music,
+  UserRound,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { storageService } from "@/services/api";
+import { registrationService, storageService } from "@/services/api";
 import { API_BASE_URL } from "@/lib/apiBase";
 
 type RoleRequestState = "none" | "pending" | "approved" | "rejected";
@@ -60,6 +61,20 @@ export function ManageAccount() {
     composer: "none",
     admin: "none",
   });
+  const [composerRegulations, setComposerRegulations] = useState<{
+    composerRequestFee: number;
+    bankName: string;
+    bankAccountNumber: string;
+    accountName: string;
+  } | null>(null);
+  const [composerPaymentStatus, setComposerPaymentStatus] =
+    useState<RoleRequestState>("none");
+  const [composerPaymentRecord, setComposerPaymentRecord] = useState<
+    any | null
+  >(null);
+  const [composerPaymentRef, setComposerPaymentRef] = useState("");
+  const [composerPaymentSubmitting, setComposerPaymentSubmitting] =
+    useState(false);
 
   // Form state
   const [displayName, setDisplayName] = useState<string>("");
@@ -91,6 +106,22 @@ export function ManageAccount() {
       setAvatarUrl(null);
     }
   }, [appUser]);
+
+  useEffect(() => {
+    if (!appUser) {
+      setComposerRegulations(null);
+      setComposerPaymentStatus("none");
+      setComposerPaymentRecord(null);
+      return;
+    }
+
+    void fetchComposerPaymentState();
+    const timer = setInterval(() => {
+      void fetchComposerPaymentState();
+    }, 15000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appUser?.id]);
 
   const fetchRoleRequestStatus = async (): Promise<{
     roles: string[];
@@ -126,6 +157,39 @@ export function ManageAccount() {
     } catch (err) {
       console.warn("[fetchRoleRequestStatus] error:", err);
       return null;
+    }
+  };
+
+  const fetchComposerPaymentState = async () => {
+    try {
+      const [regulations, submissions] = await Promise.all([
+        registrationService.getRegulations(),
+        registrationService.getMyPayments("composer_request"),
+      ]);
+
+      setComposerRegulations({
+        composerRequestFee: Number(regulations?.composerRequestFee || 0),
+        bankName: regulations?.bankName || "I&M Bank",
+        bankAccountNumber:
+          regulations?.bankAccountNumber || "0030 7335 5161 50",
+        accountName: regulations?.accountName || "Murekefu Music Hub",
+      });
+
+      const latest = Array.isArray(submissions) ? submissions[0] || null : null;
+      setComposerPaymentRecord(latest);
+
+      if (latest?.status === "pending") {
+        setComposerPaymentStatus("pending");
+      } else if (latest?.status === "approved" && !latest?.is_consumed) {
+        setComposerPaymentStatus("approved");
+      } else if (latest?.status === "rejected") {
+        setComposerPaymentStatus("rejected");
+      } else {
+        setComposerPaymentStatus("none");
+      }
+    } catch (err) {
+      console.warn("[fetchComposerPaymentState] error:", err);
+      setComposerPaymentStatus("none");
     }
   };
 
@@ -266,7 +330,7 @@ export function ManageAccount() {
 
       setAvatarFile(null);
       setIsEditing(false);
-      toast.success("✅ Profile updated successfully");
+      toast.success("Profile updated successfully");
     } catch (err: any) {
       console.error("[handleSaveProfile] Error:", err);
       toast.error(err?.message || "Failed to save profile");
@@ -277,6 +341,17 @@ export function ManageAccount() {
 
   const handleRequestRole = async (roleType: "composer" | "admin") => {
     if (!supabaseId || !appUser) return;
+    if (
+      roleType === "composer" &&
+      composerRegulations &&
+      Number(composerRegulations.composerRequestFee || 0) > 0 &&
+      composerPaymentStatus !== "approved"
+    ) {
+      toast.error(
+        "Submit and get approval for the composer registration payment before requesting composer access.",
+      );
+      return;
+    }
 
     setRoleLoading(true);
     try {
@@ -298,9 +373,7 @@ export function ManageAccount() {
 
       if (!res.ok) {
         if (res.status === 409) {
-          toast.error(
-            `⏳ You already have a ${data.status} ${roleType} request`,
-          );
+          toast.error(`You already have a ${data.status} ${roleType} request`);
           if (
             data?.status === "pending" ||
             data?.status === "approved" ||
@@ -308,6 +381,12 @@ export function ManageAccount() {
           ) {
             setRequestStatus((prev) => ({ ...prev, [roleType]: data.status }));
           }
+        } else if (res.status === 402 && roleType === "composer") {
+          toast.error(
+            data?.message ||
+              "Composer registration payment is required before requesting access.",
+          );
+          await fetchComposerPaymentState();
         } else {
           toast.error(data.message || `Failed to request ${roleType} access`);
         }
@@ -316,7 +395,9 @@ export function ManageAccount() {
       }
 
       toast.success(
-        `✅ ${roleType.charAt(0).toUpperCase() + roleType.slice(1)} request submitted! Awaiting admin approval.`,
+        `${
+          roleType.charAt(0).toUpperCase() + roleType.slice(1)
+        } request submitted. Awaiting admin approval.`,
       );
       setShowRoleModal(false);
 
@@ -334,11 +415,48 @@ export function ManageAccount() {
             : prev,
         );
       }
+      if (roleType === "composer") {
+        await fetchComposerPaymentState();
+      }
     } catch (err: any) {
       console.error("[handleRequestRole] error:", err);
       toast.error(err?.message || `Failed to request ${roleType} access`);
     } finally {
       setRoleLoading(false);
+    }
+  };
+
+  const submitComposerPayment = async () => {
+    const paymentRef = composerPaymentRef.trim();
+    if (!paymentRef) {
+      toast.error("Enter your payment reference code first.");
+      return;
+    }
+
+    setComposerPaymentSubmitting(true);
+    try {
+      const result = await registrationService.submitPayment({
+        registrationType: "composer_request",
+        paymentRef,
+      });
+      toast.success(
+        result?.message ||
+          "Payment reference submitted. Wait for admin approval.",
+      );
+      setComposerPaymentRef("");
+      await fetchComposerPaymentState();
+    } catch (err: any) {
+      if (err?.status === 409) {
+        toast.info(
+          err?.message ||
+            "A registration payment is already pending/approved for composer access.",
+        );
+      } else {
+        toast.error(err?.message || "Failed to submit composer payment");
+      }
+      await fetchComposerPaymentState();
+    } finally {
+      setComposerPaymentSubmitting(false);
     }
   };
 
@@ -367,9 +485,12 @@ export function ManageAccount() {
       try {
         let resp: Response | undefined;
         if (supabaseId) {
-          resp = await fetch(`${API_BASE_URL}/users/${supabaseId}?_ts=${Date.now()}`, {
-            headers: { "Content-Type": "application/json" },
-          });
+          resp = await fetch(
+            `${API_BASE_URL}/users/${supabaseId}?_ts=${Date.now()}`,
+            {
+              headers: { "Content-Type": "application/json" },
+            },
+          );
         } else if (authUid) {
           resp = await fetch(
             `${API_BASE_URL}/users/by-auth-uid/${authUid}?_ts=${Date.now()}`,
@@ -436,10 +557,10 @@ export function ManageAccount() {
 
   if (initialLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 flex items-center justify-center p-4">
+      <div className="texture-linen flex min-h-screen items-center justify-center p-4">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-purple-600" />
-          <p className="text-gray-600">Loading profile...</p>
+          <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading profile...</p>
         </div>
       </div>
     );
@@ -451,10 +572,21 @@ export function ManageAccount() {
   const isComposer = userRoles.includes("composer");
   const isAdmin = userRoles.includes("admin");
 
-  const composerRequestStatus: RoleRequestState =
-    isComposer ? "approved" : requestStatus.composer;
-  const adminRequestStatus: RoleRequestState =
-    isAdmin ? "approved" : requestStatus.admin;
+  const composerRequestStatus: RoleRequestState = isComposer
+    ? "approved"
+    : requestStatus.composer;
+  const adminRequestStatus: RoleRequestState = isAdmin
+    ? "approved"
+    : requestStatus.admin;
+  const composerRegistrationFee = Number(
+    composerRegulations?.composerRequestFee || 0,
+  );
+  const composerRequiresPayment = composerRegistrationFee > 0;
+  const composerHasApprovedPayment =
+    composerPaymentStatus === "approved" && !composerPaymentRecord?.is_consumed;
+  const composerPaymentPending = composerPaymentStatus === "pending";
+  const composerCanRequestAccess =
+    !composerRequiresPayment || composerHasApprovedPayment;
 
   const dashboardOptions = [
     ...(userRoles.includes("buyer")
@@ -469,22 +601,27 @@ export function ManageAccount() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 py-12 px-4">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="texture-linen min-h-screen overflow-hidden py-12">
+      <div className="mx-auto max-w-5xl space-y-6 px-4">
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-            Account Settings
-          </h1>
-          <p className="text-gray-600">Manage your profile and preferences</p>
+        <div className="texture-fabric texture-speckle motion-reveal overflow-hidden rounded-3xl border border-border/70 bg-card/80 shadow-[0_24px_44px_-30px_rgba(15,23,42,0.85)]">
+          <div className="p-6 sm:p-8">
+            <span className="soft-kicker">Account Center</span>
+            <h1 className="mt-5 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
+              Account Settings
+            </h1>
+            <p className="mt-3 text-sm text-muted-foreground sm:text-base">
+              Manage your profile, roles, and dashboard access.
+            </p>
+          </div>
         </div>
 
         {/* Profile Card */}
-        <Card className="overflow-hidden shadow-xl border-0">
-          <CardHeader className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-            <CardTitle className="text-2xl flex items-center gap-2">
-              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
-                👤
+        <Card className="lift-card texture-speckle overflow-hidden border-border/70 bg-card/95">
+          <CardHeader className="border-b border-border/70 bg-card/80">
+            <CardTitle className="flex items-center gap-3 text-2xl text-foreground">
+              <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <UserRound className="h-5 w-5" />
               </div>
               Profile Information
             </CardTitle>
@@ -493,10 +630,10 @@ export function ManageAccount() {
           <CardContent className="pt-8 pb-8">
             {!isEditing ? (
               <div className="space-y-8">
-                <div className="grid md:grid-cols-[auto_1fr] gap-8 items-start">
+                <div className="grid items-start gap-8 md:grid-cols-[auto_1fr]">
                   <div className="flex flex-col items-center space-y-3">
                     <div className="relative group">
-                      <div className="w-40 h-40 bg-gradient-to-br from-blue-400 via-purple-400 to-pink-400 rounded-3xl overflow-hidden flex items-center justify-center shadow-xl ring-4 ring-white">
+                      <div className="flex h-40 w-40 items-center justify-center overflow-hidden rounded-3xl border border-border/70 bg-gradient-to-br from-[#0f766e] to-[#0b4a52] shadow-[0_18px_30px_-24px_rgba(15,23,42,0.9)] ring-4 ring-white/70">
                         {user?.avatar_url ? (
                           // display the URL that comes from server
                           <img
@@ -505,62 +642,63 @@ export function ManageAccount() {
                             className="w-full h-full object-cover"
                           />
                         ) : (
-                          <div className="text-6xl">👤</div>
+                          <UserRound className="h-16 w-16 text-white/90" />
                         )}
                       </div>
-                      <div className="absolute -bottom-2 -right-2 bg-green-500 w-8 h-8 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
+                      <div className="absolute -bottom-2 -right-2 flex h-8 w-8 items-center justify-center rounded-full border-4 border-white bg-emerald-600 shadow-md">
                         <CheckCircle className="w-4 h-4 text-white" />
                       </div>
                     </div>
                     <div className="text-center">
-                      <p className="font-semibold text-gray-900 text-lg">
+                      <p className="text-lg font-semibold text-foreground">
                         {user?.display_name || "User"}
                       </p>
-                      <p className="text-sm text-gray-500">{user?.email}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {user?.email}
+                      </p>
                     </div>
                   </div>
 
-                  <div className="grid sm:grid-cols-2 gap-6">
+                  <div className="grid gap-6 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">
-                        <div className="w-1 h-4 bg-blue-500 rounded-full"></div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         Display Name
                       </div>
-                      <p className="text-lg font-medium text-gray-900 pl-3">
+                      <p className="text-base font-medium text-foreground">
                         {user?.display_name || (
-                          <span className="text-gray-400 italic">Not set</span>
+                          <span className="italic text-muted-foreground">
+                            Not set
+                          </span>
                         )}
                       </p>
                     </div>
 
                     <div className="space-y-2 sm:col-span-2">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">
-                        <div className="w-1 h-4 bg-pink-500 rounded-full"></div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         Email Address
                       </div>
-                      <p className="text-lg font-medium text-gray-900 pl-3">
+                      <p className="text-base font-medium text-foreground">
                         {user?.email}
                       </p>
                     </div>
 
                     <div className="space-y-3 sm:col-span-2">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">
-                        <div className="w-1 h-4 bg-emerald-500 rounded-full"></div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         Current Roles
                       </div>
-                      <div className="flex flex-wrap gap-2 pl-3">
-                        {user?.roles && user.roles.length > 0 ? (
-                          user.roles.map((role) => (
+                      <div className="flex flex-wrap gap-2">
+                        {userRoles.length > 0 ? (
+                          userRoles.map((role) => (
                             <span
                               key={role}
-                              className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-full text-sm font-semibold shadow-md"
+                              className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-secondary px-3 py-1.5 text-sm font-semibold text-secondary-foreground"
                             >
                               <CheckCircle className="w-4 h-4" />
                               {role.charAt(0).toUpperCase() + role.slice(1)}
                             </span>
                           ))
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 px-4 py-2 bg-gray-100 text-gray-600 rounded-full text-sm font-medium">
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted px-3 py-1.5 text-sm font-medium text-muted-foreground">
                             <Shield className="w-4 h-4" />
                             Basic User
                           </span>
@@ -570,12 +708,12 @@ export function ManageAccount() {
                   </div>
                 </div>
 
-                <div className="border-t pt-6">
+                <div className="border-t border-border/70 pt-6">
                   <Button
                     onClick={() => {
                       setIsEditing(true);
                     }}
-                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 w-full sm:w-auto px-8 shadow-lg"
+                    className="w-full sm:w-auto"
                     size="lg"
                   >
                     <Edit2 className="w-4 h-4 mr-2" />
@@ -587,7 +725,7 @@ export function ManageAccount() {
               <div className="space-y-8">
                 <div className="flex flex-col items-center space-y-4">
                   <div className="relative group cursor-pointer">
-                    <div className="w-40 h-40 bg-gradient-to-br from-blue-400 via-purple-400 to-pink-400 rounded-3xl overflow-hidden flex items-center justify-center shadow-xl ring-4 ring-purple-100 transition-all group-hover:ring-purple-300">
+                    <div className="flex h-40 w-40 items-center justify-center overflow-hidden rounded-3xl border border-border/70 bg-gradient-to-br from-[#0f766e] to-[#0b4a52] shadow-[0_18px_30px_-24px_rgba(15,23,42,0.9)] ring-4 ring-white/70 transition-all group-hover:ring-secondary">
                       {avatarUrl ? (
                         <img
                           src={avatarUrl}
@@ -595,7 +733,7 @@ export function ManageAccount() {
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <div className="text-6xl">👤</div>
+                        <UserRound className="h-16 w-16 text-white/90" />
                       )}
                     </div>
                     <div className="absolute inset-0 bg-black/40 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -604,7 +742,7 @@ export function ManageAccount() {
                   </div>
                   <Label
                     htmlFor="avatar-input"
-                    className="cursor-pointer inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-lg font-medium shadow-md transition-all"
+                    className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                   >
                     <input
                       id="avatar-input"
@@ -614,11 +752,12 @@ export function ManageAccount() {
                       className="hidden"
                       title="Upload a new profile photo"
                     />
-                    📷 Upload New Photo
+                    <Camera className="h-4 w-4" />
+                    Upload New Photo
                   </Label>
                   <Label
                     htmlFor="selfie-input"
-                    className="cursor-pointer inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg font-medium shadow-md transition-all"
+                    className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border/80 bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                   >
                     <input
                       id="selfie-input"
@@ -629,16 +768,16 @@ export function ManageAccount() {
                       className="hidden"
                       title="Take a selfie"
                     />
-                    <Camera className="w-4 h-4" />
+                    <UserRound className="h-4 w-4" />
                     Take Selfie
                   </Label>
                 </div>
 
-                <div className="grid sm:grid-cols-2 gap-6">
+                <div className="grid gap-6 sm:grid-cols-2">
                   <div className="space-y-3">
                     <Label
                       htmlFor="displayName"
-                      className="text-sm font-semibold text-gray-700"
+                      className="text-sm font-semibold text-foreground"
                     >
                       Display Name
                     </Label>
@@ -647,16 +786,16 @@ export function ManageAccount() {
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
                       placeholder="e.g., John Musician"
-                      className="h-12 text-base"
+                      className="h-11 bg-input-background"
                     />
                   </div>
                 </div>
 
-                <div className="border-t pt-6 flex flex-col sm:flex-row gap-3">
+                <div className="flex flex-col gap-3 border-t border-border/70 pt-6 sm:flex-row">
                   <Button
                     onClick={handleSaveProfile}
                     disabled={loading}
-                    className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg"
+                    className="flex-1"
                     size="lg"
                   >
                     {loading ? (
@@ -674,7 +813,7 @@ export function ManageAccount() {
                       setAvatarFile(null);
                     }}
                     variant="outline"
-                    className="flex-1 sm:flex-none sm:px-8 border-2"
+                    className="flex-1 sm:flex-none sm:px-8"
                     size="lg"
                   >
                     Cancel
@@ -686,10 +825,10 @@ export function ManageAccount() {
         </Card>
 
         {/* Request Roles Card */}
-        <Card className="shadow-xl border-0 overflow-hidden">
-          <CardHeader className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
-            <CardTitle className="text-2xl flex items-center gap-2">
-              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+        <Card className="lift-card texture-speckle overflow-hidden border-border/70 bg-card/95">
+          <CardHeader className="border-b border-border/70 bg-card/80">
+            <CardTitle className="flex items-center gap-3 text-2xl text-foreground">
+              <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <Shield className="w-5 h-5" />
               </div>
               Role Management
@@ -698,27 +837,27 @@ export function ManageAccount() {
 
           <CardContent className="pt-6 pb-6">
             <div className="grid sm:grid-cols-2 gap-4">
-              <div className="p-6 border-2 rounded-xl transition-all hover:shadow-md">
+              <div className="rounded-2xl border border-border/70 bg-card/80 p-6">
                 <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-orange-100 to-pink-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Music className="w-6 h-6 text-orange-600" />
+                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                    <Music className="w-6 h-6" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900 mb-1">
+                    <h3 className="mb-1 font-semibold text-foreground">
                       Composer Access
                     </h3>
-                    <p className="text-sm text-gray-600 mb-4">
+                    <p className="mb-4 text-sm text-muted-foreground">
                       Upload and publish music compositions
                     </p>
                     {composerRequestStatus === "approved" ? (
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-2 text-green-700 font-medium">
+                        <div className="flex items-center gap-2 font-medium text-emerald-700">
                           <CheckCircle className="w-5 h-5 flex-shrink-0" />
                           <span className="text-sm">Active</span>
                         </div>
                         <Button
                           onClick={() => navigate("/composer")}
-                          className="ml-3 bg-green-600 hover:bg-green-700"
+                          className="ml-3"
                           size="sm"
                         >
                           Open Dashboard
@@ -727,23 +866,88 @@ export function ManageAccount() {
                     ) : composerRequestStatus === "pending" ? (
                       <Button
                         disabled
-                        className="w-full bg-gray-200 text-gray-700 border-gray-200"
+                        className="w-full border-border/80 bg-muted text-muted-foreground"
                         size="sm"
                       >
                         Pending Approval
                       </Button>
                     ) : (
-                      <div className="space-y-2">
+                      <div className="space-y-3">
+                        {composerRequiresPayment && composerRegulations ? (
+                          <div className="rounded-xl border border-border/70 bg-muted/40 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                              Registration Payment Required
+                            </p>
+                            <p className="mt-2 text-sm">
+                              Fee:{" "}
+                              <span className="font-semibold">
+                                ${composerRegistrationFee.toFixed(2)}
+                              </span>
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Bank: {composerRegulations.bankName}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Account: {composerRegulations.bankAccountNumber}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Account Name: {composerRegulations.accountName}
+                            </p>
+                            {composerHasApprovedPayment ? (
+                              <p className="mt-2 text-xs font-medium text-emerald-700">
+                                Payment approved. You can now request composer
+                                access.
+                              </p>
+                            ) : composerPaymentPending ? (
+                              <p className="mt-2 text-xs font-medium text-amber-700">
+                                Payment pending admin approval. Ref:{" "}
+                                {composerPaymentRecord?.payment_ref || "-"}
+                              </p>
+                            ) : (
+                              <div className="mt-3 flex gap-2">
+                                <Input
+                                  value={composerPaymentRef}
+                                  onChange={(e) =>
+                                    setComposerPaymentRef(e.target.value)
+                                  }
+                                  placeholder="Payment reference code"
+                                  disabled={composerPaymentSubmitting}
+                                />
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => void submitComposerPayment()}
+                                  disabled={composerPaymentSubmitting}
+                                >
+                                  {composerPaymentSubmitting ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    "Submit"
+                                  )}
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          []
+                        )}
                         <Button
                           onClick={() => setShowRoleModal("composer")}
-                          className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 shadow-md"
+                          className="w-full"
                           size="sm"
+                          disabled={!composerCanRequestAccess}
                         >
-                          Request Access
+                          {composerCanRequestAccess
+                            ? "Request Access"
+                            : composerPaymentPending
+                              ? "Awaiting Payment Approval"
+                              : "Payment Required"}
                         </Button>
                         {composerRequestStatus === "rejected" ? (
-                          <p className="text-xs text-red-600">
-                            Your previous request was rejected. You can request again.
+                          <p className="text-xs text-destructive">
+                            Your previous request was rejected. You can request
+                            again.
                           </p>
                         ) : null}
                       </div>
@@ -752,27 +956,27 @@ export function ManageAccount() {
                 </div>
               </div>
 
-              <div className="p-6 border-2 rounded-xl transition-all hover:shadow-md">
+              <div className="rounded-2xl border border-border/70 bg-card/80 p-6">
                 <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-purple-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Shield className="w-6 h-6 text-blue-600" />
+                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700">
+                    <Shield className="w-6 h-6" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900 mb-1">
+                    <h3 className="mb-1 font-semibold text-foreground">
                       Admin Access
                     </h3>
-                    <p className="text-sm text-gray-600 mb-4">
+                    <p className="mb-4 text-sm text-muted-foreground">
                       Manage platform and users
                     </p>
                     {adminRequestStatus === "approved" ? (
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-2 text-blue-700 font-medium">
+                        <div className="flex items-center gap-2 font-medium text-emerald-700">
                           <CheckCircle className="w-5 h-5 flex-shrink-0" />
                           <span className="text-sm">Active</span>
                         </div>
                         <Button
                           onClick={() => navigate("/admin")}
-                          className="ml-3 bg-blue-600 hover:bg-blue-700 text-white"
+                          className="ml-3"
                           size="sm"
                         >
                           Open Dashboard
@@ -781,7 +985,7 @@ export function ManageAccount() {
                     ) : adminRequestStatus === "pending" ? (
                       <Button
                         disabled
-                        className="w-full bg-gray-200 text-gray-700 border-gray-200"
+                        className="w-full border-border/80 bg-muted text-muted-foreground"
                         size="sm"
                       >
                         Pending Approval
@@ -791,14 +995,15 @@ export function ManageAccount() {
                         <Button
                           onClick={() => setShowRoleModal("admin")}
                           variant="outline"
-                          className="w-full border-2 hover:bg-gray-50"
+                          className="w-full"
                           size="sm"
                         >
                           Request Access
                         </Button>
                         {adminRequestStatus === "rejected" ? (
-                          <p className="text-xs text-red-600">
-                            Your previous admin request was rejected. You can request again.
+                          <p className="text-xs text-destructive">
+                            Your previous admin request was rejected. You can
+                            request again.
                           </p>
                         ) : null}
                       </div>
@@ -811,10 +1016,10 @@ export function ManageAccount() {
         </Card>
 
         {dashboardOptions.length > 1 ? (
-          <Card className="shadow-xl border-0 overflow-hidden">
-            <CardHeader className="bg-gradient-to-r from-emerald-600 to-cyan-600 text-white">
-              <CardTitle className="text-xl flex items-center gap-2">
-                <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center">
+          <Card className="lift-card texture-speckle overflow-hidden border-border/70 bg-card/95">
+            <CardHeader className="border-b border-border/70 bg-card/80">
+              <CardTitle className="flex items-center gap-3 text-xl text-foreground">
+                <div className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
                   <LayoutDashboard className="w-4 h-4" />
                 </div>
                 Switch Dashboard
@@ -826,7 +1031,7 @@ export function ManageAccount() {
                   <Button
                     key={item.key}
                     variant="outline"
-                    className="w-full border-2 hover:bg-gray-50"
+                    className="w-full"
                     onClick={() => navigate(item.path)}
                   >
                     {item.label}
@@ -838,10 +1043,10 @@ export function ManageAccount() {
         ) : null}
 
         {/* Danger Zone */}
-        <Card className="shadow-xl border-2 border-red-200 overflow-hidden">
-          <CardHeader className="bg-gradient-to-r from-red-600 to-rose-600 text-white">
-            <CardTitle className="text-xl flex items-center gap-2">
-              <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center">
+        <Card className="lift-card overflow-hidden border-destructive/35 bg-card/95">
+          <CardHeader className="border-b border-destructive/30 bg-destructive/5">
+            <CardTitle className="flex items-center gap-3 text-xl text-destructive">
+              <div className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-destructive/15 text-destructive">
                 <AlertCircle className="w-4 h-4" />
               </div>
               Danger Zone
@@ -849,13 +1054,13 @@ export function ManageAccount() {
           </CardHeader>
 
           <CardContent className="pt-6 pb-6">
-            <div className="flex items-start gap-4 mb-4 p-4 bg-red-50 rounded-lg border border-red-200">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="mb-4 flex items-start gap-4 rounded-lg border border-destructive/25 bg-destructive/5 p-4">
+              <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-destructive" />
               <div>
-                <p className="font-semibold text-red-900 mb-1">
+                <p className="mb-1 font-semibold text-destructive">
                   Delete Account
                 </p>
-                <p className="text-sm text-red-700">
+                <p className="text-sm text-muted-foreground">
                   This action cannot be undone. All your data will be
                   permanently deleted.
                 </p>
@@ -864,7 +1069,7 @@ export function ManageAccount() {
             <Button
               onClick={() => setShowDeleteConfirm(true)}
               variant="destructive"
-              className="w-full sm:w-auto shadow-md"
+              className="w-full sm:w-auto"
               size="lg"
             >
               <Trash2 className="w-4 h-4 mr-2" />
@@ -896,7 +1101,7 @@ export function ManageAccount() {
             <AlertDialogAction
               onClick={() => showRoleModal && handleRequestRole(showRoleModal)}
               disabled={roleLoading}
-              className="bg-purple-600 hover:bg-purple-700"
+              className="bg-primary hover:bg-primary/90"
             >
               {roleLoading ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />

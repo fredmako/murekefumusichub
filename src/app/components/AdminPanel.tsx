@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Users,
@@ -83,9 +83,40 @@ function formatDateTime(value?: string | null) {
   return date.toLocaleString();
 }
 
+function LoadingTableRow({
+  colSpan,
+  label,
+}: {
+  colSpan: number;
+  label: string;
+}) {
+  return (
+    <TableRow>
+      <TableCell colSpan={colSpan} className="py-8">
+        <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+          <Loader className="size-4 animate-spin" />
+          <span>{label}</span>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
+
 /* --------- TYPES --------- */
 type UserRoleMap = Record<string, string>; // user_id -> primaryRoleString
 type DataLoadLevel = "none" | "preview" | "full";
+
+const BOOTSTRAP_FALLBACK = {
+  roles: [],
+  invites: [],
+  requests: [],
+  stats: {
+    totalUsers: 0,
+    totalCompositions: 0,
+    totalRevenue: 0,
+    totalTransactions: 0,
+  },
+};
 
 export function AdminPanel() {
   const navigate = useNavigate();
@@ -122,6 +153,8 @@ export function AdminPanel() {
   const [supportMessagesLoading, setSupportMessagesLoading] = useState(false);
   const [processingAction, setProcessingAction] = useState<string | null>(null);
   const [newInviteEmail, setNewInviteEmail] = useState("");
+  const inviteSectionRef = useRef<HTMLDivElement | null>(null);
+  const inviteInputRef = useRef<HTMLInputElement | null>(null);
   const [supportStateFilter, setSupportStateFilter] = useState<
     "all" | "unread" | "read"
   >("unread");
@@ -176,7 +209,16 @@ export function AdminPanel() {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const bootstrap = await adminService.fetchBootstrap();
+      let didTimeout = false;
+      const bootstrap = await Promise.race([
+        adminService.fetchBootstrap(),
+        new Promise<typeof BOOTSTRAP_FALLBACK>((resolve) =>
+          setTimeout(() => {
+            didTimeout = true;
+            resolve(BOOTSTRAP_FALLBACK);
+          }, 12000),
+        ),
+      ]);
       setInvites(bootstrap?.invites || []);
       setRequests(bootstrap?.requests || []);
 
@@ -185,6 +227,12 @@ export function AdminPanel() {
       setTotalCompositions(stats.totalCompositions || 0);
       setTotalRevenue(stats.totalRevenue || 0);
       setTotalTransactions(stats.totalTransactions || 0);
+
+      if (didTimeout) {
+        toast.error(
+          "Admin bootstrap timed out. Showing a limited view; retrying in background.",
+        );
+      }
     } catch (err: any) {
       console.error("AdminPanel fetchAll error:", err);
       toast.error("Failed to load admin data");
@@ -829,14 +877,62 @@ export function AdminPanel() {
     return vals.filter((r) => r === "buyer").length;
   }, [userIdToRole]);
 
+  const sideMenuButtonClass = (active: boolean) =>
+    `w-full justify-start rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
+      active
+        ? "border-primary bg-primary/10 text-primary"
+        : "border-border/70 bg-card/70 text-foreground hover:bg-muted/40"
+    }`;
+
+  const goToOpenTickets = () => {
+    setActiveTab("support");
+    setSupportStateFilter("unread");
+    setSelectedSupportThreadId(null);
+    void fetchSupportTickets();
+    void fetchSupportThreads("unread");
+  };
+
+  const goToAssignedChats = () => {
+    setActiveTab("support");
+    setSupportStateFilter("all");
+    void fetchSupportThreads("all");
+  };
+
+  const focusInviteComposer = () => {
+    inviteSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+    setTimeout(() => {
+      inviteInputRef.current?.focus();
+    }, 100);
+  };
+
   if (loading) {
     return (
-      <div className="p-6">
-        <div className="flex items-center gap-3">
-          <Loader className="animate-spin" />
-          <span>Loading admin panel...</span>
-        </div>
-      </div>
+      <main className="texture-linen min-h-screen overflow-hidden py-12">
+        <section className="section-shell">
+          <div className="mx-auto max-w-4xl">
+            <Card className="texture-fabric texture-speckle motion-reveal overflow-hidden rounded-3xl border border-border/70 bg-card/85 shadow-[0_24px_44px_-30px_rgba(15,23,42,0.85)]">
+              <CardContent className="px-6 py-16 text-center sm:px-8">
+                <span className="soft-kicker">Admin Workspace</span>
+                <h2 className="mt-5 text-3xl font-semibold text-foreground sm:text-4xl">
+                  Preparing Admin Panel
+                </h2>
+                <p className="mx-auto mt-3 max-w-xl text-sm text-muted-foreground sm:text-base">
+                  Loading users, transactions, enrollments, and support threads.
+                </p>
+                <div className="mt-8 inline-flex items-center gap-3 rounded-full border border-border/70 bg-card/85 px-4 py-2">
+                  <Loader className="size-4 animate-spin text-primary" />
+                  <span className="text-sm font-medium text-foreground">
+                    Loading admin panel...
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+      </main>
     );
   }
 
@@ -910,89 +1006,215 @@ export function AdminPanel() {
       </div>
 
       {/* Invite composer */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Add Composer Invite</CardTitle>
-          <CardDescription>
-            Enter an email to allow that user to register as composer
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex gap-2 items-center">
-          <input
-            className="flex-1 px-3 py-2 border rounded"
-            placeholder="composer@example.com"
-            value={newInviteEmail}
-            onChange={(e) => setNewInviteEmail(e.target.value)}
-            disabled={isProcessing}
-          />
-          <Button
-            onClick={() => addComposerInvite(newInviteEmail)}
-            disabled={isProcessing}
-          >
-            <Plus className="mr-2" /> Add Invite
-          </Button>
-        </CardContent>
-        {invites.length > 0 && (
-          <CardContent>
-            <div className="text-sm text-gray-600 mb-2">Recent invites</div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Invited By</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invites.map((inv: any) => (
-                  <TableRow key={inv.email || inv.id}>
-                    <TableCell>{inv.email}</TableCell>
-                    <TableCell>{inv.invitedBy || "admin"}</TableCell>
-                    <TableCell>
-                      {new Date(
-                        inv.createdAt || inv.created_at || "",
-                      ).toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => revokeInvite(inv.email || inv.id)}
-                        disabled={isProcessing}
-                      >
-                        Revoke
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+      <div ref={inviteSectionRef}>
+        <Card>
+          <CardHeader>
+            <CardTitle>Add Composer Invite</CardTitle>
+            <CardDescription>
+              Enter an email to allow that user to register as composer
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex gap-2 items-center">
+            <input
+              ref={inviteInputRef}
+              className="flex-1 px-3 py-2 border rounded"
+              placeholder="composer@example.com"
+              value={newInviteEmail}
+              onChange={(e) => setNewInviteEmail(e.target.value)}
+              disabled={isProcessing}
+            />
+            <Button
+              onClick={() => addComposerInvite(newInviteEmail)}
+              disabled={isProcessing}
+            >
+              <Plus className="mr-2" /> Add Invite
+            </Button>
           </CardContent>
-        )}
-      </Card>
+          {invites.length > 0 && (
+            <CardContent>
+              <div className="text-sm text-gray-600 mb-2">Recent invites</div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Invited By</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invites.map((inv: any) => (
+                    <TableRow key={inv.email || inv.id}>
+                      <TableCell>{inv.email}</TableCell>
+                      <TableCell>{inv.invitedBy || "admin"}</TableCell>
+                      <TableCell>
+                        {new Date(
+                          inv.createdAt || inv.created_at || "",
+                        ).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => revokeInvite(inv.email || inv.id)}
+                          disabled={isProcessing}
+                        >
+                          Revoke
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          )}
+        </Card>
+      </div>
 
       {/* TABS */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v)}>
-        <TabsList className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="users">Users</TabsTrigger>
-          <TabsTrigger value="requests">Requests</TabsTrigger>
-          <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
-          <TabsTrigger value="compositions">Compositions</TabsTrigger>
-          <TabsTrigger value="transactions">Transactions</TabsTrigger>
-          <TabsTrigger value="support" className="gap-2">
-            Support
-            {supportUnreadCount > 0 && (
-              <Badge className="bg-amber-100 text-amber-800">
-                {supportUnreadCount}
-              </Badge>
-            )}
-          </TabsTrigger>
-        </TabsList>
+        <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
+            <Card className="texture-speckle border-border/70 bg-card/95">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Service Menu</CardTitle>
+                <CardDescription>
+                  Navigate core admin services quickly.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Customer Service
+                  </p>
+                  <div className="mt-2 space-y-2">
+                    <Button
+                      type="button"
+                      className={sideMenuButtonClass(
+                        activeTab === "support" && supportStateFilter === "unread",
+                      )}
+                      onClick={goToOpenTickets}
+                    >
+                      <MessageSquare className="mr-2 size-4" />
+                      Open Tickets
+                      <Badge className="ml-auto bg-amber-100 text-amber-800">
+                        {supportTickets.length}
+                      </Badge>
+                    </Button>
+                    <Button
+                      type="button"
+                      className={sideMenuButtonClass(
+                        activeTab === "support" && supportStateFilter !== "unread",
+                      )}
+                      onClick={goToAssignedChats}
+                    >
+                      <Send className="mr-2 size-4" />
+                      Assigned Chats
+                      <Badge className="ml-auto bg-emerald-100 text-emerald-800">
+                        {supportThreads.length}
+                      </Badge>
+                    </Button>
+                  </div>
+                </div>
 
-        {/* Overview */}
-        <TabsContent value="overview" className="mt-6 space-y-6">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Platform Operations
+                  </p>
+                  <div className="mt-2 space-y-2">
+                    <Button
+                      type="button"
+                      className={sideMenuButtonClass(activeTab === "users")}
+                      onClick={() => setActiveTab("users")}
+                    >
+                      <Users className="mr-2 size-4" />
+                      User Management
+                    </Button>
+                    <Button
+                      type="button"
+                      className={sideMenuButtonClass(activeTab === "requests")}
+                      onClick={() => setActiveTab("requests")}
+                    >
+                      <Check className="mr-2 size-4" />
+                      Role Requests
+                      <Badge className="ml-auto bg-sky-100 text-sky-800">
+                        {pendingRequests.length}
+                      </Badge>
+                    </Button>
+                    <Button
+                      type="button"
+                      className={sideMenuButtonClass(false)}
+                      onClick={focusInviteComposer}
+                    >
+                      <Plus className="mr-2 size-4" />
+                      Composer Invites
+                    </Button>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Content and Commerce
+                  </p>
+                  <div className="mt-2 space-y-2">
+                    <Button
+                      type="button"
+                      className={sideMenuButtonClass(activeTab === "overview")}
+                      onClick={() => setActiveTab("overview")}
+                    >
+                      <TrendingUp className="mr-2 size-4" />
+                      Overview
+                    </Button>
+                    <Button
+                      type="button"
+                      className={sideMenuButtonClass(activeTab === "compositions")}
+                      onClick={() => setActiveTab("compositions")}
+                    >
+                      <Music className="mr-2 size-4" />
+                      Compositions
+                    </Button>
+                    <Button
+                      type="button"
+                      className={sideMenuButtonClass(activeTab === "transactions")}
+                      onClick={() => setActiveTab("transactions")}
+                    >
+                      <DollarSign className="mr-2 size-4" />
+                      Transactions
+                    </Button>
+                    <Button
+                      type="button"
+                      className={sideMenuButtonClass(activeTab === "enrollments")}
+                      onClick={() => setActiveTab("enrollments")}
+                    >
+                      <GraduationCap className="mr-2 size-4" />
+                      Enrollments
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </aside>
+
+          <div>
+            <TabsList className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:hidden">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="users">Users</TabsTrigger>
+              <TabsTrigger value="requests">Requests</TabsTrigger>
+              <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
+              <TabsTrigger value="compositions">Compositions</TabsTrigger>
+              <TabsTrigger value="transactions">Transactions</TabsTrigger>
+              <TabsTrigger value="support" className="gap-2">
+                Support
+                {supportUnreadCount > 0 && (
+                  <Badge className="bg-amber-100 text-amber-800">
+                    {supportUnreadCount}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Overview */}
+            <TabsContent value="overview" className="mt-6 space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Top Composers</CardTitle>
@@ -1010,11 +1232,10 @@ export function AdminPanel() {
                 </TableHeader>
                 <TableBody>
                   {overviewLoading && composerStats.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-gray-500">
-                        Loading composer analytics...
-                      </TableCell>
-                    </TableRow>
+                    <LoadingTableRow
+                      colSpan={4}
+                      label="Loading composer analytics..."
+                    />
                   )}
                   {composerStats.slice(0, 10).map((c) => (
                     <TableRow key={c.id}>
@@ -1057,11 +1278,10 @@ export function AdminPanel() {
                 </TableHeader>
                 <TableBody>
                   {transactionsLoading && transactions.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-gray-500">
-                        Loading recent transactions...
-                      </TableCell>
-                    </TableRow>
+                    <LoadingTableRow
+                      colSpan={5}
+                      label="Loading recent transactions..."
+                    />
                   )}
                   {transactions.slice(0, 10).map((t) => (
                     <TableRow key={t.id}>
@@ -1122,11 +1342,7 @@ export function AdminPanel() {
                 </TableHeader>
                 <TableBody>
                   {usersLoading && users.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-gray-500">
-                        Loading users...
-                      </TableCell>
-                    </TableRow>
+                    <LoadingTableRow colSpan={5} label="Loading users..." />
                   )}
                   {users.map((u) => (
                     <TableRow key={u.id}>
@@ -1350,11 +1566,7 @@ export function AdminPanel() {
                 </TableHeader>
                 <TableBody>
                   {enrollmentsLoading && enrollments.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={9} className="text-center text-gray-500">
-                        Loading enrollments...
-                      </TableCell>
-                    </TableRow>
+                    <LoadingTableRow colSpan={9} label="Loading enrollments..." />
                   )}
                   {!enrollmentsLoading && enrollments.length === 0 && (
                     <TableRow>
@@ -1445,11 +1657,10 @@ export function AdminPanel() {
                 </TableHeader>
                 <TableBody>
                   {compositionsLoading && compositions.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-gray-500">
-                        Loading compositions...
-                      </TableCell>
-                    </TableRow>
+                    <LoadingTableRow
+                      colSpan={5}
+                      label="Loading compositions..."
+                    />
                   )}
                   {compositions.map((c) => (
                     <TableRow key={c.id}>
@@ -1526,11 +1737,10 @@ export function AdminPanel() {
                 </TableHeader>
                 <TableBody>
                   {transactionsLoading && transactions.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center text-gray-500">
-                        Loading transactions...
-                      </TableCell>
-                    </TableRow>
+                    <LoadingTableRow
+                      colSpan={8}
+                      label="Loading transactions..."
+                    />
                   )}
                   {transactions.map((p) => (
                     <TableRow key={p.id}>
@@ -1914,6 +2124,8 @@ export function AdminPanel() {
             </CardContent>
           </Card>
         </TabsContent>
+          </div>
+        </div>
       </Tabs>
     </div>
   );

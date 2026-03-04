@@ -12,6 +12,10 @@ import { normalizeAvatarUrl } from "../lib/avatarUrl";
 import { API_BASE_URL } from "@/lib/apiBase";
 import type { ThemePreset } from "./ThemeContext";
 
+const AUTH_SESSION_TIMEOUT_MS = 12000;
+const AUTH_PROFILE_SYNC_TIMEOUT_MS = 15000;
+const AUTH_INIT_WATCHDOG_MS = 25000;
+
 export interface AppUser {
   id: string;
   auth_uid: string;
@@ -71,6 +75,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return new Error(
       "Unable to reach authentication service. Check your internet connection, VPN, firewall, and system clock, then try again.",
     );
+  };
+
+  const withTimeout = async <T,>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    label: string,
+  ): Promise<T> => {
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    try {
+      const timeoutPromise = new Promise<T>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      });
+      return await Promise.race([promise, timeoutPromise]);
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+    }
   };
 
   const fetchServerRoles = async (authUid: string): Promise<string[]> => {
@@ -391,14 +413,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
    */
   const signOut = async (redirect = true) => {
     try {
-      const { error } = await supabase.auth.signOut();
+      const { error } = await withTimeout(
+        supabase.auth.signOut(),
+        8000,
+        "Global sign out",
+      );
       if (error) throw error;
-
+    } catch (err: any) {
+      console.warn(
+        "[signOut] global sign out failed; attempting local sign out:",
+        err,
+      );
+      try {
+        await withTimeout(
+          supabase.auth.signOut({ scope: "local" } as any),
+          4000,
+          "Local sign out",
+        );
+      } catch (localErr: any) {
+        console.warn("[signOut] local sign out fallback failed:", localErr);
+      }
+    } finally {
+      // Always clear local auth state to avoid UI flicker/redirect loops when
+      // network is unstable during sign-out.
       setAppUser(null);
       if (redirect) navigate("/login", { replace: true });
-    } catch (err: any) {
-      console.error("[signOut] error:", err);
-      throw err;
     }
   };
 
@@ -408,8 +447,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     let mounted = true;
     let subscriptionUnsubscribe: (() => void) | null = null;
+    let authInitWatchdog: ReturnType<typeof setTimeout> | null = null;
 
     const initAuth = async () => {
+      authInitWatchdog = setTimeout(() => {
+        if (!mounted) return;
+        console.warn(
+          `[initAuth] watchdog reached ${AUTH_INIT_WATCHDOG_MS}ms; forcing auth loading state to false.`,
+        );
+        setIsLoading(false);
+      }, AUTH_INIT_WATCHDOG_MS);
+
       try {
         // Retry getSession with exponential backoff to handle navigator lock timeouts
         let retries = 0;
@@ -418,7 +466,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         while (retries < maxRetries) {
           try {
-            const { data, error } = await supabase.auth.getSession();
+            const { data, error } = await withTimeout(
+              supabase.auth.getSession(),
+              AUTH_SESSION_TIMEOUT_MS,
+              "Auth session lookup",
+            );
 
             if (error) {
               lastError = error;
@@ -434,7 +486,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
             if (data.session && data.session.user) {
               if (mounted) {
-                await syncUserProfile(data.session.user.id);
+                try {
+                  await withTimeout(
+                    syncUserProfile(data.session.user.id),
+                    AUTH_PROFILE_SYNC_TIMEOUT_MS,
+                    "Profile sync",
+                  );
+                } catch (profileErr: any) {
+                  console.warn("[initAuth] profile sync failed:", profileErr);
+                  setAppUser(null);
+                }
               }
             } else if (mounted) {
               setAppUser(null);
@@ -467,6 +528,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
         if (mounted) setAppUser(null);
       } finally {
+        if (authInitWatchdog) {
+          clearTimeout(authInitWatchdog);
+          authInitWatchdog = null;
+        }
         if (mounted) setIsLoading(false);
       }
     };

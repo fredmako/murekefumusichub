@@ -1,16 +1,108 @@
 import { supabase } from "@/lib/supabase";
 import { buildApiUrl } from "@/lib/apiBase";
+import { dispatchSessionExpired } from "@/lib/sessionEvents";
+
+const ACCESS_TOKEN_SESSION_TIMEOUT_MS = 8000;
+const ACCESS_TOKEN_REFRESH_TIMEOUT_MS = 12000;
+const AUTH_REFRESH_BASE_BACKOFF_MS = 4000;
+const AUTH_REFRESH_MAX_BACKOFF_MS = 45000;
+
+let authRefreshFailures = 0;
+let authRefreshCooldownUntil = 0;
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const timeoutPromise = new Promise<T>((_, reject) => {
+      timeoutHandle = setTimeout(() => {
+        reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
+}
+
+function isTransientAuthNetworkError(err: any): boolean {
+  if (!err) return false;
+  const name = String(err?.name || "");
+  const message = String(err?.message || "").toLowerCase();
+  return (
+    name === "TypeError" ||
+    name === "AuthRetryableFetchError" ||
+    message.includes("failed to fetch") ||
+    message.includes("network request failed") ||
+    message.includes("network changed") ||
+    message.includes("err_network_changed") ||
+    message.includes("timeout") ||
+    message.includes("timed out")
+  );
+}
+
+function canAttemptRefreshNow(): boolean {
+  const online = typeof navigator === "undefined" ? true : navigator.onLine;
+  if (!online) return false;
+  return Date.now() >= authRefreshCooldownUntil;
+}
+
+function registerRefreshFailure() {
+  authRefreshFailures += 1;
+  const backoffMs = Math.min(
+    AUTH_REFRESH_MAX_BACKOFF_MS,
+    AUTH_REFRESH_BASE_BACKOFF_MS * Math.max(1, authRefreshFailures),
+  );
+  authRefreshCooldownUntil = Date.now() + backoffMs;
+}
+
+function registerRefreshSuccess() {
+  authRefreshFailures = 0;
+  authRefreshCooldownUntil = 0;
+}
+
+async function refreshSessionSafely(
+  reason: string,
+  timeoutMs: number = ACCESS_TOKEN_REFRESH_TIMEOUT_MS,
+): Promise<string | null> {
+  if (!canAttemptRefreshNow()) return null;
+
+  try {
+    const { data, error } = await withTimeout(
+      supabase.auth.refreshSession(),
+      timeoutMs,
+      reason,
+    );
+    if (error || !data?.session?.access_token) {
+      registerRefreshFailure();
+      return null;
+    }
+    registerRefreshSuccess();
+    return data.session.access_token;
+  } catch (err: any) {
+    if (isTransientAuthNetworkError(err)) {
+      registerRefreshFailure();
+      console.warn(`[auth-refresh] ${reason} skipped after transient network error.`);
+      return null;
+    }
+    throw err;
+  }
+}
 
 async function getAccessToken(): Promise<string | null> {
   try {
-    const { data, error } = await supabase.auth.getSession();
+    const { data, error } = await withTimeout(
+      supabase.auth.getSession(),
+      ACCESS_TOKEN_SESSION_TIMEOUT_MS,
+      "Session lookup",
+    );
     if (error || !data?.session) {
       try {
-        const { data: refreshed, error: refreshErr } =
-          await supabase.auth.refreshSession();
-        if (!refreshErr && refreshed?.session?.access_token) {
-          return refreshed.session.access_token;
-        }
+        const refreshedToken = await refreshSessionSafely("Session refresh");
+        if (refreshedToken) return refreshedToken;
       } catch {
         // ignore and return null below
       }
@@ -24,11 +116,10 @@ async function getAccessToken(): Promise<string | null> {
     // Refresh shortly before expiry to avoid edge-case 401s on slow requests.
     if (expiresAt - now <= 30) {
       try {
-        const { data: refreshData, error: refreshErr } =
-          await supabase.auth.refreshSession();
-        if (!refreshErr && refreshData?.session?.access_token) {
-          return refreshData.session.access_token;
-        }
+        const refreshedToken = await refreshSessionSafely(
+          "Proactive session refresh",
+        );
+        if (refreshedToken) return refreshedToken;
       } catch {
         // Ignore refresh failures and return existing token as best effort.
       }
@@ -50,6 +141,8 @@ function isRetriableNetworkError(err: any): boolean {
     message.includes("failed to fetch") ||
     message.includes("networkerror") ||
     message.includes("network request failed") ||
+    message.includes("network changed") ||
+    message.includes("err_network_changed") ||
     message.includes("load failed") ||
     message.includes("timed out") ||
     message.includes("timeout")
@@ -134,6 +227,14 @@ export async function apiRequest<T>(
         throw timeoutError;
       }
 
+      if (retriable) {
+        const networkError = new Error(
+          "Network changed or unavailable. Please reconnect and try again.",
+        );
+        (networkError as any).status = 503;
+        throw networkError;
+      }
+
       throw err;
     }
   }
@@ -143,13 +244,12 @@ export async function apiRequest<T>(
   }
 
   // If the access token is stale, refresh and retry once automatically.
-  if (response.status === 401) {
+  if (response.status === 401 && token) {
     try {
-      const { data: refreshed, error: refreshErr } =
-        await supabase.auth.refreshSession();
-      const refreshedToken = refreshErr
-        ? null
-        : refreshed?.session?.access_token || null;
+      const refreshedToken = await refreshSessionSafely(
+        "401 response session refresh",
+        10000,
+      );
 
       if (refreshedToken && refreshedToken !== token) {
         response = await executeFetch(refreshedToken);
@@ -176,6 +276,26 @@ export async function apiRequest<T>(
       errorBody?.error ||
       errorBody?.details ||
       "API request failed";
+
+    const authMessage = String(message || "").toLowerCase();
+    const looksLikeExpiredSession =
+      authMessage.includes("expired") ||
+      authMessage.includes("invalid token") ||
+      authMessage.includes("invalid or expired token") ||
+      authMessage.includes("jwt") ||
+      authMessage.includes("no bearer token");
+
+    // Only emit global session-expired when we had a token and server indicates
+    // the token/session is actually invalid. This avoids false logouts caused by
+    // transient token lookup/network issues.
+    if (response.status === 401 && token && looksLikeExpiredSession) {
+      dispatchSessionExpired({
+        endpoint,
+        status: 401,
+        message,
+      });
+    }
+
     const err = new Error(message);
     (err as any).status = response.status;
     (err as any).body = errorBody;
@@ -432,6 +552,51 @@ export const enrollmentService = {
     return await apiRequest<any[]>(`/enrollments/my?limit=${limit}`, {
       method: "GET",
       timeoutMs: 30000,
+    });
+  },
+};
+
+export const registrationService = {
+  async getRegulations() {
+    return await apiRequest<{
+      enrollmentFee: number;
+      composerRequestFee: number;
+      bankName: string;
+      bankAccountNumber: string;
+      accountName: string;
+      controllingAdminIdentifier?: string;
+      updatedAt?: string | null;
+    }>(`/registration/regulations`, {
+      method: "GET",
+      timeoutMs: 20000,
+    });
+  },
+
+  async getMyPayments(type?: "enrollment" | "composer_request") {
+    const params = new URLSearchParams();
+    if (type) params.set("type", type);
+    return await apiRequest<any[]>(
+      `/registration/payments/my${params.toString() ? `?${params.toString()}` : ""}`,
+      {
+        method: "GET",
+        timeoutMs: 20000,
+      },
+    );
+  },
+
+  async submitPayment(payload: {
+    registrationType: "enrollment" | "composer_request";
+    paymentRef: string;
+  }) {
+    return await apiRequest<{
+      success: boolean;
+      message: string;
+      submission: any;
+      regulations?: any;
+    }>(`/registration/payments/submit`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      timeoutMs: 25000,
     });
   },
 };
@@ -713,6 +878,7 @@ export const api = {
   fyp: fypService,
   categories: categoryService,
   enrollments: enrollmentService,
+  registration: registrationService,
   media: mediaService,
   reports: reportService,
   storage: storageService,
