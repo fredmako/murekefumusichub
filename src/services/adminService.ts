@@ -389,6 +389,42 @@ export const adminService = {
     }
   },
 
+  async verifyComposition(compositionId: string, verificationNotes?: string) {
+    try {
+      const result = await apiRequest<any>(
+        `/admin/compositions/${compositionId}/verify`,
+        {
+          method: "POST",
+          body: JSON.stringify({ verificationNotes: verificationNotes || null }),
+        },
+      );
+      toast.success("Composition verified");
+      return result;
+    } catch (err: any) {
+      console.error("verifyComposition error:", err);
+      toast.error(err.message || "Failed to verify composition");
+      throw err;
+    }
+  },
+
+  async unverifyComposition(compositionId: string, reason?: string) {
+    try {
+      const result = await apiRequest<any>(
+        `/admin/compositions/${compositionId}/unverify`,
+        {
+          method: "POST",
+          body: JSON.stringify({ reason: reason || null }),
+        },
+      );
+      toast.success("Composition marked unverified");
+      return result;
+    } catch (err: any) {
+      console.error("unverifyComposition error:", err);
+      toast.error(err.message || "Failed to mark composition unverified");
+      throw err;
+    }
+  },
+
   async removeComposition(compositionId: string) {
     try {
       const result = await apiRequest<any>(`/compositions/${compositionId}`, {

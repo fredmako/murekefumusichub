@@ -57,14 +57,26 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/app/components/ui/sheet";
 import { Textarea } from "@/app/components/ui/textarea";
 import { toast } from "sonner";
 import { useAuth } from "../../context/AuthContext";
+import { useTheme } from "@/context/ThemeContext";
 import { adminService } from "@/services/adminService";
 import { compositionService } from "@/services/api";
 import { SupportIssueButton } from "@/app/components/SupportIssueButton";
 import { supportService, type AdminThreadType } from "@/services/supportService";
+import { getOptimizedProfileImageUrl } from "@/services/profileImageService";
 import { supabase } from "@/lib/supabase";
+import loadingStringsDark from "./images/bg_9.jpg";
+import loadingStringsLight from "./images/bg_11.jpg";
 
 /* --------- CONFIG --------- */
 const normalizeEmail = (e: string) => e?.toLowerCase().trim() ?? "";
@@ -122,6 +134,17 @@ type AdminTab =
   | "invites";
 type ServiceMenuGroup = "customer" | "operations" | "commerce";
 
+const ADMIN_TAB_LABELS: Record<AdminTab, string> = {
+  overview: "Overview",
+  users: "User Management",
+  requests: "Role Requests",
+  enrollments: "Enrollments",
+  compositions: "Compositions",
+  transactions: "Transactions",
+  support: "Support",
+  invites: "Composer Invites",
+};
+
 const BOOTSTRAP_FALLBACK = {
   roles: [],
   invites: [],
@@ -144,6 +167,14 @@ export function AdminPanel() {
   const navigate = useNavigate();
 
   const { appUser, isLoading: authLoading } = useAuth();
+  const { mode } = useTheme();
+  const isDarkMode = mode === "dark";
+  const adminLoadingBackdropImage = isDarkMode
+    ? loadingStringsDark
+    : loadingStringsLight;
+  const adminLoadingOverlay = isDarkMode
+    ? "linear-gradient(145deg, rgba(6,12,28,0.9), rgba(26,14,46,0.78), rgba(9,35,66,0.8))"
+    : "linear-gradient(145deg, rgba(245,251,252,0.9), rgba(236,246,240,0.84), rgba(244,238,252,0.82))";
 
   // requests
   const [requests, setRequests] = useState<any[]>([]);
@@ -176,6 +207,7 @@ export function AdminPanel() {
   const [processingAction, setProcessingAction] = useState<string | null>(null);
   const [newInviteEmail, setNewInviteEmail] = useState("");
   const [isServiceMenuCollapsed, setIsServiceMenuCollapsed] = useState(false);
+  const [isMobileServiceMenuOpen, setIsMobileServiceMenuOpen] = useState(false);
   const [expandedServiceMenuGroups, setExpandedServiceMenuGroups] = useState<
     Record<ServiceMenuGroup, boolean>
   >({
@@ -614,6 +646,16 @@ export function AdminPanel() {
     [supportThreads, supportTickets],
   );
 
+  const pendingPaymentReviewCount = useMemo(
+    () =>
+      (transactions || []).filter(
+        (transaction: any) =>
+          transaction.source === "payment_submission" &&
+          transaction.status === "pending",
+      ).length,
+    [transactions],
+  );
+
   const selectedAdminChatTarget = useMemo(
     () =>
       users.find((user: any) => user.id === adminChatTargetUserId) || null,
@@ -865,12 +907,38 @@ export function AdminPanel() {
     });
   }
 
-  async function viewCompositionDetails(composition: any) {
+  async function verifyComposition(composition: any) {
+    const compositionId = composition?.id;
+    if (!compositionId) {
+      toast.error("Missing composition id");
+      return;
+    }
+
+    await runAction(`composition:verify:${compositionId}`, async () => {
+      await adminService.verifyComposition(compositionId);
+      await refreshAfterCompositionRemoval();
+    });
+  }
+
+  async function unverifyComposition(composition: any) {
+    const compositionId = composition?.id;
+    if (!compositionId) {
+      toast.error("Missing composition id");
+      return;
+    }
+
+    await runAction(`composition:unverify:${compositionId}`, async () => {
+      await adminService.unverifyComposition(compositionId);
+      await refreshAfterCompositionRemoval();
+    });
+  }
+
+  async function viewCompositionDetails(composition: any): Promise<boolean> {
     try {
       const compositionId = composition?.id;
       if (!compositionId) {
         toast.info("No composition ID found");
-        return;
+        return false;
       }
 
       const latest = (await compositionService.getById(compositionId)) as any;
@@ -879,14 +947,28 @@ export function AdminPanel() {
 
       if (pdfUrl) {
         window.open(pdfUrl, "_blank", "noopener,noreferrer");
-        return;
+        return true;
       }
 
       toast.info("No PDF URL found for this composition");
+      return false;
     } catch (error: any) {
       console.error("[admin-panel] open composition failed:", error);
       toast.error(error?.message || "Failed to open composition PDF");
+      return false;
     }
+  }
+
+  async function reviewAndVerifyComposition(composition: any) {
+    const openedPdf = await viewCompositionDetails(composition);
+    if (!openedPdf) return;
+
+    const confirmVerify = window.confirm(
+      "After reviewing the PDF, click OK to mark this composition as VERIFIED.",
+    );
+    if (!confirmVerify) return;
+
+    await verifyComposition(composition);
   }
 
   async function pickSupportTicket(threadId: string) {
@@ -1024,6 +1106,8 @@ export function AdminPanel() {
     return vals.filter((r) => r === "buyer").length;
   }, [userIdToRole]);
 
+  const activeTabLabel = ADMIN_TAB_LABELS[activeTab];
+
   const sideMenuButtonClass = (active: boolean) =>
     `w-full rounded-xl border py-2 text-left text-sm font-medium transition ${
       isServiceMenuCollapsed ? "justify-center px-2" : "justify-start px-3"
@@ -1047,9 +1131,31 @@ export function AdminPanel() {
     void fetchSupportThreads("all");
   };
 
+  const goToTabFromMobileMenu = (tab: AdminTab) => {
+    setActiveTab(tab);
+    setIsMobileServiceMenuOpen(false);
+  };
+
+  const goToOpenTicketsFromMobileMenu = () => {
+    goToOpenTickets();
+    setIsMobileServiceMenuOpen(false);
+  };
+
+  const goToAssignedChatsFromMobileMenu = () => {
+    goToAssignedChats();
+    setIsMobileServiceMenuOpen(false);
+  };
+
   if (loading) {
     return (
-      <main className="texture-linen min-h-screen overflow-hidden py-12">
+      <main className="texture-linen relative min-h-screen overflow-hidden py-12">
+        <div
+          className="pointer-events-none absolute inset-0 -z-10 bg-cover bg-center"
+          style={{
+            backgroundImage: `${adminLoadingOverlay}, url(${adminLoadingBackdropImage})`,
+          }}
+          aria-hidden="true"
+        />
         <section className="section-shell">
           <div className="mx-auto max-w-4xl">
             <Card className="texture-fabric texture-speckle motion-reveal overflow-hidden rounded-3xl border border-border/70 bg-card/85 shadow-[0_24px_44px_-30px_rgba(15,23,42,0.85)]">
@@ -1076,17 +1182,169 @@ export function AdminPanel() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4 overflow-x-hidden p-3 sm:space-y-6 sm:p-4 lg:p-6">
       <div className="mb-2 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Admin Panel</h1>
-          <p className="text-gray-600">
+          <h1 className="text-2xl font-bold sm:text-3xl">Admin Panel</h1>
+          <p className="text-sm text-muted-foreground sm:text-base">
             Manage platform operations and monitor activity
           </p>
         </div>
         <SupportIssueButton context="admin-dashboard" />
       </div>
+      <Card className="border-border/70 bg-card/95 lg:hidden">
+        <CardContent className="space-y-3 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                Active Section
+              </p>
+              <p className="text-sm font-semibold text-foreground">
+                {activeTabLabel}
+              </p>
+            </div>
+            <Sheet
+              open={isMobileServiceMenuOpen}
+              onOpenChange={setIsMobileServiceMenuOpen}
+            >
+              <SheetTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <PanelLeftOpen className="size-4" />
+                  Service Menu
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-[88vw] sm:w-[390px]">
+                <SheetHeader>
+                  <SheetTitle>Admin Navigation</SheetTitle>
+                  <SheetDescription>
+                    Open a section quickly and continue operations.
+                  </SheetDescription>
+                </SheetHeader>
+                <div className="mt-4 space-y-4">
+                  <div className="space-y-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      Customer Service
+                    </p>
+                    <Button
+                      className="w-full justify-between"
+                      variant={
+                        activeTab === "support" && supportStateFilter === "unread"
+                          ? "default"
+                          : "outline"
+                      }
+                      onClick={goToOpenTicketsFromMobileMenu}
+                    >
+                      Open Tickets
+                      <Badge className="bg-amber-100 text-amber-800">
+                        {supportTickets.length}
+                      </Badge>
+                    </Button>
+                    <Button
+                      className="w-full justify-between"
+                      variant={
+                        activeTab === "support" && supportStateFilter !== "unread"
+                          ? "default"
+                          : "outline"
+                      }
+                      onClick={goToAssignedChatsFromMobileMenu}
+                    >
+                      Assigned Chats
+                      <Badge className="bg-emerald-100 text-emerald-800">
+                        {supportThreads.length}
+                      </Badge>
+                    </Button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      Operations
+                    </p>
+                    <Button
+                      className="w-full justify-start"
+                      variant={activeTab === "users" ? "default" : "outline"}
+                      onClick={() => goToTabFromMobileMenu("users")}
+                    >
+                      User Management
+                    </Button>
+                    <Button
+                      className="w-full justify-between"
+                      variant={activeTab === "requests" ? "default" : "outline"}
+                      onClick={() => goToTabFromMobileMenu("requests")}
+                    >
+                      Role Requests
+                      <Badge className="bg-sky-100 text-sky-800">
+                        {pendingRequests.length}
+                      </Badge>
+                    </Button>
+                    <Button
+                      className="w-full justify-start"
+                      variant={activeTab === "invites" ? "default" : "outline"}
+                      onClick={() => goToTabFromMobileMenu("invites")}
+                    >
+                      Composer Invites
+                    </Button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      Content and Commerce
+                    </p>
+                    <Button
+                      className="w-full justify-start"
+                      variant={activeTab === "overview" ? "default" : "outline"}
+                      onClick={() => goToTabFromMobileMenu("overview")}
+                    >
+                      Overview
+                    </Button>
+                    <Button
+                      className="w-full justify-start"
+                      variant={activeTab === "compositions" ? "default" : "outline"}
+                      onClick={() => goToTabFromMobileMenu("compositions")}
+                    >
+                      Compositions
+                    </Button>
+                    <Button
+                      className="w-full justify-between"
+                      variant={activeTab === "transactions" ? "default" : "outline"}
+                      onClick={() => goToTabFromMobileMenu("transactions")}
+                    >
+                      Transactions
+                      <Badge className="bg-amber-100 text-amber-800">
+                        {pendingPaymentReviewCount}
+                      </Badge>
+                    </Button>
+                    <Button
+                      className="w-full justify-start"
+                      variant={activeTab === "enrollments" ? "default" : "outline"}
+                      onClick={() => goToTabFromMobileMenu("enrollments")}
+                    >
+                      Enrollments
+                    </Button>
+                  </div>
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg border border-border/70 bg-muted/40 p-2">
+              <p className="text-[11px] text-muted-foreground">Open Tickets</p>
+              <p className="text-base font-semibold">{supportTickets.length}</p>
+            </div>
+            <div className="rounded-lg border border-border/70 bg-muted/40 p-2">
+              <p className="text-[11px] text-muted-foreground">Requests</p>
+              <p className="text-base font-semibold">{pendingRequests.length}</p>
+            </div>
+            <div className="rounded-lg border border-border/70 bg-muted/40 p-2">
+              <p className="text-[11px] text-muted-foreground">Payments</p>
+              <p className="text-base font-semibold">
+                {pendingPaymentReviewCount}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
       <Tabs
+        className="min-w-0"
         value={activeTab}
         onValueChange={(value) => setActiveTab(value as AdminTab)}
       >
@@ -1095,9 +1353,9 @@ export function AdminPanel() {
             isServiceMenuCollapsed
               ? "lg:grid-cols-[96px_minmax(0,1fr)]"
               : "lg:grid-cols-[320px_minmax(0,1fr)]"
-          }`}
+          } min-w-0`}
         >
-          <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
+          <aside className="hidden space-y-4 lg:sticky lg:top-6 lg:block lg:self-start">
             <Card className="texture-speckle border-border/70 bg-card/95">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between gap-2">
@@ -1310,36 +1568,52 @@ export function AdminPanel() {
             </Card>
           </aside>
 
-          <div>
-            <TabsList className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:hidden">
-              <TabsTrigger value="users">Users</TabsTrigger>
-              <TabsTrigger value="support" className="gap-2">
-                Support
-                {supportUnreadCount > 0 && (
-                  <Badge className="bg-amber-100 text-amber-800">
-                    {supportUnreadCount}
-                  </Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="requests">Requests</TabsTrigger>
-              <TabsTrigger value="invites">Invites</TabsTrigger>
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
-              <TabsTrigger value="compositions">Compositions</TabsTrigger>
-              <TabsTrigger value="transactions">Transactions</TabsTrigger>
-            </TabsList>
+          <div className="min-w-0">
+            <div className="w-full overflow-x-auto lg:hidden">
+              <TabsList className="h-auto min-w-max gap-2 rounded-xl border border-border/70 bg-card/90 p-1">
+                <TabsTrigger value="users" className="flex-none px-3">
+                  Users
+                </TabsTrigger>
+                <TabsTrigger value="support" className="flex-none gap-2 px-3">
+                  Support
+                  {supportUnreadCount > 0 && (
+                    <Badge className="bg-amber-100 text-amber-800">
+                      {supportUnreadCount}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="requests" className="flex-none px-3">
+                  Requests
+                </TabsTrigger>
+                <TabsTrigger value="invites" className="flex-none px-3">
+                  Invites
+                </TabsTrigger>
+                <TabsTrigger value="overview" className="flex-none px-3">
+                  Overview
+                </TabsTrigger>
+                <TabsTrigger value="enrollments" className="flex-none px-3">
+                  Enrollments
+                </TabsTrigger>
+                <TabsTrigger value="compositions" className="flex-none px-3">
+                  Compositions
+                </TabsTrigger>
+                <TabsTrigger value="transactions" className="flex-none px-3">
+                  Transactions
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
             {/* Overview */}
             <TabsContent value="overview" className="mt-6 space-y-6">
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
                 <Card>
                   <CardHeader className="flex items-center justify-between">
-                    <CardTitle className="text-sm text-gray-600">Total Users</CardTitle>
+                    <CardTitle className="text-sm text-muted-foreground">Total Users</CardTitle>
                     <Users className="size-5 text-blue-600" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold">{totalUsers}</div>
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       {composerCount} composers, {buyerCount} buyers
                     </p>
                   </CardContent>
@@ -1347,38 +1621,38 @@ export function AdminPanel() {
 
                 <Card>
                   <CardHeader className="flex items-center justify-between">
-                    <CardTitle className="text-sm text-gray-600">
+                    <CardTitle className="text-sm text-muted-foreground">
                       Total Compositions
                     </CardTitle>
                     <Music className="size-5 text-purple-600" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold">{totalCompositions}</div>
-                    <p className="mt-1 text-xs text-gray-500">Published works</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Published works</p>
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardHeader className="flex items-center justify-between">
-                    <CardTitle className="text-sm text-gray-600">Total Revenue</CardTitle>
+                    <CardTitle className="text-sm text-muted-foreground">Total Revenue</CardTitle>
                     <DollarSign className="size-5 text-green-600" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold">
                       ${Number(totalRevenue || 0).toFixed(2)}
                     </div>
-                    <p className="mt-1 text-xs text-gray-500">Platform earnings</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Platform earnings</p>
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardHeader className="flex items-center justify-between">
-                    <CardTitle className="text-sm text-gray-600">Transactions</CardTitle>
+                    <CardTitle className="text-sm text-muted-foreground">Transactions</CardTitle>
                     <TrendingUp className="size-5 text-orange-600" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold">{totalTransactions}</div>
-                    <p className="mt-1 text-xs text-gray-500">Total sales</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Total sales</p>
                   </CardContent>
                 </Card>
               </div>
@@ -1389,7 +1663,7 @@ export function AdminPanel() {
                   <CardDescription>Highest earning composers</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Table>
+                  <Table className="min-w-[640px]">
                     <TableHeader>
                       <TableRow>
                         <TableHead>Composer</TableHead>
@@ -1432,7 +1706,7 @@ export function AdminPanel() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Table>
+                  <Table className="min-w-[760px]">
                     <TableHeader>
                       <TableRow>
                         <TableHead>Date</TableHead>
@@ -1496,7 +1770,7 @@ export function AdminPanel() {
               <CardDescription>Manage platform users and roles</CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
+              <Table className="min-w-[760px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
@@ -1516,10 +1790,18 @@ export function AdminPanel() {
                         <div className="flex items-center gap-3">
                           {u.avatar_url ? (
                             <img
-                              src={u.avatar_url}
+                              src={
+                                getOptimizedProfileImageUrl(u.avatar_url, {
+                                  width: 96,
+                                  height: 96,
+                                  quality: 68,
+                                  resize: "cover",
+                                }) || u.avatar_url
+                              }
                               alt={`${u.display_name || u.email || "User"} avatar`}
                               className="size-9 rounded-full object-cover border border-border/70 bg-muted"
                               loading="lazy"
+                              decoding="async"
                             />
                           ) : (
                             <div className="size-9 rounded-full border border-border/70 bg-secondary/60 text-secondary-foreground grid place-items-center text-xs font-semibold">
@@ -1647,8 +1929,8 @@ export function AdminPanel() {
             </CardContent>
             {invites.length > 0 && (
               <CardContent>
-                <div className="mb-2 text-sm text-gray-600">Recent invites</div>
-                <Table>
+                <div className="mb-2 text-sm text-muted-foreground">Recent invites</div>
+                <Table className="min-w-[720px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Email</TableHead>
@@ -1697,9 +1979,9 @@ export function AdminPanel() {
             </CardHeader>
             <CardContent>
               {pendingRequests.length === 0 ? (
-                <p className="text-sm text-gray-600">No pending requests.</p>
+                <p className="text-sm text-muted-foreground">No pending requests.</p>
               ) : (
-                <Table>
+                <Table className="min-w-[920px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Email</TableHead>
@@ -1808,7 +2090,7 @@ export function AdminPanel() {
               </div>
             </CardHeader>
             <CardContent>
-              <Table>
+              <Table className="min-w-[1180px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
@@ -1828,7 +2110,7 @@ export function AdminPanel() {
                   )}
                   {!enrollmentsLoading && enrollments.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center text-gray-500">
+                      <TableCell colSpan={9} className="text-center text-muted-foreground">
                         No enrollments found.
                       </TableCell>
                     </TableRow>
@@ -1847,7 +2129,7 @@ export function AdminPanel() {
                       <TableCell className="capitalize">
                         {String(enrollment.skill_level || "N/A")}
                       </TableCell>
-                      <TableCell className="max-w-[220px] truncate text-sm text-gray-600">
+                      <TableCell className="max-w-[220px] truncate text-sm text-muted-foreground">
                         {enrollment.notes || "-"}
                       </TableCell>
                       <TableCell>
@@ -1866,7 +2148,7 @@ export function AdminPanel() {
                           {String(enrollment.status || "pending").toUpperCase()}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-xs text-gray-600">
+                      <TableCell className="text-xs text-muted-foreground">
                         {enrollment.admitted_at
                           ? `${enrollment.admitted_admin?.display_name || enrollment.admitted_admin?.email || "Admin"} - ${formatDateTime(enrollment.admitted_at)}`
                           : "-"}
@@ -1882,7 +2164,7 @@ export function AdminPanel() {
                             Admit
                           </Button>
                         ) : (
-                          <span className="text-xs text-gray-500">-</span>
+                          <span className="text-xs text-muted-foreground">-</span>
                         )}
                       </TableCell>
                     </TableRow>
@@ -1903,20 +2185,21 @@ export function AdminPanel() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
+              <Table className="min-w-[980px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Title</TableHead>
                     <TableHead>Composer</TableHead>
                     <TableHead>Price</TableHead>
                     <TableHead>Date Added</TableHead>
+                    <TableHead>Verification</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {compositionsLoading && compositions.length === 0 && (
                     <LoadingTableRow
-                      colSpan={5}
+                      colSpan={6}
                       label="Loading compositions..."
                     />
                   )}
@@ -1925,7 +2208,7 @@ export function AdminPanel() {
                       <TableCell>
                         <div>
                           <p className="font-medium">{c.title}</p>
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-muted-foreground">
                             {c.description || ""}
                           </p>
                         </div>
@@ -1939,6 +2222,24 @@ export function AdminPanel() {
                           c.created_at || c.createdAt || "",
                         ).toLocaleDateString()}
                       </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          <Badge
+                            className={
+                              c.is_verified
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-amber-100 text-amber-800"
+                            }
+                          >
+                            {c.is_verified ? "Verified" : "Unverified"}
+                          </Badge>
+                          {c.is_verified && c.verified_at ? (
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(c.verified_at).toLocaleDateString()}
+                            </span>
+                          ) : null}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -1951,8 +2252,31 @@ export function AdminPanel() {
                             <DropdownMenuItem
                               onClick={() => viewCompositionDetails(c)}
                             >
-                              <Eye className="size-4 mr-2" /> View Details
+                              <Eye className="size-4 mr-2" /> View PDF
                             </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => reviewAndVerifyComposition(c)}
+                              disabled={isProcessing || Boolean(c.is_verified)}
+                            >
+                              <CheckCircle className="size-4 mr-2" /> Review &
+                              Verify
+                            </DropdownMenuItem>
+                            {c.is_verified ? (
+                              <DropdownMenuItem
+                                onClick={() => unverifyComposition(c)}
+                                disabled={isProcessing}
+                              >
+                                <X className="size-4 mr-2" /> Mark Unverified
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem
+                                onClick={() => verifyComposition(c)}
+                                disabled={isProcessing}
+                              >
+                                <CheckCircle className="size-4 mr-2" /> Mark
+                                Verified
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               className="text-red-600"
@@ -1980,7 +2304,7 @@ export function AdminPanel() {
               <CardDescription>Complete transaction history</CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
+              <Table className="min-w-[1260px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Transaction ID</TableHead>
@@ -2068,7 +2392,7 @@ export function AdminPanel() {
                             </Button>
                           </div>
                         ) : (
-                          <span className="text-xs text-gray-500">-</span>
+                          <span className="text-xs text-muted-foreground">-</span>
                         )}
                       </TableCell>
                     </TableRow>

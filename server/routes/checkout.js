@@ -38,6 +38,35 @@ function isMissingPaymentSubmissionsError(err) {
   );
 }
 
+function isMissingBuyersTableError(err) {
+  const code = String(err?.code || "").toUpperCase();
+  const message = String(err?.message || "").toLowerCase();
+  return (
+    code === "42P01" ||
+    code === "PGRST204" ||
+    code === "PGRST205" ||
+    message.includes("could not find the table 'buyers'") ||
+    message.includes('relation "buyers" does not exist')
+  );
+}
+
+async function resolvePurchaseBuyerIds(userId) {
+  const ids = [userId];
+  const { data, error } = await supabaseAdmin
+    .from("buyers")
+    .select("id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingBuyersTableError(error)) return ids;
+    throw error;
+  }
+
+  if (data?.id && !ids.includes(data.id)) ids.push(data.id);
+  return ids;
+}
+
 async function resolveUserByAuthUid(authUid) {
   const { data, error } = await supabaseAdmin
     .from("users")
@@ -141,11 +170,13 @@ router.post("/submit", verifySupabaseToken, async (req, res) => {
       });
     }
 
+    const purchaseBuyerIds = await resolvePurchaseBuyerIds(user.id);
+
     const [activePurchasesRes, pendingSubmissionsRes] = await Promise.all([
       supabaseAdmin
         .from("purchases")
         .select("composition_id")
-        .eq("buyer_id", user.id)
+        .in("buyer_id", purchaseBuyerIds)
         .eq("is_active", true)
         .in("composition_id", compositionIds),
       supabaseAdmin

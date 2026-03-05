@@ -4,6 +4,36 @@ import { verifySupabaseToken } from "../middleware/verifySupabaseToken.js";
 
 const router = express.Router();
 
+function isMissingBuyersTableError(err) {
+  const code = String(err?.code || "").toUpperCase();
+  const message = String(err?.message || "").toLowerCase();
+  return (
+    code === "42P01" ||
+    code === "PGRST204" ||
+    code === "PGRST205" ||
+    message.includes("could not find the table 'buyers'") ||
+    message.includes('relation "buyers" does not exist')
+  );
+}
+
+async function resolvePurchaseBuyerIds(userId) {
+  const ids = [userId];
+
+  const { data, error } = await supabaseAdmin
+    .from("buyers")
+    .select("id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingBuyersTableError(error)) return ids;
+    throw error;
+  }
+
+  if (data?.id && !ids.includes(data.id)) ids.push(data.id);
+  return ids;
+}
+
 // GET /api/purchases - get buyer's purchases by auth UID
 router.get("/", verifySupabaseToken, async (req, res) => {
   try {
@@ -26,7 +56,9 @@ router.get("/", verifySupabaseToken, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Fetch purchases with composition and related info (avoid deep composer→users join which may not exist)
+    const purchaseBuyerIds = await resolvePurchaseBuyerIds(user.id);
+
+    // Fetch purchases with composition and related info (supports users.id and buyers.id references)
     const { data: purchases, error: purchasesError } = await supabaseAdmin
       .from("purchases")
       .select(
@@ -39,7 +71,7 @@ router.get("/", verifySupabaseToken, async (req, res) => {
         )
       `,
       )
-      .eq("buyer_id", user.id)
+      .in("buyer_id", purchaseBuyerIds)
       .eq("is_active", true)
       .order("purchased_at", { ascending: false });
 

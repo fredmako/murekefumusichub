@@ -183,7 +183,7 @@ export function Login() {
   /* COMPONENT UI */
   /* ============================= */
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#f4f9ff] via-white to-[#f4f0ff] p-4 dark:from-[#060f1f] dark:via-[#0a1830] dark:to-[#1a112f]">
       <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
         <div className="flex h-full items-center justify-center">
           <div className="rounded-3xl border border-[#0a2e43]/25 bg-gradient-to-br from-[#0b2940] to-[#081e32] p-3 shadow-[0_18px_36px_-20px_rgba(2,24,39,0.95)] sm:p-4">
@@ -216,7 +216,7 @@ export function Login() {
 
             <CardContent>
               {signupNotice && (
-                <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                <div className="mb-4 rounded-lg border border-primary/25 bg-primary/10 px-3 py-2 text-sm text-foreground">
                   {signupNotice}
                 </div>
               )}
@@ -299,7 +299,7 @@ export function Login() {
                       setIsForgot(true);
                       setConfirmPassword("");
                     }}
-                    className="text-sm text-blue-600 hover:underline"
+                    className="text-sm text-primary hover:underline"
                     disabled={isLoading}
                   >
                     Forgot password?
@@ -315,7 +315,7 @@ export function Login() {
                       setConfirmPassword("");
                     }
                   }}
-                  className="text-sm text-blue-600 hover:underline ml-auto"
+                  className="ml-auto text-sm text-primary hover:underline"
                   disabled={isLoading}
                 >
                   {isForgot
@@ -332,7 +332,7 @@ export function Login() {
                   <button
                     type="button"
                     onClick={() => navigate("/admin")}
-                    className="text-sm text-red-600 hover:underline"
+                    className="text-sm text-destructive hover:underline"
                     disabled={isLoading}
                   >
                     Go to Admin Dashboard

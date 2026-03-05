@@ -8,7 +8,6 @@ import { CartItem } from "@/app/types";
 import { toast } from "sonner";
 import {
   ShoppingCart,
-  User as UserIcon,
   LogOut,
   Settings,
   Bell,
@@ -250,6 +249,16 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
 
   // helper: build avatar / initials
   const avatarUrl = appUser?.avatar_url ?? null;
+  const optimizedAvatarUrl = getOptimizedProfileImageUrl(avatarUrl, {
+    width: 80,
+    height: 80,
+    quality: 68,
+    resize: "cover",
+  });
+  const avatarSrcSet = buildProfileImageSrcSet(avatarUrl, [40, 64, 96], {
+    quality: 68,
+    resize: "cover",
+  });
   const displayName = appUser?.display_name ?? appUser?.email ?? "User";
   const initials = (() => {
     const name = displayName || "";
@@ -584,14 +593,20 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="icon">
-                  {avatarUrl ? (
+                  {optimizedAvatarUrl || avatarUrl ? (
                     <img
-                      src={avatarUrl}
+                      src={optimizedAvatarUrl || avatarUrl || undefined}
+                      srcSet={avatarSrcSet || undefined}
+                      sizes="40px"
                       alt={`${displayName} avatar`}
                       className="w-5 h-5 rounded-full object-cover"
+                      loading="lazy"
+                      decoding="async"
                     />
                   ) : (
-                    <UserIcon className="size-5" />
+                    <span className="grid size-5 place-items-center rounded-full bg-muted text-[10px] font-semibold uppercase leading-none text-muted-foreground">
+                      {initials}
+                    </span>
                   )}
                 </Button>
               </DropdownMenuTrigger>

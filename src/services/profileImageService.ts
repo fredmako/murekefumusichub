@@ -1,4 +1,4 @@
-﻿export type ProfileImageResizeMode = "cover" | "contain";
+export type ProfileImageResizeMode = "cover" | "contain";
 
 export interface ProfileImageOptions {
   width?: number;

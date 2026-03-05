@@ -66,17 +66,22 @@ export function BuyerDashboard({
   }, [searchParams]);
 
   useEffect(() => {
-    const fetchUserPurchases = async () => {
+    let mounted = true;
+
+    const fetchUserPurchases = async (showSpinner = true) => {
       try {
-        setLoading(true);
+        if (showSpinner) setLoading(true);
         if (!appUser) {
-          toast.error("You must be signed in to view purchases");
-          setLoading(false);
+          if (showSpinner) {
+            toast.error("You must be signed in to view purchases");
+            setLoading(false);
+          }
           return;
         }
 
         // Fetch purchases via API (auth UID is resolved from token server-side)
         const purchases = (await purchaseService.getByBuyer(appUser.id)) as any[];
+        if (!mounted) return;
 
         const enriched = (purchases || []).map((p: any) => ({
           ...p,
@@ -91,13 +96,23 @@ export function BuyerDashboard({
         setTotalSpent(spent);
       } catch (err) {
         console.error("Error loading purchases:", err);
-        toast.error("Failed to load purchases");
+        if (showSpinner) {
+          toast.error("Failed to load purchases");
+        }
       } finally {
-        setLoading(false);
+        if (showSpinner && mounted) setLoading(false);
       }
     };
 
-    fetchUserPurchases();
+    void fetchUserPurchases(true);
+    const timer = setInterval(() => {
+      void fetchUserPurchases(false);
+    }, 15000);
+
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
   }, [appUser?.id]);
 
   // Redirect to home if user logs out
@@ -223,7 +238,7 @@ export function BuyerDashboard({
             >
               Checkout{" "}
               {cart.length > 0 && (
-                <span className="ml-1 bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
+                <span className="ml-1 rounded-full bg-destructive px-2 py-0.5 text-xs text-destructive-foreground">
                   {cart.length}
                 </span>
               )}
@@ -319,7 +334,7 @@ export function BuyerDashboard({
                                   </span>
                                 </div>
                               </TableCell>
-                              <TableCell className="font-semibold text-emerald-700">
+                              <TableCell className="font-semibold text-primary">
                                 ${(price_paid || 0).toFixed(2)}
                               </TableCell>
                               <TableCell className="text-right">
@@ -399,7 +414,7 @@ export function BuyerDashboard({
                               </p>
                             </div>
                             <div className="text-right flex flex-col items-end gap-2">
-                              <p className="text-xl font-bold text-emerald-700">
+                              <p className="text-xl font-bold text-primary">
                                 ${item.composition.price.toFixed(2)}
                               </p>
                               {onRemoveFromCart && (
@@ -443,14 +458,14 @@ export function BuyerDashboard({
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Processing Fee</span>
-                        <span className="font-semibold text-emerald-700">
+                        <span className="font-semibold text-primary">
                           FREE
                         </span>
                       </div>
                       <Separator />
                       <div className="flex justify-between font-bold text-xl">
                         <span>Total</span>
-                        <span className="text-emerald-700">
+                        <span className="text-primary">
                           ${cartTotal.toFixed(2)}
                         </span>
                       </div>

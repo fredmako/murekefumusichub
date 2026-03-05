@@ -18,6 +18,9 @@ import { useAuth } from "@/context/AuthContext";
 import { THEME_MODES, THEME_PRESETS, ThemeMode, ThemePreset, useTheme } from "@/context/ThemeContext";
 import { toast } from "sonner";
 import { SESSION_EXPIRED_EVENT } from "@/lib/sessionEvents";
+import { Guitar, Loader2 } from "lucide-react";
+import loadingStringsDark from "@/app/components/images/bg_9.jpg";
+import loadingStringsLight from "@/app/components/images/bg_11.jpg";
 
 /* -----------------------------
    Lazy-loaded Pages
@@ -103,15 +106,15 @@ class AppErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
-          <div className="max-w-md text-center">
-            <h1 className="text-2xl font-bold text-red-600 mb-2">
+        <div className="min-h-screen flex items-center justify-center bg-background p-6">
+          <div className="max-w-md rounded-2xl border border-border/70 bg-card/90 p-6 text-center shadow-[0_24px_40px_-30px_rgba(15,23,42,0.6)]">
+            <h1 className="mb-2 text-2xl font-bold text-destructive">
               Something went wrong
             </h1>
-            <p className="text-gray-600 mb-4">
+            <p className="mb-4 text-muted-foreground">
               Please refresh the page or try again later.
             </p>
-            <pre className="text-xs text-left bg-red-50 p-4 rounded">
+            <pre className="rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-left text-xs text-foreground/90">
               {this.state.error?.message}
             </pre>
           </div>
@@ -154,10 +157,41 @@ export default function App() {
   const location = useLocation();
   const prefersReducedMotion = useReducedMotion();
   const { appUser, signOut } = useAuth();
-  const { setMode, setTheme } = useTheme();
+  const { mode, setMode, setTheme } = useTheme();
   const [cart, setCart] = useState<CartItem[]>([]);
   const lastSessionExpiredToastAt = useRef(0);
   const handlingSessionExpiredRef = useRef(false);
+  const isDarkMode = mode === "dark";
+  const loadingBackdropImage = isDarkMode
+    ? loadingStringsDark
+    : loadingStringsLight;
+  const loadingBackdropOverlay = isDarkMode
+    ? "linear-gradient(145deg, rgba(6,12,28,0.9), rgba(26,14,46,0.78), rgba(9,35,66,0.8))"
+    : "linear-gradient(145deg, rgba(245,251,252,0.9), rgba(236,246,240,0.84), rgba(244,238,252,0.82))";
+  const [appBackdropReady, setAppBackdropReady] = useState(false);
+
+  useEffect(() => {
+    if (!isDarkMode) {
+      setAppBackdropReady(false);
+      return;
+    }
+
+    let cancelled = false;
+    const image = new Image();
+    const markReady = () => {
+      if (!cancelled) setAppBackdropReady(true);
+    };
+
+    image.onload = markReady;
+    image.onerror = markReady;
+    image.src = loadingStringsDark;
+
+    return () => {
+      cancelled = true;
+      image.onload = null;
+      image.onerror = null;
+    };
+  }, [isDarkMode]);
 
   useEffect(() => {
     const preset = appUser?.theme_settings?.preset;
@@ -253,10 +287,60 @@ export default function App() {
 
   return (
     <AppErrorBoundary>
-      <div className="min-h-screen bg-gray-50">
+      <div
+        className={`relative min-h-screen text-foreground ${
+          isDarkMode ? "bg-black" : "bg-background"
+        }`}
+      >
+        {isDarkMode && (
+          <>
+            <div className="pointer-events-none fixed inset-0 -z-20 bg-black" aria-hidden="true" />
+            <div
+              className={`pointer-events-none fixed inset-0 -z-10 bg-cover bg-center bg-no-repeat transition-opacity duration-700 ${
+                appBackdropReady ? "opacity-100" : "opacity-0"
+              }`}
+              style={{
+                backgroundImage: `linear-gradient(145deg, rgba(4,8,18,0.9), rgba(24,12,43,0.76), rgba(8,28,52,0.82)), url(${loadingStringsDark})`,
+              }}
+              aria-hidden="true"
+            />
+          </>
+        )}
         <Navbar cart={cart} onRemoveFromCart={handleRemoveFromCart} />
 
-        <Suspense fallback={<div className="p-8">Loading...</div>}>
+        <Suspense
+          fallback={
+            <div className="relative min-h-[calc(100vh-4rem)] overflow-hidden">
+              <div
+                className="pointer-events-none absolute inset-0 bg-cover bg-center"
+                style={{
+                  backgroundImage: `${loadingBackdropOverlay}, url(${loadingBackdropImage})`,
+                }}
+                aria-hidden="true"
+              />
+              <div className="relative z-10 flex min-h-[calc(100vh-4rem)] items-center justify-center p-6">
+                <div className="w-full max-w-xl rounded-3xl border border-border/70 bg-card/85 p-7 shadow-[0_30px_60px_-36px_rgba(15,23,42,0.9)] backdrop-blur-md sm:p-10">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    <Guitar className="size-4 text-primary" />
+                    String Session
+                  </div>
+                  <h2 className="mt-5 text-2xl font-semibold text-foreground sm:text-3xl">
+                    Loading your workspace
+                  </h2>
+                  <p className="mt-3 max-w-lg text-sm text-muted-foreground sm:text-base">
+                    Preparing dashboards, instruments, and your latest activity.
+                  </p>
+                  <div className="mt-7 inline-flex items-center gap-3 rounded-full border border-border/70 bg-background/70 px-4 py-2">
+                    <Loader2 className="size-4 animate-spin text-primary" />
+                    <span className="text-sm font-medium text-foreground">
+                      Loading page...
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          }
+        >
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={`${location.pathname}${location.search}`}
@@ -350,8 +434,8 @@ export default function App() {
                 <Route
                   path="*"
                   element={
-                    <div className="p-12 text-center text-gray-600">
-                      <h1 className="text-2xl font-bold mb-2">
+                    <div className="p-12 text-center text-muted-foreground">
+                      <h1 className="mb-2 text-2xl font-bold text-foreground">
                         404 - Page Not Found
                       </h1>
                       <p>The page you are looking for does not exist.</p>

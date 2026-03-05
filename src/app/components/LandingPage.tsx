@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import ShowBanner from "../utils/privacyBanner";
+import { useTheme } from "@/context/ThemeContext";
 
 interface MusicClass {
   id: string;
@@ -141,8 +142,28 @@ const highlights = [
   },
 ];
 
+const LANDING_LIGHT_IMAGE_QUERIES = [
+  "piano keys close up",
+  "guitar strings close up",
+  "drum kit studio",
+  "violin on sheet music",
+  "trumpet saxophone instruments",
+  "music instruments flat lay",
+];
+
+const LANDING_DARK_IMAGE_QUERIES = [
+  "piano keys low light stage",
+  "guitar strings dark background",
+  "drum kit concert dark",
+  "violin moody light",
+  "saxophone night jazz stage",
+  "music studio blue light",
+];
+
 export const LandingPage = () => {
   const navigate = useNavigate();
+  const { mode } = useTheme();
+  const isDarkMode = mode === "dark";
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [landingImages, setLandingImages] = useState<LandingImage[]>([]);
@@ -161,17 +182,13 @@ export const LandingPage = () => {
 
     async function loadLandingImages() {
       try {
+        const queries = isDarkMode
+          ? LANDING_DARK_IMAGE_QUERIES
+          : LANDING_LIGHT_IMAGE_QUERIES;
         const data = await mediaService.getLandingImages({
           mode: "instruments",
           perPage: 18,
-          queries: [
-            "piano keys close up",
-            "guitar strings close up",
-            "drum kit studio",
-            "violin on sheet music",
-            "trumpet saxophone instruments",
-            "music instruments flat lay",
-          ],
+          queries,
         });
         if (!mounted) return;
         const images: LandingImage[] = (data?.items || [])
@@ -207,7 +224,7 @@ export const LandingPage = () => {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [isDarkMode]);
 
   const pickImage = (index: number): LandingImage | null =>
     landingImages.length > 0
@@ -224,7 +241,9 @@ export const LandingPage = () => {
     <main className="texture-linen relative flex min-h-screen flex-col overflow-hidden">
       {pickImageUrl(0) ? (
         <div
-          className="pointer-events-none fixed inset-0 -z-20 opacity-[0.07]"
+          className={`pointer-events-none fixed inset-0 -z-20 ${
+            isDarkMode ? "opacity-[0.16]" : "opacity-[0.07]"
+          }`}
           style={{
             backgroundImage: `url(${pickImageUrl(0)})`,
             backgroundRepeat: "repeat",
@@ -257,7 +276,11 @@ export const LandingPage = () => {
           <div
             className="pointer-events-none absolute inset-0 opacity-15"
             style={{
-              backgroundImage: `linear-gradient(to right, rgba(255,255,255,0.95), rgba(255,255,255,0.78)), url(${pickImageUrl(1)})`,
+              backgroundImage: `${
+                isDarkMode
+                  ? "linear-gradient(to right, rgba(6,18,34,0.94), rgba(10,31,54,0.82))"
+                  : "linear-gradient(to right, rgba(255,255,255,0.95), rgba(255,255,255,0.78))"
+              }, url(${pickImageUrl(1)})`,
               backgroundPosition: "center",
               backgroundSize: "cover",
             }}
@@ -303,7 +326,11 @@ export const LandingPage = () => {
           <Card
             className="lift-card motion-float texture-speckle overflow-hidden border-0 text-white"
             style={{
-              backgroundImage: `linear-gradient(to bottom right, rgba(11,63,69,0.92), rgba(15,118,110,0.88)), ${pickImageUrl(2) ? `url(${pickImageUrl(2)})` : "none"}`,
+              backgroundImage: `${
+                isDarkMode
+                  ? "linear-gradient(to bottom right, rgba(6,23,43,0.93), rgba(13,45,78,0.86))"
+                  : "linear-gradient(to bottom right, rgba(11,63,69,0.92), rgba(15,118,110,0.88))"
+              }, ${pickImageUrl(2) ? `url(${pickImageUrl(2)})` : "none"}`,
               backgroundPosition: "center",
               backgroundSize: "cover",
             }}
@@ -360,7 +387,11 @@ export const LandingPage = () => {
                       alt={image.alt || "Musical instrument"}
                       width={image.width}
                       height={image.height}
-                      className="h-full w-full object-cover"
+                      className={`h-full w-full object-cover ${
+                        isDarkMode
+                          ? "brightness-[0.72] contrast-[1.08] saturate-90"
+                          : ""
+                      }`}
                       loading={index === 0 ? "eager" : "lazy"}
                       decoding="async"
                       sizes="(min-width: 768px) 33vw, 100vw"
@@ -383,7 +414,9 @@ export const LandingPage = () => {
       <section className="section-shell texture-fabric motion-reveal relative">
         {pickImageUrl(5) ? (
           <div
-            className="pointer-events-none absolute right-8 top-10 hidden h-40 w-40 rounded-full bg-cover bg-center opacity-20 blur-[1px] md:block"
+            className={`pointer-events-none absolute right-8 top-10 hidden h-40 w-40 rounded-full bg-cover bg-center blur-[1px] md:block ${
+              isDarkMode ? "opacity-30" : "opacity-20"
+            }`}
             style={{ backgroundImage: `url(${pickImageUrl(5)})` }}
             aria-hidden="true"
           />
@@ -405,7 +438,11 @@ export const LandingPage = () => {
                 {
                   ...(pickImageUrl(index + 3)
                     ? {
-                        backgroundImage: `linear-gradient(to bottom right, rgba(255,255,255,0.95), rgba(255,255,255,0.9)), url(${pickImageUrl(index + 3)})`,
+                        backgroundImage: `${
+                          isDarkMode
+                            ? "linear-gradient(to bottom right, rgba(8,24,42,0.94), rgba(12,34,58,0.9))"
+                            : "linear-gradient(to bottom right, rgba(255,255,255,0.95), rgba(255,255,255,0.9))"
+                        }, url(${pickImageUrl(index + 3)})`,
                         backgroundSize: "cover",
                         backgroundPosition: "center",
                       }
@@ -449,7 +486,11 @@ export const LandingPage = () => {
                 {
                   ...(pickImageUrl(index + 7)
                     ? {
-                        backgroundImage: `linear-gradient(to bottom, rgba(255,255,255,0.95), rgba(255,255,255,0.9)), url(${pickImageUrl(index + 7)})`,
+                        backgroundImage: `${
+                          isDarkMode
+                            ? "linear-gradient(to bottom, rgba(8,24,42,0.95), rgba(12,34,58,0.9))"
+                            : "linear-gradient(to bottom, rgba(255,255,255,0.95), rgba(255,255,255,0.9))"
+                        }, url(${pickImageUrl(index + 7)})`,
                         backgroundSize: "cover",
                         backgroundPosition: "center",
                       }
@@ -564,20 +605,20 @@ export const LandingPage = () => {
         </Card>
       </section>
 
-      <footer className="relative mt-auto overflow-hidden border-t border-border/80 bg-gradient-to-br from-[#f5faf8] via-white to-[#edf6f2]">
+      <footer className="relative mt-auto overflow-hidden border-t border-border/80 bg-gradient-to-br from-[#f5faf8] via-white to-[#edf6f2] dark:border-[#2b4a6b] dark:from-[#081d35]/98 dark:via-[#0a233f]/98 dark:to-[#0d2b4a]/98">
         <div
-          className="pointer-events-none absolute -left-10 top-10 h-48 w-48 rounded-full bg-primary/10 blur-2xl"
+          className="pointer-events-none absolute -left-10 top-10 h-48 w-48 rounded-full bg-primary/10 blur-2xl dark:bg-[#60a5fa]/20"
           aria-hidden="true"
         />
         <div
-          className="pointer-events-none absolute -right-14 bottom-0 h-52 w-52 rounded-full bg-[#0f766e]/10 blur-2xl"
+          className="pointer-events-none absolute -right-14 bottom-0 h-52 w-52 rounded-full bg-[#0f766e]/10 blur-2xl dark:bg-[#38bdf8]/18"
           aria-hidden="true"
         />
 
         <div className="app-shell py-14">
           <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.5fr_repeat(3,minmax(0,1fr))]">
             <div className="space-y-5">
-              <div className="inline-flex items-center gap-3 rounded-full border border-border/80 bg-white/80 px-4 py-2 shadow-sm">
+              <div className="inline-flex items-center gap-3 rounded-full border border-border/80 bg-white/85 px-4 py-2 shadow-sm dark:border-[#355784]/60 dark:bg-[#0a1f36]/95">
                 <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[#0b4a52] text-white">
                   <Music className="size-4" />
                 </span>

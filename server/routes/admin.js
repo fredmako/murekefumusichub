@@ -43,6 +43,20 @@ function isMissingEnrollmentsError(err) {
   );
 }
 
+function isMissingCompositionVerificationColumnError(err) {
+  const code = String(err?.code || "").toUpperCase();
+  const message = String(err?.message || "").toLowerCase();
+  return (
+    code === "42703" ||
+    code === "PGRST204" ||
+    code === "PGRST205" ||
+    message.includes("is_verified") ||
+    message.includes("verified_at") ||
+    message.includes("verified_by") ||
+    message.includes("verification_notes")
+  );
+}
+
 function missingEnrollmentsResponse(res) {
   return res.status(500).json({
     message:
@@ -353,36 +367,184 @@ router.get("/compositions", async (req, res) => {
   try {
     const limit = parseLimit(req.query.limit, 400, 1000);
 
-    // compose without deep composer->users join; frontend can fetch user info separately if needed
-    let query = supabase
-      .from("compositions")
-      .select(
-        `
+    const selectBase = `
+      id,
+      title,
+      description,
+      price,
+      pdf_url,
+      created_at,
+      composer_id,
+      composers (
         id,
-        title,
-        description,
-        price,
-        created_at,
-        composer_id,
-        composers (
-          id,
-          user_id,
-          users(display_name, email)
-        )
-      `,
+        user_id,
+        users(display_name, email)
       )
-      .eq("deleted", false)
-      .order("created_at", { ascending: false });
+    `;
 
-    if (limit > 0) {
-      query = query.limit(limit);
+    const selectWithVerification = `
+      id,
+      title,
+      description,
+      price,
+      pdf_url,
+      created_at,
+      composer_id,
+      is_verified,
+      verified_at,
+      verified_by,
+      verification_notes,
+      composers (
+        id,
+        user_id,
+        users(display_name, email)
+      )
+    `;
+
+    const runQuery = async (includeVerification) => {
+      let query = supabase
+        .from("compositions")
+        .select(includeVerification ? selectWithVerification : selectBase)
+        .eq("deleted", false)
+        .order("created_at", { ascending: false });
+
+      if (limit > 0) {
+        query = query.limit(limit);
+      }
+
+      return await query;
+    };
+
+    let { data, error } = await runQuery(true);
+
+    if (error && isMissingCompositionVerificationColumnError(error)) {
+      console.warn(
+        "[admin-compositions] verification columns missing; retrying without them",
+      );
+      const fallback = await runQuery(false);
+      data = fallback.data;
+      error = fallback.error;
+      if (!error) {
+        data = (data || []).map((row) => ({
+          ...row,
+          is_verified: false,
+          verified_at: null,
+          verified_by: null,
+          verification_notes: null,
+        }));
+      }
     }
 
-    const { data, error } = await query;
     if (error) throw error;
     return res.json(data || []);
   } catch (err) {
     console.error("[admin-compositions] Error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/compositions/:compositionId/verify", async (req, res) => {
+  try {
+    const { compositionId } = req.params;
+    if (!compositionId) {
+      return res.status(400).json({ error: "compositionId is required" });
+    }
+
+    const reviewer = await resolveDbUser(req.authUid);
+    if (!reviewer?.id) {
+      return res.status(404).json({ error: "Admin user not found" });
+    }
+
+    const verificationNotes = req.body?.verificationNotes
+      ? String(req.body.verificationNotes).trim().slice(0, 1200)
+      : null;
+
+    const { data: updated, error } = await supabase
+      .from("compositions")
+      .update({
+        is_verified: true,
+        verified_by: reviewer.id,
+        verified_at: new Date().toISOString(),
+        verification_notes: verificationNotes,
+      })
+      .eq("id", compositionId)
+      .eq("deleted", false)
+      .select("id, title, is_verified, verified_at, verified_by, verification_notes")
+      .maybeSingle();
+
+    if (error) {
+      if (isMissingCompositionVerificationColumnError(error)) {
+        return res.status(500).json({
+          message:
+            "Composition verification columns are missing. Run migration 023_add_composition_verification_columns.sql, then retry.",
+        });
+      }
+      throw error;
+    }
+    if (!updated) {
+      return res.status(404).json({ error: "Composition not found" });
+    }
+
+    return res.json({
+      success: true,
+      message: "Composition verified",
+      composition: updated,
+    });
+  } catch (err) {
+    console.error("[admin-verify-composition] Error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/compositions/:compositionId/unverify", async (req, res) => {
+  try {
+    const { compositionId } = req.params;
+    if (!compositionId) {
+      return res.status(400).json({ error: "compositionId is required" });
+    }
+
+    const reviewer = await resolveDbUser(req.authUid);
+    if (!reviewer?.id) {
+      return res.status(404).json({ error: "Admin user not found" });
+    }
+
+    const reason = req.body?.reason
+      ? String(req.body.reason).trim().slice(0, 1200)
+      : null;
+
+    const { data: updated, error } = await supabase
+      .from("compositions")
+      .update({
+        is_verified: false,
+        verified_by: null,
+        verified_at: null,
+        verification_notes: reason,
+      })
+      .eq("id", compositionId)
+      .eq("deleted", false)
+      .select("id, title, is_verified, verified_at, verified_by, verification_notes")
+      .maybeSingle();
+
+    if (error) {
+      if (isMissingCompositionVerificationColumnError(error)) {
+        return res.status(500).json({
+          message:
+            "Composition verification columns are missing. Run migration 023_add_composition_verification_columns.sql, then retry.",
+        });
+      }
+      throw error;
+    }
+    if (!updated) {
+      return res.status(404).json({ error: "Composition not found" });
+    }
+
+    return res.json({
+      success: true,
+      message: "Composition marked unverified",
+      composition: updated,
+    });
+  } catch (err) {
+    console.error("[admin-unverify-composition] Error:", err);
     return res.status(500).json({ error: err.message });
   }
 });

@@ -113,7 +113,7 @@ export function CheckoutPage({
   if (isLoading) {
     return (
       <div className="p-6">
-        <div className="flex items-center gap-2 text-gray-600">
+        <div className="flex items-center gap-2 text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />
           <span>Preparing checkout...</span>
         </div>
@@ -122,7 +122,7 @@ export function CheckoutPage({
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-blue-50 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-[#f6fbff] via-white to-[#f5f1ff] p-6 dark:from-[#060f1f] dark:via-[#0a1830] dark:to-[#1b1232]">
       <div className="mx-auto max-w-5xl space-y-6">
         <Button variant="ghost" onClick={() => navigate(-1)}>
           <ArrowLeft className="mr-2 size-4" />
@@ -131,7 +131,7 @@ export function CheckoutPage({
 
         <div>
           <h1 className="text-3xl font-bold">Manual M-Pesa Checkout</h1>
-          <p className="text-sm text-gray-600 mt-1">
+          <p className="mt-1 text-sm text-muted-foreground">
             Complete payment on M-Pesa, then submit the transaction code for
             admin approval.
           </p>
@@ -149,29 +149,29 @@ export function CheckoutPage({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              <div className="rounded-lg border bg-emerald-50 p-4">
-                <p className="text-sm text-gray-600">Business Name</p>
+              <div className="rounded-lg border border-border/70 bg-emerald-50/80 p-4 dark:bg-[#12253f]/92">
+                <p className="text-sm text-muted-foreground">Business Name</p>
                 <p className="text-lg font-semibold">{MPESA_BUSINESS_NAME}</p>
-                <p className="text-sm text-gray-600 mt-3">Business Number</p>
+                <p className="mt-3 text-sm text-muted-foreground">Business Number</p>
                 <p className="text-2xl font-bold tracking-wide">
                   {MPESA_BUSINESS_NUMBER}
                 </p>
-                <p className="text-sm text-gray-600 mt-3">Account Number</p>
+                <p className="mt-3 text-sm text-muted-foreground">Account Number</p>
                 <p className="text-xl font-bold tracking-wide">
                   {MPESA_ACCOUNT_NUMBER}
                 </p>
-                <p className="text-sm text-gray-600 mt-3">Paynecta Link</p>
+                <p className="mt-3 text-sm text-muted-foreground">Paynecta Link</p>
                 <a
                   href={MPESA_PAYMENT_URL}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-sm font-medium text-emerald-700 underline break-all"
+                  className="text-sm font-medium text-primary underline break-all"
                 >
                   {MPESA_PAYMENT_URL}
                 </a>
               </div>
 
-              <ol className="list-decimal pl-5 space-y-2 text-sm text-gray-700">
+              <ol className="list-decimal pl-5 space-y-2 text-sm text-muted-foreground">
                 <li>Open the Paynecta payment link shown above.</li>
                 <li>
                   Complete the payment to business number {MPESA_BUSINESS_NUMBER} for
@@ -221,7 +221,7 @@ export function CheckoutPage({
             <CardContent className="space-y-3">
               {cart.length === 0 ? (
                 <div className="space-y-3">
-                  <p className="text-sm text-gray-600">Your cart is empty.</p>
+                  <p className="text-sm text-muted-foreground">Your cart is empty.</p>
                   <Button
                     variant="outline"
                     className="w-full"
@@ -241,7 +241,7 @@ export function CheckoutPage({
                         <p className="font-medium text-sm">
                           {item.composition.title}
                         </p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-muted-foreground">
                           {item.composition.composerName}
                         </p>
                       </div>
@@ -252,7 +252,7 @@ export function CheckoutPage({
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-6 px-1 text-xs text-red-600"
+                          className="h-6 px-1 text-xs text-destructive"
                           onClick={() => onRemoveFromCart(item.composition.id)}
                         >
                           Remove

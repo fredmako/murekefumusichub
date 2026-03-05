@@ -17,17 +17,49 @@ const ALLOWED_THEME_PRESETS = new Set([
   "sunset",
   "forest",
 ]);
+const ALLOWED_THEME_MODES = new Set(["light", "dark"]);
 
-function normalizeThemeSettings(themeSettings) {
+function normalizeThemeSettings(themeSettings, existingThemeSettings = null) {
   if (!themeSettings || typeof themeSettings !== "object") return null;
-  const presetRaw = String(themeSettings.preset || "").trim().toLowerCase();
-  if (!ALLOWED_THEME_PRESETS.has(presetRaw)) return null;
-  return { preset: presetRaw };
+
+  const existingPresetRaw = String(existingThemeSettings?.preset || "")
+    .trim()
+    .toLowerCase();
+  const existingModeRaw = String(existingThemeSettings?.mode || "")
+    .trim()
+    .toLowerCase();
+
+  let preset = ALLOWED_THEME_PRESETS.has(existingPresetRaw)
+    ? existingPresetRaw
+    : "emerald";
+  let mode = ALLOWED_THEME_MODES.has(existingModeRaw) ? existingModeRaw : "light";
+
+  const hasPreset = Object.prototype.hasOwnProperty.call(themeSettings, "preset");
+  const hasMode = Object.prototype.hasOwnProperty.call(themeSettings, "mode");
+  if (!hasPreset && !hasMode) return null;
+
+  if (hasPreset) {
+    const presetRaw = String(themeSettings.preset || "")
+      .trim()
+      .toLowerCase();
+    if (!ALLOWED_THEME_PRESETS.has(presetRaw)) return null;
+    preset = presetRaw;
+  }
+
+  if (hasMode) {
+    const modeRaw = String(themeSettings.mode || "")
+      .trim()
+      .toLowerCase();
+    if (!ALLOWED_THEME_MODES.has(modeRaw)) return null;
+    mode = modeRaw;
+  }
+
+  return { preset, mode };
 }
 
 /**
  * PUT /api/account
- * Update current user's profile (display_name, avatar_url).
+ * Update current user's profile (display_name, avatar_url, theme_settings).
  * Protected: requires Authorization Bearer token
  */
 router.put("/", verifySupabaseToken, async (req, res) => {
@@ -40,7 +72,7 @@ router.put("/", verifySupabaseToken, async (req, res) => {
     // Find DB user by auth_uid
     const { data: userRow, error: userError } = await supabaseAdmin
       .from("users")
-      .select("id, auth_uid")
+      .select("id, auth_uid, theme_settings")
       .eq("auth_uid", authUid)
       .maybeSingle();
 
@@ -54,11 +86,14 @@ router.put("/", verifySupabaseToken, async (req, res) => {
       updates.avatar_url = normalizeAvatarUrl(avatarUrl);
     }
     if (themeSettings !== undefined) {
-      const normalizedTheme = normalizeThemeSettings(themeSettings);
+      const normalizedTheme = normalizeThemeSettings(
+        themeSettings,
+        userRow.theme_settings || null,
+      );
       if (!normalizedTheme) {
         return res.status(400).json({
           message:
-            "Invalid theme settings. Allowed presets: emerald, aurora, ocean, sunset, forest.",
+            "Invalid theme settings. Allowed presets: emerald, aurora, ocean, sunset, forest. Allowed modes: light, dark.",
         });
       }
       updates.theme_settings = normalizedTheme;

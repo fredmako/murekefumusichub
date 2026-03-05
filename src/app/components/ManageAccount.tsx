@@ -31,21 +31,27 @@ import {
   Loader2,
   Music,
   UserRound,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { registrationService, storageService } from "@/services/api";
 import { API_BASE_URL } from "@/lib/apiBase";
+import { useTheme } from "@/context/ThemeContext";
+import { getOptimizedProfileImageUrl } from "@/services/profileImageService";
 
 type RoleRequestState = "none" | "pending" | "approved" | "rejected";
 const MAX_AVATAR_SIZE_BYTES = 8 * 1024 * 1024;
 
 export function ManageAccount() {
   const { appUser, signOut, getAuthToken, isLoading: authLoading } = useAuth();
+  const { mode, setMode, theme } = useTheme();
   const navigate = useNavigate();
 
   // local UI/action loading (separate from auth provider loading)
   const [loading, setLoading] = useState(false);
+  const [themeSaving, setThemeSaving] = useState(false);
   const [user, setUser] = useState<AppUser | null>(null);
   const [supabaseId, setSupabaseId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -460,6 +466,65 @@ export function ManageAccount() {
     }
   };
 
+  const handleThemeModeChange = async (nextMode: "light" | "dark") => {
+    if (!appUser) return;
+    if (mode === nextMode) return;
+
+    const previousMode = mode;
+    setMode(nextMode);
+    setThemeSaving(true);
+
+    try {
+      const token = await getAuthToken();
+      const preset = user?.theme_settings?.preset || theme || "emerald";
+
+      const res = await fetch(`${API_BASE_URL}/account`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          themeSettings: {
+            preset,
+            mode: nextMode,
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData?.message || "Failed to update theme mode");
+      }
+
+      const updated = await res.json().catch(() => null);
+      const nextThemeSettings =
+        updated?.theme_settings && typeof updated.theme_settings === "object"
+          ? updated.theme_settings
+          : {
+              preset,
+              mode: nextMode,
+            };
+
+      setUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              theme_settings: nextThemeSettings,
+            }
+          : prev,
+      );
+
+      toast.success(`${nextMode === "dark" ? "Dark" : "Light"} mode enabled`);
+    } catch (error: any) {
+      setMode(previousMode as "light" | "dark");
+      console.error("[handleThemeModeChange] error:", error);
+      toast.error(error?.message || "Failed to update theme mode");
+    } finally {
+      setThemeSaving(false);
+    }
+  };
+
   // Poll for role changes and refresh user record periodically
   useEffect(() => {
     let timer: any;
@@ -587,6 +652,8 @@ export function ManageAccount() {
   const composerPaymentPending = composerPaymentStatus === "pending";
   const composerCanRequestAccess =
     !composerRequiresPayment || composerHasApprovedPayment;
+  const currentThemeMode: "light" | "dark" =
+    user?.theme_settings?.mode === "dark" || mode === "dark" ? "dark" : "light";
 
   const dashboardOptions = [
     ...(userRoles.includes("buyer")
@@ -637,9 +704,18 @@ export function ManageAccount() {
                         {user?.avatar_url ? (
                           // display the URL that comes from server
                           <img
-                            src={user.avatar_url}
+                            src={
+                              getOptimizedProfileImageUrl(user.avatar_url, {
+                                width: 320,
+                                height: 320,
+                                quality: 72,
+                                resize: "cover",
+                              }) || user.avatar_url
+                            }
                             alt="avatar"
                             className="w-full h-full object-cover"
+                            loading="lazy"
+                            decoding="async"
                           />
                         ) : (
                           <UserRound className="h-16 w-16 text-white/90" />
@@ -821,6 +897,49 @@ export function ManageAccount() {
                 </div>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        <Card className="lift-card texture-speckle overflow-hidden border-border/70 bg-card/95">
+          <CardHeader className="border-b border-border/70 bg-card/80">
+            <CardTitle className="flex items-center gap-3 text-2xl text-foreground">
+              <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                {currentThemeMode === "dark" ? (
+                  <Moon className="h-5 w-5" />
+                ) : (
+                  <Sun className="h-5 w-5" />
+                )}
+              </div>
+              Appearance
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="pt-6 pb-6">
+            <p className="mb-4 text-sm text-muted-foreground">
+              Choose your preferred display mode. This preference is saved to your account.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Button
+                type="button"
+                variant={currentThemeMode === "light" ? "default" : "outline"}
+                onClick={() => void handleThemeModeChange("light")}
+                disabled={themeSaving}
+                className="w-full"
+              >
+                <Sun className="mr-2 h-4 w-4" />
+                Light Mode
+              </Button>
+              <Button
+                type="button"
+                variant={currentThemeMode === "dark" ? "default" : "outline"}
+                onClick={() => void handleThemeModeChange("dark")}
+                disabled={themeSaving}
+                className="w-full"
+              >
+                <Moon className="mr-2 h-4 w-4" />
+                Dark Mode
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
