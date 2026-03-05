@@ -364,6 +364,30 @@ async function createThreadWithInitialMessage({
   return { thread, insertedMessage };
 }
 
+function normalizeAdminThreadType(value) {
+  const normalized = normalizeText(value, 24).toLowerCase();
+  if (
+    normalized === "notification" ||
+    normalized === "ticket" ||
+    normalized === "direct"
+  ) {
+    return normalized;
+  }
+  return "direct";
+}
+
+function defaultAdminThreadSubject(threadType) {
+  if (threadType === "notification") return "Admin Notification";
+  if (threadType === "ticket") return "Support Ticket Follow-up";
+  return "Direct Admin Chat";
+}
+
+function defaultAdminThreadContext(threadType) {
+  if (threadType === "notification") return "admin-notification";
+  if (threadType === "ticket") return "admin-ticket";
+  return "admin-direct";
+}
+
 router.use(verifySupabaseToken);
 // Backward-compatible issue endpoint.
 router.post("/issues", async (req, res) => {
@@ -441,6 +465,121 @@ router.post("/threads", async (req, res) => {
     const statusCode = Number(err?.statusCode || 500);
     return res.status(statusCode).json({
       message: err?.message || "Failed to create support chat thread",
+      error: err?.message || "UNKNOWN_ERROR",
+    });
+  }
+});
+
+// Admin creates and assigns a support thread directly to self for a selected user.
+router.post("/admin/threads", adminOnly, async (req, res) => {
+  try {
+    await expireOverdueTickets();
+
+    const adminUser = await resolveDbUser(req.authUid);
+    if (!adminUser?.id) {
+      return res.status(404).json({ message: "Admin profile not found" });
+    }
+
+    const targetUserId = normalizeText(
+      req.body?.targetUserId || req.body?.requesterUserId,
+      120,
+    );
+    if (!targetUserId) {
+      return res.status(400).json({ message: "targetUserId is required" });
+    }
+    if (targetUserId === adminUser.id) {
+      return res.status(400).json({
+        message: "Cannot start an admin support thread with yourself",
+      });
+    }
+
+    const normalizedMessage = normalizeText(req.body?.message, 4000);
+    if (!normalizedMessage) {
+      return res.status(400).json({ message: "Message is required" });
+    }
+
+    const threadType = normalizeAdminThreadType(req.body?.threadType);
+    const normalizedSubject =
+      normalizeText(req.body?.subject, 160) ||
+      defaultAdminThreadSubject(threadType);
+    const normalizedContext =
+      normalizeText(req.body?.context, 120) ||
+      defaultAdminThreadContext(threadType);
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const expiresAtIso = new Date(
+      now.getTime() + TICKET_LIFETIME_DAYS * 24 * 60 * 60 * 1000,
+    ).toISOString();
+
+    const { data: targetUser, error: targetErr } = await supabaseAdmin
+      .from("users")
+      .select("id, email, display_name, avatar_url, is_active")
+      .eq("id", targetUserId)
+      .maybeSingle();
+    if (targetErr) throw targetErr;
+    if (!targetUser) {
+      return res.status(404).json({ message: "Target user not found" });
+    }
+    if (targetUser.is_active === false) {
+      return res.status(409).json({
+        message: "Cannot start a chat with a suspended user",
+      });
+    }
+
+    const { data: thread, error: threadErr } = await supabaseAdmin
+      .from("support_chat_threads")
+      .insert({
+        requester_user_id: targetUser.id,
+        subject: normalizedSubject,
+        context: normalizedContext,
+        status: "active",
+        assigned_admin_user_id: adminUser.id,
+        assigned_at: nowIso,
+        expires_at: expiresAtIso,
+        is_admin_unread: false,
+        is_user_unread: true,
+        last_message_preview: normalizedMessage.slice(0, 500),
+        last_sender_role: "admin",
+        last_message_at: nowIso,
+        created_at: nowIso,
+        updated_at: nowIso,
+      })
+      .select("*")
+      .single();
+    if (threadErr) throw threadErr;
+
+    const { data: insertedMessage, error: msgErr } = await supabaseAdmin
+      .from("support_chat_messages")
+      .insert({
+        thread_id: thread.id,
+        sender_user_id: adminUser.id,
+        sender_role: "admin",
+        message: normalizedMessage,
+        created_at: nowIso,
+      })
+      .select("*")
+      .single();
+    if (msgErr) throw msgErr;
+
+    return res.status(201).json({
+      success: true,
+      threadType,
+      thread: mapThreadForResponse(
+        thread,
+        withNormalizedAvatar(targetUser),
+        0,
+      ),
+      message: insertedMessage,
+    });
+  } catch (err) {
+    console.error("[support-admin-thread-create] Error:", err);
+
+    if (isMissingSupportChatTablesError(err)) {
+      return missingMigrationResponse(res);
+    }
+
+    return res.status(500).json({
+      message: "Failed to create admin support thread",
       error: err?.message || "UNKNOWN_ERROR",
     });
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Users,
@@ -19,6 +19,12 @@ import {
   Send,
   Trash2,
   GraduationCap,
+  Bell,
+  ChevronDown,
+  ChevronRight,
+  MessageCircleMore,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import {
   Card,
@@ -57,7 +63,7 @@ import { useAuth } from "../../context/AuthContext";
 import { adminService } from "@/services/adminService";
 import { compositionService } from "@/services/api";
 import { SupportIssueButton } from "@/app/components/SupportIssueButton";
-import { supportService } from "@/services/supportService";
+import { supportService, type AdminThreadType } from "@/services/supportService";
 import { supabase } from "@/lib/supabase";
 
 /* --------- CONFIG --------- */
@@ -105,6 +111,16 @@ function LoadingTableRow({
 /* --------- TYPES --------- */
 type UserRoleMap = Record<string, string>; // user_id -> primaryRoleString
 type DataLoadLevel = "none" | "preview" | "full";
+type AdminTab =
+  | "overview"
+  | "users"
+  | "requests"
+  | "enrollments"
+  | "compositions"
+  | "transactions"
+  | "support"
+  | "invites";
+type ServiceMenuGroup = "customer" | "operations" | "commerce";
 
 const BOOTSTRAP_FALLBACK = {
   roles: [],
@@ -116,6 +132,12 @@ const BOOTSTRAP_FALLBACK = {
     totalRevenue: 0,
     totalTransactions: 0,
   },
+};
+
+const ADMIN_CHAT_TYPE_LABELS: Record<AdminThreadType, string> = {
+  notification: "Notification",
+  ticket: "Ticket Chat",
+  direct: "Direct Chat",
 };
 
 export function AdminPanel() {
@@ -141,7 +163,7 @@ export function AdminPanel() {
   const [totalTransactions, setTotalTransactions] = useState(0);
 
   // UI
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState<AdminTab>("users");
   const [loading, setLoading] = useState(true);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -153,8 +175,14 @@ export function AdminPanel() {
   const [supportMessagesLoading, setSupportMessagesLoading] = useState(false);
   const [processingAction, setProcessingAction] = useState<string | null>(null);
   const [newInviteEmail, setNewInviteEmail] = useState("");
-  const inviteSectionRef = useRef<HTMLDivElement | null>(null);
-  const inviteInputRef = useRef<HTMLInputElement | null>(null);
+  const [isServiceMenuCollapsed, setIsServiceMenuCollapsed] = useState(false);
+  const [expandedServiceMenuGroups, setExpandedServiceMenuGroups] = useState<
+    Record<ServiceMenuGroup, boolean>
+  >({
+    customer: true,
+    operations: true,
+    commerce: true,
+  });
   const [supportStateFilter, setSupportStateFilter] = useState<
     "all" | "unread" | "read"
   >("unread");
@@ -168,6 +196,10 @@ export function AdminPanel() {
   >(null);
   const [supportMessages, setSupportMessages] = useState<any[]>([]);
   const [supportReply, setSupportReply] = useState("");
+  const [adminChatType, setAdminChatType] = useState<AdminThreadType>("direct");
+  const [adminChatTargetUserId, setAdminChatTargetUserId] = useState("");
+  const [adminChatSubject, setAdminChatSubject] = useState("");
+  const [adminChatMessage, setAdminChatMessage] = useState("");
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [compositionsLoadLevel, setCompositionsLoadLevel] =
     useState<DataLoadLevel>("none");
@@ -427,6 +459,10 @@ export function AdminPanel() {
     if (activeTab === "support") {
       void fetchSupportTickets();
       void fetchSupportThreads();
+      void fetchUsers();
+    }
+    if (activeTab === "invites") {
+      void fetchInvites();
     }
     if (activeTab === "requests" && requests.length === 0) {
       void fetchRequests();
@@ -578,6 +614,62 @@ export function AdminPanel() {
     [supportThreads, supportTickets],
   );
 
+  const selectedAdminChatTarget = useMemo(
+    () =>
+      users.find((user: any) => user.id === adminChatTargetUserId) || null,
+    [users, adminChatTargetUserId],
+  );
+
+  const toggleServiceMenuGroup = (group: ServiceMenuGroup) => {
+    setExpandedServiceMenuGroups((current) => ({
+      ...current,
+      [group]: !current[group],
+    }));
+  };
+
+  const formatUserDisplay = (user: any) =>
+    user?.display_name || user?.email || "Unknown user";
+
+  const defaultAdminChatSubject = (
+    type: AdminThreadType,
+    user: any | null = null,
+  ) => {
+    const displayName = formatUserDisplay(user);
+    if (type === "notification") {
+      return `Notification for ${displayName}`;
+    }
+    if (type === "ticket") {
+      return `Support follow-up for ${displayName}`;
+    }
+    return `Direct chat with ${displayName}`;
+  };
+
+  const resolveThreadContextLabel = (context?: string | null) => {
+    const normalized = String(context || "").toLowerCase();
+    if (normalized.includes("notification")) {
+      return {
+        label: "Notification",
+        className: "bg-indigo-100 text-indigo-800",
+      };
+    }
+    if (normalized.includes("ticket")) {
+      return {
+        label: "Ticket",
+        className: "bg-amber-100 text-amber-800",
+      };
+    }
+    if (normalized.includes("direct")) {
+      return {
+        label: "Direct",
+        className: "bg-emerald-100 text-emerald-800",
+      };
+    }
+    return {
+      label: "Support",
+      className: "bg-sky-100 text-sky-800",
+    };
+  };
+
   const resolveRequestedRole = (
     request: any,
   ): "composer" | "admin" =>
@@ -640,6 +732,61 @@ export function AdminPanel() {
     await runAction(`user:suspend:${userId}`, async () => {
       await adminService.suspendUser(userId);
       await fetchUsers(true);
+    });
+  }
+
+  function openAdminChatComposer(user: any, type: AdminThreadType) {
+    const subject = defaultAdminChatSubject(type, user);
+    setAdminChatTargetUserId(user?.id || "");
+    setAdminChatType(type);
+    setAdminChatSubject(subject);
+    setAdminChatMessage("");
+    setActiveTab("support");
+    setSupportStateFilter("all");
+    setSelectedSupportThreadId(null);
+    void fetchSupportThreads("all");
+    void fetchSupportTickets();
+    toast.info(
+      `${ADMIN_CHAT_TYPE_LABELS[type]} ready for ${formatUserDisplay(user)} in Support.`,
+    );
+  }
+
+  async function createAdminThread() {
+    const targetUserId = adminChatTargetUserId.trim();
+    const message = adminChatMessage.trim();
+    const subject = adminChatSubject.trim();
+
+    if (!targetUserId) {
+      toast.error("Select a user to message");
+      return;
+    }
+
+    if (!message) {
+      toast.error("Type a message before starting the chat");
+      return;
+    }
+
+    await runAction(`support:create:${targetUserId}:${adminChatType}`, async () => {
+      const response = await supportService.createAdminThread({
+        targetUserId,
+        threadType: adminChatType,
+        subject: subject || undefined,
+        message,
+        context: `admin-${adminChatType}`,
+      });
+
+      const createdThreadId = response?.thread?.id || null;
+      setActiveTab("support");
+      setSupportStateFilter("all");
+      setAdminChatMessage("");
+      await Promise.all([fetchSupportTickets(), fetchSupportThreads("all")]);
+
+      if (createdThreadId) {
+        setSelectedSupportThreadId(createdThreadId);
+        await fetchSupportMessages(createdThreadId, false);
+      }
+
+      toast.success(`${ADMIN_CHAT_TYPE_LABELS[adminChatType]} started`);
     });
   }
 
@@ -878,7 +1025,9 @@ export function AdminPanel() {
   }, [userIdToRole]);
 
   const sideMenuButtonClass = (active: boolean) =>
-    `w-full justify-start rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
+    `w-full rounded-xl border py-2 text-left text-sm font-medium transition ${
+      isServiceMenuCollapsed ? "justify-center px-2" : "justify-start px-3"
+    } ${
       active
         ? "border-primary bg-primary/10 text-primary"
         : "border-border/70 bg-card/70 text-foreground hover:bg-muted/40"
@@ -896,16 +1045,6 @@ export function AdminPanel() {
     setActiveTab("support");
     setSupportStateFilter("all");
     void fetchSupportThreads("all");
-  };
-
-  const focusInviteComposer = () => {
-    inviteSectionRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
-    });
-    setTimeout(() => {
-      inviteInputRef.current?.focus();
-    }, 100);
   };
 
   if (loading) {
@@ -937,8 +1076,8 @@ export function AdminPanel() {
   }
 
   return (
-    <div className="p-6 space-y-8">
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+    <div className="p-6 space-y-6">
+      <div className="mb-2 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <h1 className="text-3xl font-bold">Admin Panel</h1>
           <p className="text-gray-600">
@@ -947,262 +1086,233 @@ export function AdminPanel() {
         </div>
         <SupportIssueButton context="admin-dashboard" />
       </div>
-
-      {/* STATS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card>
-          <CardHeader className="flex items-center justify-between">
-            <CardTitle className="text-sm text-gray-600">Total Users</CardTitle>
-            <Users className="size-5 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{totalUsers}</div>
-            <p className="text-xs text-gray-500 mt-1">
-              {composerCount} composers, {buyerCount} buyers
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex items-center justify-between">
-            <CardTitle className="text-sm text-gray-600">
-              Total Compositions
-            </CardTitle>
-            <Music className="size-5 text-purple-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{totalCompositions}</div>
-            <p className="text-xs text-gray-500 mt-1">Published works</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex items-center justify-between">
-            <CardTitle className="text-sm text-gray-600">
-              Total Revenue
-            </CardTitle>
-            <DollarSign className="size-5 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">
-              ${Number(totalRevenue || 0).toFixed(2)}
-            </div>
-            <p className="text-xs text-gray-500 mt-1">Platform earnings</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex items-center justify-between">
-            <CardTitle className="text-sm text-gray-600">
-              Transactions
-            </CardTitle>
-            <TrendingUp className="size-5 text-orange-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{totalTransactions}</div>
-            <p className="text-xs text-gray-500 mt-1">Total sales</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Invite composer */}
-      <div ref={inviteSectionRef}>
-        <Card>
-          <CardHeader>
-            <CardTitle>Add Composer Invite</CardTitle>
-            <CardDescription>
-              Enter an email to allow that user to register as composer
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex gap-2 items-center">
-            <input
-              ref={inviteInputRef}
-              className="flex-1 px-3 py-2 border rounded"
-              placeholder="composer@example.com"
-              value={newInviteEmail}
-              onChange={(e) => setNewInviteEmail(e.target.value)}
-              disabled={isProcessing}
-            />
-            <Button
-              onClick={() => addComposerInvite(newInviteEmail)}
-              disabled={isProcessing}
-            >
-              <Plus className="mr-2" /> Add Invite
-            </Button>
-          </CardContent>
-          {invites.length > 0 && (
-            <CardContent>
-              <div className="text-sm text-gray-600 mb-2">Recent invites</div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Invited By</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {invites.map((inv: any) => (
-                    <TableRow key={inv.email || inv.id}>
-                      <TableCell>{inv.email}</TableCell>
-                      <TableCell>{inv.invitedBy || "admin"}</TableCell>
-                      <TableCell>
-                        {new Date(
-                          inv.createdAt || inv.created_at || "",
-                        ).toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => revokeInvite(inv.email || inv.id)}
-                          disabled={isProcessing}
-                        >
-                          Revoke
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          )}
-        </Card>
-      </div>
-
-      {/* TABS */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v)}>
-        <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as AdminTab)}
+      >
+        <div
+          className={`grid gap-6 ${
+            isServiceMenuCollapsed
+              ? "lg:grid-cols-[96px_minmax(0,1fr)]"
+              : "lg:grid-cols-[320px_minmax(0,1fr)]"
+          }`}
+        >
+          <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
             <Card className="texture-speckle border-border/70 bg-card/95">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">Service Menu</CardTitle>
-                <CardDescription>
-                  Navigate core admin services quickly.
-                </CardDescription>
+                <div className="flex items-center justify-between gap-2">
+                  <div className={isServiceMenuCollapsed ? "hidden" : "block"}>
+                    <CardTitle className="text-base">Service Menu</CardTitle>
+                    <CardDescription>
+                      Expand each heading to open its submenus.
+                    </CardDescription>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() =>
+                      setIsServiceMenuCollapsed((collapsed) => !collapsed)
+                    }
+                    aria-label={
+                      isServiceMenuCollapsed
+                        ? "Expand service menu"
+                        : "Collapse service menu"
+                    }
+                  >
+                    {isServiceMenuCollapsed ? (
+                      <PanelLeftOpen className="size-4" />
+                    ) : (
+                      <PanelLeftClose className="size-4" />
+                    )}
+                  </Button>
+                </div>
               </CardHeader>
-              <CardContent className="space-y-5">
+              <CardContent className="space-y-4">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Customer Service
-                  </p>
-                  <div className="mt-2 space-y-2">
-                    <Button
-                      type="button"
-                      className={sideMenuButtonClass(
-                        activeTab === "support" && supportStateFilter === "unread",
-                      )}
-                      onClick={goToOpenTickets}
-                    >
-                      <MessageSquare className="mr-2 size-4" />
-                      Open Tickets
-                      <Badge className="ml-auto bg-amber-100 text-amber-800">
-                        {supportTickets.length}
-                      </Badge>
-                    </Button>
-                    <Button
-                      type="button"
-                      className={sideMenuButtonClass(
-                        activeTab === "support" && supportStateFilter !== "unread",
-                      )}
-                      onClick={goToAssignedChats}
-                    >
-                      <Send className="mr-2 size-4" />
-                      Assigned Chats
-                      <Badge className="ml-auto bg-emerald-100 text-emerald-800">
-                        {supportThreads.length}
-                      </Badge>
-                    </Button>
-                  </div>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+                    onClick={() => toggleServiceMenuGroup("customer")}
+                  >
+                    <span className={isServiceMenuCollapsed ? "hidden" : "block"}>
+                      Customer Service
+                    </span>
+                    {expandedServiceMenuGroups.customer ? (
+                      <ChevronDown className="size-4" />
+                    ) : (
+                      <ChevronRight className="size-4" />
+                    )}
+                  </button>
+                  {expandedServiceMenuGroups.customer && (
+                    <div className="mt-2 space-y-2">
+                      <Button
+                        type="button"
+                        className={sideMenuButtonClass(
+                          activeTab === "support" && supportStateFilter === "unread",
+                        )}
+                        onClick={goToOpenTickets}
+                      >
+                        <MessageSquare
+                          className={isServiceMenuCollapsed ? "size-4" : "mr-2 size-4"}
+                        />
+                        {!isServiceMenuCollapsed && (
+                          <>
+                            Open Tickets
+                            <Badge className="ml-auto bg-amber-100 text-amber-800">
+                              {supportTickets.length}
+                            </Badge>
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        className={sideMenuButtonClass(
+                          activeTab === "support" && supportStateFilter !== "unread",
+                        )}
+                        onClick={goToAssignedChats}
+                      >
+                        <Send
+                          className={isServiceMenuCollapsed ? "size-4" : "mr-2 size-4"}
+                        />
+                        {!isServiceMenuCollapsed && (
+                          <>
+                            Assigned Chats
+                            <Badge className="ml-auto bg-emerald-100 text-emerald-800">
+                              {supportThreads.length}
+                            </Badge>
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Platform Operations
-                  </p>
-                  <div className="mt-2 space-y-2">
-                    <Button
-                      type="button"
-                      className={sideMenuButtonClass(activeTab === "users")}
-                      onClick={() => setActiveTab("users")}
-                    >
-                      <Users className="mr-2 size-4" />
-                      User Management
-                    </Button>
-                    <Button
-                      type="button"
-                      className={sideMenuButtonClass(activeTab === "requests")}
-                      onClick={() => setActiveTab("requests")}
-                    >
-                      <Check className="mr-2 size-4" />
-                      Role Requests
-                      <Badge className="ml-auto bg-sky-100 text-sky-800">
-                        {pendingRequests.length}
-                      </Badge>
-                    </Button>
-                    <Button
-                      type="button"
-                      className={sideMenuButtonClass(false)}
-                      onClick={focusInviteComposer}
-                    >
-                      <Plus className="mr-2 size-4" />
-                      Composer Invites
-                    </Button>
-                  </div>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+                    onClick={() => toggleServiceMenuGroup("operations")}
+                  >
+                    <span className={isServiceMenuCollapsed ? "hidden" : "block"}>
+                      User Operations
+                    </span>
+                    {expandedServiceMenuGroups.operations ? (
+                      <ChevronDown className="size-4" />
+                    ) : (
+                      <ChevronRight className="size-4" />
+                    )}
+                  </button>
+                  {expandedServiceMenuGroups.operations && (
+                    <div className="mt-2 space-y-2">
+                      <Button
+                        type="button"
+                        className={sideMenuButtonClass(activeTab === "users")}
+                        onClick={() => setActiveTab("users")}
+                      >
+                        <Users
+                          className={isServiceMenuCollapsed ? "size-4" : "mr-2 size-4"}
+                        />
+                        {!isServiceMenuCollapsed && "User Management"}
+                      </Button>
+                      <Button
+                        type="button"
+                        className={sideMenuButtonClass(activeTab === "requests")}
+                        onClick={() => setActiveTab("requests")}
+                      >
+                        <Check
+                          className={isServiceMenuCollapsed ? "size-4" : "mr-2 size-4"}
+                        />
+                        {!isServiceMenuCollapsed && (
+                          <>
+                            Role Requests
+                            <Badge className="ml-auto bg-sky-100 text-sky-800">
+                              {pendingRequests.length}
+                            </Badge>
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        className={sideMenuButtonClass(activeTab === "invites")}
+                        onClick={() => setActiveTab("invites")}
+                      >
+                        <Plus
+                          className={isServiceMenuCollapsed ? "size-4" : "mr-2 size-4"}
+                        />
+                        {!isServiceMenuCollapsed && "Composer Invites"}
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Content and Commerce
-                  </p>
-                  <div className="mt-2 space-y-2">
-                    <Button
-                      type="button"
-                      className={sideMenuButtonClass(activeTab === "overview")}
-                      onClick={() => setActiveTab("overview")}
-                    >
-                      <TrendingUp className="mr-2 size-4" />
-                      Overview
-                    </Button>
-                    <Button
-                      type="button"
-                      className={sideMenuButtonClass(activeTab === "compositions")}
-                      onClick={() => setActiveTab("compositions")}
-                    >
-                      <Music className="mr-2 size-4" />
-                      Compositions
-                    </Button>
-                    <Button
-                      type="button"
-                      className={sideMenuButtonClass(activeTab === "transactions")}
-                      onClick={() => setActiveTab("transactions")}
-                    >
-                      <DollarSign className="mr-2 size-4" />
-                      Transactions
-                    </Button>
-                    <Button
-                      type="button"
-                      className={sideMenuButtonClass(activeTab === "enrollments")}
-                      onClick={() => setActiveTab("enrollments")}
-                    >
-                      <GraduationCap className="mr-2 size-4" />
-                      Enrollments
-                    </Button>
-                  </div>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+                    onClick={() => toggleServiceMenuGroup("commerce")}
+                  >
+                    <span className={isServiceMenuCollapsed ? "hidden" : "block"}>
+                      Content and Commerce
+                    </span>
+                    {expandedServiceMenuGroups.commerce ? (
+                      <ChevronDown className="size-4" />
+                    ) : (
+                      <ChevronRight className="size-4" />
+                    )}
+                  </button>
+                  {expandedServiceMenuGroups.commerce && (
+                    <div className="mt-2 space-y-2">
+                      <Button
+                        type="button"
+                        className={sideMenuButtonClass(activeTab === "overview")}
+                        onClick={() => setActiveTab("overview")}
+                      >
+                        <TrendingUp
+                          className={isServiceMenuCollapsed ? "size-4" : "mr-2 size-4"}
+                        />
+                        {!isServiceMenuCollapsed && "Overview"}
+                      </Button>
+                      <Button
+                        type="button"
+                        className={sideMenuButtonClass(activeTab === "compositions")}
+                        onClick={() => setActiveTab("compositions")}
+                      >
+                        <Music
+                          className={isServiceMenuCollapsed ? "size-4" : "mr-2 size-4"}
+                        />
+                        {!isServiceMenuCollapsed && "Compositions"}
+                      </Button>
+                      <Button
+                        type="button"
+                        className={sideMenuButtonClass(activeTab === "transactions")}
+                        onClick={() => setActiveTab("transactions")}
+                      >
+                        <DollarSign
+                          className={isServiceMenuCollapsed ? "size-4" : "mr-2 size-4"}
+                        />
+                        {!isServiceMenuCollapsed && "Transactions"}
+                      </Button>
+                      <Button
+                        type="button"
+                        className={sideMenuButtonClass(activeTab === "enrollments")}
+                        onClick={() => setActiveTab("enrollments")}
+                      >
+                        <GraduationCap
+                          className={isServiceMenuCollapsed ? "size-4" : "mr-2 size-4"}
+                        />
+                        {!isServiceMenuCollapsed && "Enrollments"}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
           </aside>
 
           <div>
-            <TabsList className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:hidden">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsList className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:hidden">
               <TabsTrigger value="users">Users</TabsTrigger>
-              <TabsTrigger value="requests">Requests</TabsTrigger>
-              <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
-              <TabsTrigger value="compositions">Compositions</TabsTrigger>
-              <TabsTrigger value="transactions">Transactions</TabsTrigger>
               <TabsTrigger value="support" className="gap-2">
                 Support
                 {supportUnreadCount > 0 && (
@@ -1211,116 +1321,172 @@ export function AdminPanel() {
                   </Badge>
                 )}
               </TabsTrigger>
+              <TabsTrigger value="requests">Requests</TabsTrigger>
+              <TabsTrigger value="invites">Invites</TabsTrigger>
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
+              <TabsTrigger value="compositions">Compositions</TabsTrigger>
+              <TabsTrigger value="transactions">Transactions</TabsTrigger>
             </TabsList>
 
             {/* Overview */}
             <TabsContent value="overview" className="mt-6 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Top Composers</CardTitle>
-              <CardDescription>Highest earning composers</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Composer</TableHead>
-                    <TableHead className="text-right">Compositions</TableHead>
-                    <TableHead className="text-right">Sales</TableHead>
-                    <TableHead className="text-right">Revenue</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {overviewLoading && composerStats.length === 0 && (
-                    <LoadingTableRow
-                      colSpan={4}
-                      label="Loading composer analytics..."
-                    />
-                  )}
-                  {composerStats.slice(0, 10).map((c) => (
-                    <TableRow key={c.id}>
-                      <TableCell className="font-medium">
-                        {c.display_name}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {c.compositionCount}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {c.salesCount}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        ${Number(c.revenue || 0).toFixed(2)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+                <Card>
+                  <CardHeader className="flex items-center justify-between">
+                    <CardTitle className="text-sm text-gray-600">Total Users</CardTitle>
+                    <Users className="size-5 text-blue-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{totalUsers}</div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {composerCount} composers, {buyerCount} buyers
+                    </p>
+                  </CardContent>
+                </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Transactions</CardTitle>
-              <CardDescription>
-                Latest purchases on the platform
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Buyer</TableHead>
-                    <TableHead>Composition</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {transactionsLoading && transactions.length === 0 && (
-                    <LoadingTableRow
-                      colSpan={5}
-                      label="Loading recent transactions..."
-                    />
-                  )}
-                  {transactions.slice(0, 10).map((t) => (
-                    <TableRow key={t.id}>
-                      <TableCell>
-                        {new Date(
-                          t.purchased_at || t.purchasedAt || "",
-                        ).toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        {t.buyers?.users?.display_name ||
-                          t.buyers?.users?.email ||
-                          "Unknown"}
-                      </TableCell>
-                      <TableCell>
-                        {t.compositions?.title || "Unknown"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={
-                            t.status === "pending"
-                              ? "bg-amber-100 text-amber-800"
-                              : t.status === "rejected"
-                                ? "bg-red-100 text-red-800"
-                                : "bg-green-100 text-green-800"
-                          }
-                        >
-                          {(t.status || "approved").toString().toUpperCase()}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        ${Number(t.price_paid || 0).toFixed(2)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
+                <Card>
+                  <CardHeader className="flex items-center justify-between">
+                    <CardTitle className="text-sm text-gray-600">
+                      Total Compositions
+                    </CardTitle>
+                    <Music className="size-5 text-purple-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{totalCompositions}</div>
+                    <p className="mt-1 text-xs text-gray-500">Published works</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex items-center justify-between">
+                    <CardTitle className="text-sm text-gray-600">Total Revenue</CardTitle>
+                    <DollarSign className="size-5 text-green-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">
+                      ${Number(totalRevenue || 0).toFixed(2)}
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">Platform earnings</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex items-center justify-between">
+                    <CardTitle className="text-sm text-gray-600">Transactions</CardTitle>
+                    <TrendingUp className="size-5 text-orange-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{totalTransactions}</div>
+                    <p className="mt-1 text-xs text-gray-500">Total sales</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Top Composers</CardTitle>
+                  <CardDescription>Highest earning composers</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Composer</TableHead>
+                        <TableHead className="text-right">Compositions</TableHead>
+                        <TableHead className="text-right">Sales</TableHead>
+                        <TableHead className="text-right">Revenue</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {overviewLoading && composerStats.length === 0 && (
+                        <LoadingTableRow
+                          colSpan={4}
+                          label="Loading composer analytics..."
+                        />
+                      )}
+                      {composerStats.slice(0, 10).map((c) => (
+                        <TableRow key={c.id}>
+                          <TableCell className="font-medium">
+                            {c.display_name}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {c.compositionCount}
+                          </TableCell>
+                          <TableCell className="text-right">{c.salesCount}</TableCell>
+                          <TableCell className="text-right font-semibold">
+                            ${Number(c.revenue || 0).toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recent Transactions</CardTitle>
+                  <CardDescription>
+                    Latest purchases on the platform
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Buyer</TableHead>
+                        <TableHead>Composition</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {transactionsLoading && transactions.length === 0 && (
+                        <LoadingTableRow
+                          colSpan={5}
+                          label="Loading recent transactions..."
+                        />
+                      )}
+                      {transactions.slice(0, 10).map((t) => (
+                        <TableRow key={t.id}>
+                          <TableCell>
+                            {new Date(
+                              t.purchased_at || t.purchasedAt || "",
+                            ).toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            {t.buyers?.users?.display_name ||
+                              t.buyers?.users?.email ||
+                              "Unknown"}
+                          </TableCell>
+                          <TableCell>
+                            {t.compositions?.title || "Unknown"}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              className={
+                                t.status === "pending"
+                                  ? "bg-amber-100 text-amber-800"
+                                  : t.status === "rejected"
+                                    ? "bg-red-100 text-red-800"
+                                    : "bg-green-100 text-green-800"
+                              }
+                            >
+                              {(t.status || "approved").toString().toUpperCase()}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-semibold">
+                            ${Number(t.price_paid || 0).toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
         {/* Users */}
         <TabsContent value="users" className="mt-6">
@@ -1411,6 +1577,32 @@ export function AdminPanel() {
                             <DropdownMenuSeparator />
 
                             <DropdownMenuItem
+                              onClick={() => openAdminChatComposer(u, "direct")}
+                              disabled={isProcessing || u.is_active === false}
+                            >
+                              <MessageCircleMore className="mr-2 size-4" />
+                              Initiate Direct Chat
+                            </DropdownMenuItem>
+
+                            <DropdownMenuItem
+                              onClick={() => openAdminChatComposer(u, "notification")}
+                              disabled={isProcessing || u.is_active === false}
+                            >
+                              <Bell className="mr-2 size-4" />
+                              Send Notification
+                            </DropdownMenuItem>
+
+                            <DropdownMenuItem
+                              onClick={() => openAdminChatComposer(u, "ticket")}
+                              disabled={isProcessing || u.is_active === false}
+                            >
+                              <MessageSquare className="mr-2 size-4" />
+                              Open Ticket Chat
+                            </DropdownMenuItem>
+
+                            <DropdownMenuSeparator />
+
+                            <DropdownMenuItem
                               className="text-red-600"
                               onClick={() => suspendUser(u.id)}
                               disabled={isProcessing}
@@ -1425,6 +1617,72 @@ export function AdminPanel() {
                 </TableBody>
               </Table>
             </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Invites */}
+        <TabsContent value="invites" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Add Composer Invite</CardTitle>
+              <CardDescription>
+                Enter an email to allow that user to register as composer
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex items-center gap-2">
+              <input
+                className="flex-1 rounded border px-3 py-2"
+                placeholder="composer@example.com"
+                value={newInviteEmail}
+                onChange={(e) => setNewInviteEmail(e.target.value)}
+                disabled={isProcessing}
+              />
+              <Button
+                onClick={() => addComposerInvite(newInviteEmail)}
+                disabled={isProcessing}
+              >
+                <Plus className="mr-2 size-4" />
+                Add Invite
+              </Button>
+            </CardContent>
+            {invites.length > 0 && (
+              <CardContent>
+                <div className="mb-2 text-sm text-gray-600">Recent invites</div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Invited By</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {invites.map((inv: any) => (
+                      <TableRow key={inv.email || inv.id}>
+                        <TableCell>{inv.email}</TableCell>
+                        <TableCell>{inv.invitedBy || "admin"}</TableCell>
+                        <TableCell>
+                          {new Date(
+                            inv.createdAt || inv.created_at || "",
+                          ).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => revokeInvite(inv.email || inv.id)}
+                            disabled={isProcessing}
+                          >
+                            Revoke
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            )}
           </Card>
         </TabsContent>
 
@@ -1832,7 +2090,7 @@ export function AdminPanel() {
                     Support Panel
                   </CardTitle>
                   <CardDescription>
-                    Ticket requests are queued. Picked tickets become private chats assigned to you.
+                    Manage notification chats, ticket chats, and direct chats with users.
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1863,6 +2121,121 @@ export function AdminPanel() {
             <CardContent>
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-[380px_1fr]">
                 <div className="space-y-4">
+                  <div className="rounded-xl border border-border/70">
+                    <div className="border-b border-border/60 px-3 py-2 text-sm font-semibold">
+                      Start User Chat
+                    </div>
+                    <div className="space-y-3 p-3">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                          User
+                        </label>
+                        <select
+                          className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm"
+                          value={adminChatTargetUserId}
+                          onChange={(e) => {
+                            const nextUserId = e.target.value;
+                            const nextUser =
+                              users.find((user: any) => user.id === nextUserId) || null;
+                            setAdminChatTargetUserId(nextUserId);
+                            setAdminChatSubject((prev) =>
+                              prev.trim()
+                                ? prev
+                                : defaultAdminChatSubject(adminChatType, nextUser),
+                            );
+                          }}
+                          disabled={isProcessing}
+                        >
+                          <option value="">Select a user</option>
+                          {users.map((user: any) => (
+                            <option key={user.id} value={user.id}>
+                              {formatUserDisplay(user)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                          Chat Type
+                        </label>
+                        <select
+                          className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm"
+                          value={adminChatType}
+                          onChange={(e) => {
+                            const nextType = e.target.value as AdminThreadType;
+                            setAdminChatType(nextType);
+                            setAdminChatSubject((prev) =>
+                              prev.trim()
+                                ? prev
+                                : defaultAdminChatSubject(nextType, selectedAdminChatTarget),
+                            );
+                          }}
+                          disabled={isProcessing}
+                        >
+                          <option value="notification">Notification</option>
+                          <option value="ticket">Ticket Chat</option>
+                          <option value="direct">Direct Chat</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                          Subject
+                        </label>
+                        <input
+                          className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm"
+                          value={adminChatSubject}
+                          onChange={(e) => setAdminChatSubject(e.target.value)}
+                          placeholder={
+                            defaultAdminChatSubject(
+                              adminChatType,
+                              selectedAdminChatTarget,
+                            ) || "Subject"
+                          }
+                          disabled={isProcessing}
+                          maxLength={160}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                          First Message
+                        </label>
+                        <Textarea
+                          value={adminChatMessage}
+                          onChange={(e) => setAdminChatMessage(e.target.value)}
+                          placeholder="Write the first message to the user..."
+                          rows={3}
+                          maxLength={4000}
+                          disabled={isProcessing}
+                        />
+                      </div>
+
+                      <Button
+                        onClick={() => void createAdminThread()}
+                        className="w-full"
+                        disabled={
+                          isProcessing ||
+                          !adminChatTargetUserId.trim() ||
+                          !adminChatMessage.trim()
+                        }
+                      >
+                        {isProcessing ? (
+                          <>
+                            <Loader className="mr-2 size-4 animate-spin" />
+                            Starting...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="mr-2 size-4" />
+                            Start {ADMIN_CHAT_TYPE_LABELS[adminChatType]}
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
                   <div className="rounded-xl border border-border/70">
                     <div className="border-b border-border/60 px-3 py-2 text-sm font-semibold">
                       Ticket Requests ({supportTickets.length})
@@ -1948,6 +2321,9 @@ export function AdminPanel() {
                         <div className="space-y-2">
                           {supportThreads.map((thread: any) => {
                             const active = thread.id === selectedSupportThreadId;
+                            const contextBadge = resolveThreadContextLabel(
+                              thread.context,
+                            );
                             return (
                               <button
                                 key={thread.id}
@@ -1963,15 +2339,20 @@ export function AdminPanel() {
                                   <p className="line-clamp-1 text-sm font-semibold">
                                     {thread.subject || "Support Request"}
                                   </p>
-                                  <Badge
-                                    className={
-                                      thread.is_admin_unread
-                                        ? "bg-amber-100 text-amber-800"
-                                        : "bg-emerald-100 text-emerald-800"
-                                    }
-                                  >
-                                    {thread.is_admin_unread ? "Unread" : "Read"}
-                                  </Badge>
+                                  <div className="flex flex-col items-end gap-1">
+                                    <Badge className={contextBadge.className}>
+                                      {contextBadge.label}
+                                    </Badge>
+                                    <Badge
+                                      className={
+                                        thread.is_admin_unread
+                                          ? "bg-amber-100 text-amber-800"
+                                          : "bg-emerald-100 text-emerald-800"
+                                      }
+                                    >
+                                      {thread.is_admin_unread ? "Unread" : "Read"}
+                                    </Badge>
+                                  </div>
                                 </div>
                                 <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                                   {thread.last_message_preview || "No messages"}
@@ -1998,12 +2379,24 @@ export function AdminPanel() {
                         {selectedSupportThread?.subject || "Select an assigned support chat"}
                       </p>
                       {selectedSupportThread && (
-                        <p className="text-xs text-muted-foreground">
-                          {selectedSupportThread.requester?.display_name ||
-                            selectedSupportThread.requester?.email ||
-                            "Unknown user"}{" "}
-                          - {selectedSupportThread.context || "dashboard"}
-                        </p>
+                        <div className="mt-1 flex items-center gap-2">
+                          <p className="text-xs text-muted-foreground">
+                            {selectedSupportThread.requester?.display_name ||
+                              selectedSupportThread.requester?.email ||
+                              "Unknown user"}
+                          </p>
+                          <Badge
+                            className={
+                              resolveThreadContextLabel(selectedSupportThread.context)
+                                .className
+                            }
+                          >
+                            {
+                              resolveThreadContextLabel(selectedSupportThread.context)
+                                .label
+                            }
+                          </Badge>
+                        </div>
                       )}
                     </div>
                     {selectedSupportThread && (

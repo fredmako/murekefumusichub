@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Eye, EyeOff, LogIn } from "lucide-react";
+import { LogIn } from "lucide-react";
 import { FcGoogle } from "react-icons/fc";
 import { Button } from "@/app/components/ui/button";
 import {
@@ -14,7 +14,7 @@ import { Label } from "@/app/components/ui/label";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "sonner";
-import logo from "./images/logo.JPG";
+import logo from "./images/system-logo-cutout.png";
 
 type UserRole = "buyer" | "composer" | "admin";
 
@@ -22,8 +22,6 @@ export function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [signupNotice, setSignupNotice] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
@@ -35,7 +33,6 @@ export function Login() {
     signInWithEmail,
     signUpWithEmail,
     signInWithGoogle,
-    signOut,
     refreshRoles,
     resetPassword,
   } = useAuth();
@@ -106,19 +103,19 @@ export function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail || (!password && !isForgot)) {
+    if (!email || (!password && !isForgot)) {
       toast.error("Please enter email" + (isForgot ? "" : " and password"));
       return;
     }
 
     if (isSignUp && !isForgot) {
-      if (password.length < 6) {
-        toast.error("Password must be at least 6 characters.");
+      if (!confirmPassword) {
+        toast.error("Please confirm your password");
         return;
       }
+
       if (password !== confirmPassword) {
-        toast.error("Passwords do not match.");
+        toast.error("Passwords do not match");
         return;
       }
     }
@@ -127,27 +124,27 @@ export function Login() {
 
     try {
       if (isForgot) {
-        await resetPassword(normalizedEmail);
+        await resetPassword(email);
         toast.success("Password reset email sent. Check your inbox.");
+        setSignupNotice("");
       } else if (isSignUp) {
-        await signUpWithEmail(normalizedEmail, password);
-        await signOut(false).catch(() => null);
+        await signUpWithEmail(email, password);
+        const confirmationMessage =
+          "Account created. Please check your email and confirm your account before logging in.";
+        setSignupNotice(confirmationMessage);
         setIsSignUp(false);
         setIsForgot(false);
         setPassword("");
         setConfirmPassword("");
-        setShowPassword(false);
-        setShowConfirmPassword(false);
-        setSignupNotice(
-          `Verification email sent to ${normalizedEmail}. Confirm your account, then sign in.`,
-        );
-        toast.success(
-          "Verification email sent. Please confirm your account, then sign in.",
-        );
+        toast.success(confirmationMessage);
       } else {
-        await signInWithEmail(normalizedEmail, password);
-        setSignupNotice("");
+        await signInWithEmail(email, password);
         toast.success("Login successful!");
+        setSignupNotice("");
+      }
+
+      if (!isForgot && !isSignUp) {
+        // Sync roles - the useEffect will handle redirect automatically when appUser updates
         await refreshRoles();
       }
     } catch (error: any) {
@@ -188,12 +185,14 @@ export function Login() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
       <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-        <div className="flex items-center justify-center h-full">
-          <img
-            src={logo}
-            alt="Murekefu Logo"
-            className="w-56 h-56 md:w-72 md:h-72 object-contain"
-          />
+        <div className="flex h-full items-center justify-center">
+          <div className="rounded-3xl border border-[#0a2e43]/25 bg-gradient-to-br from-[#0b2940] to-[#081e32] p-3 shadow-[0_18px_36px_-20px_rgba(2,24,39,0.95)] sm:p-4">
+            <img
+              src={logo}
+              alt="Murekefu Logo"
+              className="h-64 w-64 object-contain saturate-125 md:h-80 md:w-80 [filter:drop-shadow(0_0_2px_rgba(255,255,255,0.35))]"
+            />
+          </div>
         </div>
 
         <div className="space-y-6">
@@ -210,12 +209,18 @@ export function Login() {
                 {isForgot
                   ? "Enter your email to receive reset instructions"
                   : isSignUp
-                    ? "Create your account and verify your email before signing in"
+                    ? "Create a new account to get started"
                     : "Enter your credentials"}
               </CardDescription>
             </CardHeader>
 
             <CardContent>
+              {signupNotice && (
+                <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                  {signupNotice}
+                </div>
+              )}
+
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <Label>Email</Label>
@@ -231,70 +236,28 @@ export function Login() {
                 {!isForgot && (
                   <div>
                     <Label>Password</Label>
-                    <div className="relative">
-                      <Input
-                        type={showPassword ? "text" : "password"}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        minLength={6}
-                        disabled={isLoading}
-                        className="pr-10"
-                      />
-                      <button
-                        type="button"
-                        className="absolute inset-y-0 right-0 px-3 text-muted-foreground hover:text-foreground"
-                        onClick={() => setShowPassword((prev) => !prev)}
-                        disabled={isLoading}
-                        aria-label={showPassword ? "Hide password" : "Show password"}
-                      >
-                        {showPassword ? (
-                          <EyeOff className="size-4" />
-                        ) : (
-                          <Eye className="size-4" />
-                        )}
-                      </button>
-                    </div>
+                    <Input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={6}
+                      disabled={isLoading}
+                    />
                   </div>
                 )}
 
-                {!isForgot && isSignUp && (
+                {isSignUp && !isForgot && (
                   <div>
                     <Label>Confirm Password</Label>
-                    <div className="relative">
-                      <Input
-                        type={showConfirmPassword ? "text" : "password"}
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        required
-                        minLength={6}
-                        disabled={isLoading}
-                        className="pr-10"
-                      />
-                      <button
-                        type="button"
-                        className="absolute inset-y-0 right-0 px-3 text-muted-foreground hover:text-foreground"
-                        onClick={() => setShowConfirmPassword((prev) => !prev)}
-                        disabled={isLoading}
-                        aria-label={
-                          showConfirmPassword
-                            ? "Hide confirm password"
-                            : "Show confirm password"
-                        }
-                      >
-                        {showConfirmPassword ? (
-                          <EyeOff className="size-4" />
-                        ) : (
-                          <Eye className="size-4" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {signupNotice && (
-                  <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                    {signupNotice}
+                    <Input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                      minLength={6}
+                      disabled={isLoading}
+                    />
                   </div>
                 )}
 
@@ -334,7 +297,7 @@ export function Login() {
                     type="button"
                     onClick={() => {
                       setIsForgot(true);
-                      setSignupNotice("");
+                      setConfirmPassword("");
                     }}
                     className="text-sm text-blue-600 hover:underline"
                     disabled={isLoading}
@@ -347,17 +310,9 @@ export function Login() {
                   onClick={() => {
                     if (isForgot) {
                       setIsForgot(false);
-                      setPassword("");
-                      setConfirmPassword("");
-                      setShowPassword(false);
-                      setShowConfirmPassword(false);
                     } else {
                       setIsSignUp(!isSignUp);
-                      setPassword("");
                       setConfirmPassword("");
-                      setShowPassword(false);
-                      setShowConfirmPassword(false);
-                      setSignupNotice("");
                     }
                   }}
                   className="text-sm text-blue-600 hover:underline ml-auto"

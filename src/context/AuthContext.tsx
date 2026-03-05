@@ -10,7 +10,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { normalizeAvatarUrl } from "../lib/avatarUrl";
 import { API_BASE_URL } from "@/lib/apiBase";
-import type { ThemePreset } from "./ThemeContext";
+import type { ThemeMode, ThemePreset } from "./ThemeContext";
 
 const AUTH_SESSION_TIMEOUT_MS = 12000;
 const AUTH_PROFILE_SYNC_TIMEOUT_MS = 15000;
@@ -24,6 +24,7 @@ export interface AppUser {
   avatar_url: string | null; // ✅ ADD THIS
   theme_settings?: {
     preset?: ThemePreset;
+    mode?: ThemeMode;
   } | null;
   roles: string[];
   isComposer?: boolean;

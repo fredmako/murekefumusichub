@@ -15,7 +15,7 @@ import { ManageAccount } from "./components/ManageAccount";
 import AuthCallback from "@/app/pages/AuthCallback";
 import { ContactUs } from "./components/ContactUs";
 import { useAuth } from "@/context/AuthContext";
-import { THEME_PRESETS, ThemePreset, useTheme } from "@/context/ThemeContext";
+import { THEME_MODES, THEME_PRESETS, ThemeMode, ThemePreset, useTheme } from "@/context/ThemeContext";
 import { toast } from "sonner";
 import { SESSION_EXPIRED_EVENT } from "@/lib/sessionEvents";
 
@@ -154,16 +154,22 @@ export default function App() {
   const location = useLocation();
   const prefersReducedMotion = useReducedMotion();
   const { appUser, signOut } = useAuth();
-  const { setTheme } = useTheme();
+  const { setMode, setTheme } = useTheme();
   const [cart, setCart] = useState<CartItem[]>([]);
   const lastSessionExpiredToastAt = useRef(0);
   const handlingSessionExpiredRef = useRef(false);
 
   useEffect(() => {
     const preset = appUser?.theme_settings?.preset;
-    if (!preset || !THEME_PRESETS.includes(preset as ThemePreset)) return;
-    setTheme(preset as ThemePreset);
-  }, [appUser?.theme_settings?.preset, setTheme]);
+    if (preset && THEME_PRESETS.includes(preset as ThemePreset)) {
+      setTheme(preset as ThemePreset);
+    }
+
+    const mode = appUser?.theme_settings?.mode;
+    if (mode && THEME_MODES.includes(mode as ThemeMode)) {
+      setMode(mode as ThemeMode);
+    }
+  }, [appUser?.theme_settings?.mode, appUser?.theme_settings?.preset, setMode, setTheme]);
 
   useEffect(() => {
     const onSessionExpired = async () => {

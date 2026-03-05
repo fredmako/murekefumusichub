@@ -1,6 +1,7 @@
-// src/app/components/Navbar.tsx
+﻿// src/app/components/Navbar.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { navbarService } from "@/services/navbarService";
+import { buildProfileImageSrcSet, getOptimizedProfileImageUrl } from "@/services/profileImageService";
 import { useLocation, NavLink, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { CartItem } from "@/app/types";
@@ -33,6 +34,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/app/components/ui/sheet";
+import systemLogo from "./images/system-logo-cutout.png";
 
 interface NavbarProps {
   cart?: CartItem[];
@@ -258,22 +260,28 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   })();
 
   return (
-    <nav className="texture-fabric sticky top-0 z-40 border-b border-border/80 bg-card/90 backdrop-blur-md">
+    <nav className="texture-fabric sticky top-0 z-40 overflow-x-clip border-b border-border/80 bg-card/90 backdrop-blur-md">
       <div className="app-shell">
-        <div className="flex h-16 items-center justify-between">
+        <div className="flex h-16 min-w-0 items-center justify-between gap-2">
           {/* ================= Logo ================= */}
-          <Link to="/" className="flex items-center gap-3">
-            <div className="size-8 rounded-full bg-gradient-to-br from-primary to-[#0a4b56]" />
-            <div>
-              <h1 className="text-lg font-semibold tracking-tight text-foreground">
+          <Link to="/" className="flex min-w-0 items-center gap-2">
+            <span className="inline-flex items-center rounded-xl border border-[#0a2e43]/20 bg-gradient-to-br from-[#0b2940] to-[#081e32] px-2 py-1 shadow-[0_10px_20px_-14px_rgba(2,24,39,0.95)]">
+              <img
+                src={systemLogo}
+                alt="Murekefu Music Hub logo"
+                className="h-7 w-auto object-contain saturate-125 sm:h-8 [filter:drop-shadow(0_0_2px_rgba(255,255,255,0.35))]"
+              />
+            </span>
+            <div className="min-w-0">
+              <h1 className="truncate text-base font-semibold leading-tight tracking-tight text-foreground sm:text-lg">
                 Murekefu Music Hub
               </h1>
-              <p className="text-xs text-muted-foreground">Choral Music Hub</p>
+              <p className="hidden truncate text-xs text-muted-foreground sm:block">Choral Music Hub</p>
             </div>
           </Link>
 
           {/* ================= Main Navigation ================= */}
-          <div className="hidden md:flex items-center gap-2 rounded-full border border-border/80 bg-background/70 p-1">
+          <div className="hidden lg:flex items-center gap-2 rounded-full border border-border/80 bg-background/70 p-1">
             {navItems.map((item) => {
               const isVisible =
                 item.showOn.includes("any") ||
@@ -300,8 +308,8 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
           </div>
 
           {/* ================= Right Actions ================= */}
-          <div className="flex items-center gap-3">
-            <span className="motion-float-delayed hidden rounded-full border border-border/80 bg-secondary/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-secondary-foreground md:inline-flex">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <span className="motion-float-delayed hidden rounded-full border border-border/80 bg-secondary/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-secondary-foreground xl:inline-flex">
               Live Marketplace
             </span>
             {/* ===== Admin Notifications (Admin Only) ===== */}
@@ -343,7 +351,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                       className="px-4 py-3 border-b hover:bg-gray-50 transition-colors"
                     >
                       <div className="flex flex-col gap-2">
-                        <div>
+                        <div className="min-w-0">
                           {n.type === "invite" ? (
                             <>
                               <span className="font-semibold block">
@@ -530,7 +538,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                         key={item.composition.id}
                         className="flex justify-between border-b pb-4"
                       >
-                        <div>
+                        <div className="min-w-0">
                           <h4 className="font-medium">
                             {item.composition.title}
                           </h4>
@@ -659,3 +667,11 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
 }
 
 export default Navbar;
+
+
+
+
+
+
+
+

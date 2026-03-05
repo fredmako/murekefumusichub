@@ -49,6 +49,8 @@ export interface SupportChatMessage {
   created_at: string;
 }
 
+export type AdminThreadType = "notification" | "ticket" | "direct";
+
 export const supportService = {
   async submitIssue(payload: SupportIssuePayload) {
     return await apiRequest<SupportIssueResponse>("/support/issues", {
@@ -64,6 +66,25 @@ export const supportService = {
       thread: SupportChatThread;
       message: SupportChatMessage;
     }>("/support/threads", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      timeoutMs: 30000,
+    });
+  },
+
+  async createAdminThread(payload: {
+    targetUserId: string;
+    threadType: AdminThreadType;
+    subject?: string;
+    message: string;
+    context?: string;
+  }) {
+    return await apiRequest<{
+      success: boolean;
+      threadType: AdminThreadType;
+      thread: SupportChatThread;
+      message: SupportChatMessage;
+    }>("/support/admin/threads", {
       method: "POST",
       body: JSON.stringify(payload),
       timeoutMs: 30000,

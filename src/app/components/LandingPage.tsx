@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Award,
@@ -221,7 +221,7 @@ export const LandingPage = () => {
   };
 
   return (
-    <main className="texture-linen relative min-h-screen overflow-hidden pb-24">
+    <main className="texture-linen relative flex min-h-screen flex-col overflow-hidden">
       {pickImageUrl(0) ? (
         <div
           className="pointer-events-none fixed inset-0 -z-20 opacity-[0.07]"
@@ -564,26 +564,99 @@ export const LandingPage = () => {
         </Card>
       </section>
 
-      <footer className="border-t border-border/80 bg-card/80">
-        <div className="app-shell py-8">
-          <div className="flex flex-col items-center justify-between gap-3 text-sm text-muted-foreground sm:flex-row">
-            <p>© {new Date().getFullYear()} Murekefu Music Hub. All rights reserved.</p>
-            <div className="flex items-center gap-4">
-              <Link to="/privacy-policy" className="hover:text-foreground">
-                Privacy Policy
-              </Link>
-              <Link to="/about" className="hover:text-foreground">
-                About
-              </Link>
-              <a
-                href="https://www.pexels.com/"
-                target="_blank"
-                rel="noreferrer"
-                className="hover:text-foreground"
-              >
-                Images: {pexelsCredit}
-              </a>
+      <footer className="relative mt-auto overflow-hidden border-t border-border/80 bg-gradient-to-br from-[#f5faf8] via-white to-[#edf6f2]">
+        <div
+          className="pointer-events-none absolute -left-10 top-10 h-48 w-48 rounded-full bg-primary/10 blur-2xl"
+          aria-hidden="true"
+        />
+        <div
+          className="pointer-events-none absolute -right-14 bottom-0 h-52 w-52 rounded-full bg-[#0f766e]/10 blur-2xl"
+          aria-hidden="true"
+        />
+
+        <div className="app-shell py-14">
+          <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.5fr_repeat(3,minmax(0,1fr))]">
+            <div className="space-y-5">
+              <div className="inline-flex items-center gap-3 rounded-full border border-border/80 bg-white/80 px-4 py-2 shadow-sm">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[#0b4a52] text-white">
+                  <Music className="size-4" />
+                </span>
+                <span className="text-sm font-semibold tracking-tight text-foreground">
+                  Murekefu Music Hub
+                </span>
+              </div>
+              <p className="max-w-md text-sm leading-6 text-muted-foreground">
+                Professional training for choirs, composers, and music students.
+                Learn, perform, and grow with structured coaching and a modern
+                music marketplace.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Link to="/enroll">
+                  <Button size="sm">Start Learning</Button>
+                </Link>
+                <Link to="/marketplace">
+                  <Button size="sm" variant="outline">
+                    Browse Music Hub
+                  </Button>
+                </Link>
+              </div>
             </div>
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Explore
+              </p>
+              <div className="mt-4 space-y-2 text-sm">
+                <Link to="/about" className="block text-muted-foreground hover:text-foreground">
+                  About Us
+                </Link>
+                <Link to="/contact" className="block text-muted-foreground hover:text-foreground">
+                  Contact
+                </Link>
+                <Link to="/privacy-policy" className="block text-muted-foreground hover:text-foreground">
+                  Privacy Policy
+                </Link>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Services
+              </p>
+              <div className="mt-4 space-y-2 text-sm">
+                <Link to="/enroll" className="block text-muted-foreground hover:text-foreground">
+                  Music Classes
+                </Link>
+                <Link to="/marketplace" className="block text-muted-foreground hover:text-foreground">
+                  Music Hub Store
+                </Link>
+                <Link to="/manage-account" className="block text-muted-foreground hover:text-foreground">
+                  Manage Account
+                </Link>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Credits
+              </p>
+              <div className="mt-4 space-y-2 text-sm text-muted-foreground">
+                <p>Instrument imagery powered by curated external sources.</p>
+                <a
+                  href="https://www.pexels.com/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center font-medium text-foreground hover:text-primary"
+                >
+                  Images: {pexelsCredit}
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-border/70 pt-6 text-xs text-muted-foreground sm:flex-row sm:items-center">
+            <p>(c) {new Date().getFullYear()} Murekefu Music Hub. All rights reserved.</p>
+            <p>Built for choirs, composers, and students.</p>
           </div>
         </div>
       </footer>
@@ -592,4 +665,10 @@ export const LandingPage = () => {
 };
 
 export default LandingPage;
+
+
+
+
+
+
 

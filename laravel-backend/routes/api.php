@@ -89,6 +89,8 @@ Route::post("/support/admin/tickets/{threadId}/reject", [SupportController::clas
     ->middleware(["auth.supabase", "admin.only"]);
 Route::get("/support/admin/threads", [SupportController::class, "adminThreads"])
     ->middleware(["auth.supabase", "admin.only"]);
+Route::post("/support/admin/threads", [SupportController::class, "createAdminThread"])
+    ->middleware(["auth.supabase", "admin.only"]);
 Route::delete("/support/admin/threads/{threadId}", [SupportController::class, "deleteAdminThread"])
     ->middleware(["auth.supabase", "admin.only"]);
 

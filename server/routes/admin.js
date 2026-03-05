@@ -142,6 +142,79 @@ async function insertPurchaseWithFallback(payload) {
     .maybeSingle();
 }
 
+
+function isMissingBuyersTableError(err) {
+  const code = String(err?.code || "").toUpperCase();
+  const message = String(err?.message || "").toLowerCase();
+  return (
+    code === "42P01" ||
+    code === "PGRST204" ||
+    code === "PGRST205" ||
+    message.includes('relation "buyers" does not exist') ||
+    message.includes("could not find the table 'buyers'")
+  );
+}
+
+function isPurchasesBuyerForeignKeyError(err) {
+  const code = String(err?.code || "").toUpperCase();
+  const constraint = String(err?.constraint || "").toLowerCase();
+  const details = String(err?.details || "").toLowerCase();
+  const message = String(err?.message || "").toLowerCase();
+  return (
+    code === "23503" &&
+    (constraint.includes("purchases_buyer_id_fkey") ||
+      details.includes('table "buyers"') ||
+      message.includes("purchases_buyer_id_fkey") ||
+      message.includes('table "buyers"'))
+  );
+}
+
+async function resolveBuyerIdForPurchases(rawBuyerId) {
+  const normalized = String(rawBuyerId || "").trim();
+  if (!normalized) return null;
+
+  const byBuyerIdRes = await supabase
+    .from("buyers")
+    .select("id")
+    .eq("id", normalized)
+    .maybeSingle();
+  if (byBuyerIdRes.error) {
+    if (isMissingBuyersTableError(byBuyerIdRes.error)) return normalized;
+    throw byBuyerIdRes.error;
+  }
+  if (byBuyerIdRes.data?.id) return byBuyerIdRes.data.id;
+
+  const byUserIdRes = await supabase
+    .from("buyers")
+    .select("id")
+    .eq("user_id", normalized)
+    .maybeSingle();
+  if (byUserIdRes.error) throw byUserIdRes.error;
+  if (byUserIdRes.data?.id) return byUserIdRes.data.id;
+
+  const dbUser = await resolveDbUser(normalized);
+  if (!dbUser?.id) return null;
+
+  const createBuyerRes = await supabase
+    .from("buyers")
+    .insert({ user_id: dbUser.id })
+    .select("id")
+    .maybeSingle();
+  if (!createBuyerRes.error) return createBuyerRes.data?.id || null;
+
+  if (String(createBuyerRes.error?.code || "").toUpperCase() === "23505") {
+    const retryBuyerRes = await supabase
+      .from("buyers")
+      .select("id")
+      .eq("user_id", dbUser.id)
+      .maybeSingle();
+    if (retryBuyerRes.error) throw retryBuyerRes.error;
+    return retryBuyerRes.data?.id || null;
+  }
+
+  throw createBuyerRes.error;
+}
+
 router.get("/bootstrap", async (req, res) => {
   try {
     const [rolesRes, invitesRes, pendingReqRes, usersCountRes, compositionsCountRes, purchasesCountRes] =
@@ -1364,10 +1437,11 @@ router.post("/payment-submissions/:submissionId/approve", async (req, res) => {
         .json({ error: "Rejected submissions cannot be approved" });
     }
 
-    const { data: existingPurchase, error: existingPurchaseErr } = await supabase
+    let purchaseBuyerId = submission.buyer_id;
+    let { data: existingPurchase, error: existingPurchaseErr } = await supabase
       .from("purchases")
       .select("id, buyer_id, composition_id, is_active")
-      .eq("buyer_id", submission.buyer_id)
+      .eq("buyer_id", purchaseBuyerId)
       .eq("composition_id", submission.composition_id)
       .eq("is_active", true)
       .maybeSingle();
@@ -1375,8 +1449,8 @@ router.post("/payment-submissions/:submissionId/approve", async (req, res) => {
 
     let purchase = existingPurchase || null;
     if (!purchase) {
-      const purchasePayload = {
-        buyer_id: submission.buyer_id,
+      let purchasePayload = {
+        buyer_id: purchaseBuyerId,
         composition_id: submission.composition_id,
         price_paid: Number(submission.amount || 0),
         payment_ref: submission.mpesa_code || null,
@@ -1384,9 +1458,42 @@ router.post("/payment-submissions/:submissionId/approve", async (req, res) => {
         is_active: true,
       };
 
-      const insertPurchaseRes = await insertPurchaseWithFallback(purchasePayload);
-      if (insertPurchaseRes.error) throw insertPurchaseRes.error;
-      purchase = insertPurchaseRes.data;
+      let insertPurchaseRes = await insertPurchaseWithFallback(purchasePayload);
+
+      // Support schemas where purchases.buyer_id references buyers(id) instead of users(id).
+      if (
+        insertPurchaseRes.error &&
+        isPurchasesBuyerForeignKeyError(insertPurchaseRes.error)
+      ) {
+        const resolvedBuyerId = await resolveBuyerIdForPurchases(
+          submission.buyer_id,
+        );
+        if (resolvedBuyerId) {
+          purchaseBuyerId = resolvedBuyerId;
+
+          const existingByResolvedBuyerRes = await supabase
+            .from("purchases")
+            .select("id, buyer_id, composition_id, is_active")
+            .eq("buyer_id", purchaseBuyerId)
+            .eq("composition_id", submission.composition_id)
+            .eq("is_active", true)
+            .maybeSingle();
+          if (existingByResolvedBuyerRes.error) {
+            throw existingByResolvedBuyerRes.error;
+          }
+
+          purchase = existingByResolvedBuyerRes.data || null;
+          if (!purchase) {
+            purchasePayload = { ...purchasePayload, buyer_id: purchaseBuyerId };
+            insertPurchaseRes = await insertPurchaseWithFallback(purchasePayload);
+          }
+        }
+      }
+
+      if (!purchase) {
+        if (insertPurchaseRes.error) throw insertPurchaseRes.error;
+        purchase = insertPurchaseRes.data;
+      }
     }
 
     const { data: updatedSubmission, error: updateSubmissionErr } = await supabase

@@ -257,6 +257,32 @@ class SupportController extends Controller
         return [$thread, $insertedMessage];
     }
 
+    private function normalizeAdminThreadType(mixed $value): string
+    {
+        $normalized = strtolower($this->normalizeText($value, 24));
+        return in_array($normalized, ["notification", "ticket", "direct"], true)
+            ? $normalized
+            : "direct";
+    }
+
+    private function defaultAdminThreadSubject(string $threadType): string
+    {
+        return match ($threadType) {
+            "notification" => "Admin Notification",
+            "ticket" => "Support Ticket Follow-up",
+            default => "Direct Admin Chat",
+        };
+    }
+
+    private function defaultAdminThreadContext(string $threadType): string
+    {
+        return match ($threadType) {
+            "notification" => "admin-notification",
+            "ticket" => "admin-ticket",
+            default => "admin-direct",
+        };
+    }
+
     public function issues(Request $request)
     {
         $user = $this->authUser($request);
@@ -305,6 +331,97 @@ class SupportController extends Controller
             "success" => true,
             "thread" => $this->mapThread($thread),
             "message" => $message,
+        ], 201);
+    }
+
+    public function createAdminThread(Request $request)
+    {
+        $this->expireOverdueTickets();
+        $adminUser = $this->authUser($request);
+        if (!$adminUser || !$this->isAdminUser($adminUser)) {
+            return response()->json(["message" => "Admin profile not found"], 404);
+        }
+
+        $targetUserId = $this->normalizeText(
+            $request->input("targetUserId", $request->input("requesterUserId")),
+            120
+        );
+        if ($targetUserId === "") {
+            return response()->json(["message" => "targetUserId is required"], 400);
+        }
+        if ($targetUserId === $adminUser["id"]) {
+            return response()->json([
+                "message" => "Cannot start an admin support thread with yourself",
+            ], 400);
+        }
+
+        $message = $this->normalizeText($request->input("message"), 4000);
+        if ($message === "") {
+            return response()->json(["message" => "Message is required"], 400);
+        }
+
+        $targetUser = DB::table("users")
+            ->select("id", "email", "display_name", "avatar_url", "is_active")
+            ->where("id", $targetUserId)
+            ->first();
+        if (!$targetUser) {
+            return response()->json(["message" => "Target user not found"], 404);
+        }
+        if ($targetUser->is_active === false) {
+            return response()->json([
+                "message" => "Cannot start a chat with a suspended user",
+            ], 409);
+        }
+
+        $threadType = $this->normalizeAdminThreadType($request->input("threadType"));
+        $subject = $this->normalizeText($request->input("subject"), 160)
+            ?: $this->defaultAdminThreadSubject($threadType);
+        $context = $this->normalizeText($request->input("context"), 120)
+            ?: $this->defaultAdminThreadContext($threadType);
+        $now = now();
+        $threadId = (string) \Illuminate\Support\Str::uuid();
+        $messageId = (string) \Illuminate\Support\Str::uuid();
+
+        DB::table("support_chat_threads")->insert([
+            "id" => $threadId,
+            "requester_user_id" => $targetUserId,
+            "subject" => $subject,
+            "context" => $context,
+            "status" => "active",
+            "assigned_admin_user_id" => $adminUser["id"],
+            "assigned_at" => $now,
+            "expires_at" => now()->addDays(self::TICKET_LIFETIME_DAYS),
+            "is_admin_unread" => false,
+            "is_user_unread" => true,
+            "last_message_preview" => mb_substr($message, 0, 500),
+            "last_sender_role" => "admin",
+            "last_message_at" => $now,
+            "deleted_by_admin" => false,
+            "created_at" => $now,
+            "updated_at" => $now,
+        ]);
+
+        DB::table("support_chat_messages")->insert([
+            "id" => $messageId,
+            "thread_id" => $threadId,
+            "sender_user_id" => $adminUser["id"],
+            "sender_role" => "admin",
+            "message" => $message,
+            "created_at" => $now,
+        ]);
+
+        $thread = (array) DB::table("support_chat_threads")->where("id", $threadId)->first();
+        $insertedMessage = (array) DB::table("support_chat_messages")->where("id", $messageId)->first();
+
+        return response()->json([
+            "success" => true,
+            "threadType" => $threadType,
+            "thread" => $this->mapThread(
+                $thread,
+                AvatarUrl::withNormalizedAvatar((array) $targetUser),
+                0
+            ),
+            "message" => $insertedMessage,
         ], 201);
     }
 
