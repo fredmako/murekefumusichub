@@ -3,6 +3,7 @@ import multer from "multer";
 import { PDFParse } from "pdf-parse";
 import { supabaseAdmin } from "../lib/supabaseServer.js";
 import { verifySupabaseToken } from "../middleware/verifySupabaseToken.js";
+import { refreshCompositionPdfUrl, refreshCompositionPdfUrls } from "../utils/compositionPdfUrl.js";
 
 const router = express.Router();
 const upload = multer({
@@ -61,54 +62,6 @@ function parseLimit(raw, fallback = 120, max = 500) {
   return Math.min(Math.floor(n), max);
 }
 
-function extractCompositionStoragePath(pdfUrl) {
-  if (!pdfUrl) return null;
-  const raw = String(pdfUrl).trim();
-  if (!raw) return null;
-
-  // If path is already stored directly, use it as-is.
-  if (!/^https?:\/\//i.test(raw)) {
-    return raw.replace(/^\/+/, "");
-  }
-
-  // For Supabase storage URLs, derive object path from the URL.
-  const match = raw.match(
-    /\/storage\/v1\/object\/(?:sign|public)\/compositions\/([^?]+)/i,
-  );
-  if (!match?.[1]) return null;
-
-  try {
-    return decodeURIComponent(match[1]);
-  } catch {
-    return match[1];
-  }
-}
-
-async function refreshCompositionPdfUrl(composition) {
-  if (!composition?.pdf_url) return composition;
-
-  const storagePath = extractCompositionStoragePath(composition.pdf_url);
-  if (!storagePath) return composition;
-
-  const { data, error } = await supabaseAdmin.storage
-    .from("compositions")
-    .createSignedUrl(storagePath, 3600);
-
-  if (error || !data?.signedUrl) {
-    console.warn("[public-composition] Failed to refresh signed URL:", {
-      compositionId: composition.id,
-      path: storagePath,
-      error: error?.message || error || "missing signedUrl",
-    });
-    return composition;
-  }
-
-  return {
-    ...composition,
-    pdf_url: data.signedUrl,
-  };
-}
-
 function firstNonEmptyLine(text) {
   const lines = text
     .split("\n")
@@ -155,7 +108,7 @@ function detectLanguage(text) {
   if (/\b(il|lo|gli|signore|dio|ave)\b/.test(lower)) {
     return "Italian";
   }
-  if (/\b(el|la|los|las|dios|señor)\b/.test(lower)) {
+  if (/\b(el|la|los|las|dios|se\u00f1or)\b/.test(lower)) {
     return "Spanish";
   }
 
@@ -442,7 +395,10 @@ router.get("/", async (req, res) => {
     }
 
     if (error) throw error;
-    return res.json(data || []);
+
+    const compositionsWithFreshPdfUrls = await refreshCompositionPdfUrls(data || []);
+
+    return res.json(compositionsWithFreshPdfUrls);
   } catch (err) {
     console.error("[public-compositions] Error:", err);
     return res.status(500).json({ error: err.message });
@@ -472,7 +428,10 @@ router.get("/composer/:composerId", async (req, res) => {
 
     if (error) throw error;
 
-    return res.json(data || []);
+    const composerCompositionsWithFreshPdfUrls =
+      await refreshCompositionPdfUrls(data || []);
+
+    return res.json(composerCompositionsWithFreshPdfUrls);
   } catch (err) {
     console.error("[get-composer-compositions] Error:", err);
     return res.status(500).json({ error: err.message });

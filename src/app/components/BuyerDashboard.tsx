@@ -58,6 +58,7 @@ export function BuyerDashboard({
   const [loading, setLoading] = useState(true);
   const [purchasedCompositions, setPurchasedCompositions] = useState<any[]>([]);
   const [totalSpent, setTotalSpent] = useState(0);
+  const [downloadingPurchaseId, setDownloadingPurchaseId] = useState<string | null>(null);
 
   useEffect(() => {
     const requestedTab =
@@ -159,6 +160,38 @@ export function BuyerDashboard({
     setSearchParams(next, { replace: true });
   };
 
+  const handleDownloadComposition = async (purchaseId: string) => {
+    if (!purchaseId) return;
+
+    try {
+      setDownloadingPurchaseId(purchaseId);
+      const result = await purchaseService.getDownloadLink(purchaseId);
+      const downloadUrl = result?.downloadUrl;
+      const fileName = result?.fileName || "composition.pdf";
+
+      if (!downloadUrl) {
+        throw new Error("Download link is unavailable for this composition");
+      }
+
+      const anchor = document.createElement("a");
+      anchor.href = downloadUrl;
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+
+      toast.success("Download started");
+    } catch (err: any) {
+      console.error("Failed to download composition:", err);
+      const message =
+        err?.message || "Could not start the composition download. Please try again.";
+      toast.error(message);
+    } finally {
+      setDownloadingPurchaseId(null);
+    }
+  };
   return (
     <main className="texture-linen min-h-screen overflow-hidden py-12">
       <div className="mx-auto max-w-7xl space-y-6 px-4 sm:px-6 lg:px-8">
@@ -341,10 +374,16 @@ export function BuyerDashboard({
                                 <Button
                                   variant="outline"
                                   size="sm"
+                                  onClick={() => void handleDownloadComposition(id)}
+                                  disabled={downloadingPurchaseId === id}
                                   className="transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
                                 >
-                                  <Download className="size-4 mr-2" />
-                                  Download
+                                  {downloadingPurchaseId === id ? (
+                                    <Loader className="size-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <Download className="size-4 mr-2" />
+                                  )}
+                                  {downloadingPurchaseId === id ? "Preparing..." : "Download"}
                                 </Button>
                               </TableCell>
                             </TableRow>
@@ -505,4 +544,3 @@ export function BuyerDashboard({
     </main>
   );
 }
-

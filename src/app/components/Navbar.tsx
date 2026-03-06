@@ -1,4 +1,4 @@
-﻿// src/app/components/Navbar.tsx
+// src/app/components/Navbar.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { navbarService } from "@/services/navbarService";
 import { buildProfileImageSrcSet, getOptimizedProfileImageUrl } from "@/services/profileImageService";
@@ -83,7 +83,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
       } catch (err) {
         if (!mounted) return;
         const status = (err as any)?.status;
-        if (status === 401 || status === 403) {
+        if (status === 403) {
           // Access revoked or role changed; stop polling to prevent noisy retries.
           setNotifications([]);
           return;
@@ -682,11 +682,3 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
 }
 
 export default Navbar;
-
-
-
-
-
-
-
-

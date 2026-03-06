@@ -156,10 +156,21 @@ function shouldRetryRequest(method: string): boolean {
 
 export async function apiRequest<T>(
   endpoint: string,
-  options: RequestInit & { timeoutMs?: number } = {},
+  options: RequestInit & { timeoutMs?: number; requiresAuth?: boolean } = {},
 ): Promise<T> {
-  const { timeoutMs = 20000, ...requestOptions } = options;
+  const { timeoutMs = 20000, requiresAuth = false, ...requestOptions } = options;
   const token = await getAccessToken();
+
+  if (requiresAuth && !token) {
+    dispatchSessionExpired({
+      endpoint,
+      status: 401,
+      message: "No bearer token provided",
+    });
+    const err = new Error("Your session has expired. Please log in again.");
+    (err as any).status = 401;
+    throw err;
+  }
 
   const baseHeaders: HeadersInit = {
     "Content-Type": "application/json",
@@ -447,16 +458,31 @@ export const purchaseService = {
         price_paid: purchaseData.price_paid,
         payment_ref: purchaseData.payment_ref,
       }),
+      requiresAuth: true,
     });
   },
 
   async getByBuyer(_buyerId?: string) {
-    return await apiRequest(`/purchases`, { method: "GET" });
+    return await apiRequest(`/purchases`, { method: "GET", requiresAuth: true });
+  },
+
+  async getDownloadLink(purchaseId: string) {
+    return await apiRequest<{
+      purchaseId: string;
+      compositionId: string;
+      fileName: string;
+      downloadUrl: string;
+    }>(`/purchases/${purchaseId}/download`, {
+      method: "GET",
+      requiresAuth: true,
+      timeoutMs: 25000,
+    });
   },
 
   async discard(purchaseId: string) {
     await apiRequest(`/purchases/${purchaseId}`, {
       method: "DELETE",
+      requiresAuth: true,
     });
   },
 };
@@ -490,11 +516,15 @@ export const checkoutService = {
       method: "POST",
       body: JSON.stringify(payload),
       timeoutMs: 25000,
+      requiresAuth: true,
     });
   },
 
   async getMyCheckoutStatus() {
-    return await apiRequest<any[]>(`/checkout/status`, { method: "GET" });
+    return await apiRequest<any[]>(`/checkout/status`, {
+      method: "GET",
+      requiresAuth: true,
+    });
   },
 };
 
@@ -502,6 +532,7 @@ export const fypService = {
   async getRecommendations(_buyerId: string, limit: number = 20) {
     return await apiRequest(`/purchases/recommendations?limit=${limit}`, {
       method: "GET",
+      requiresAuth: true,
     });
   },
 
@@ -512,6 +543,7 @@ export const fypService = {
         category_id: categoryId,
         weight,
       }),
+      requiresAuth: true,
     });
   },
 };
@@ -597,6 +629,7 @@ export const registrationService = {
       method: "POST",
       body: JSON.stringify(payload),
       timeoutMs: 25000,
+      requiresAuth: true,
     });
   },
 };
@@ -886,3 +919,4 @@ export const api = {
 };
 
 export default api;
+

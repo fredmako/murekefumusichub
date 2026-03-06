@@ -13,7 +13,9 @@ export const navbarService = {
   },
 
   async fetchAdminNotifications() {
-    const notifications = await apiRequest<any[]>(`/admin/notifications`);
+    const notifications = await apiRequest<any[]>(`/admin/notifications`, {
+      requiresAuth: true,
+    });
     return notifications || [];
   },
 
@@ -23,7 +25,10 @@ export const navbarService = {
         requestedRole === "admin"
           ? `/admin/users/${userId}/promote-admin`
           : `/admin/users/${userId}/promote-composer`;
-      const result = await apiRequest<any>(endpoint, { method: "POST" });
+      const result = await apiRequest<any>(endpoint, {
+        method: "POST",
+        requiresAuth: true,
+      });
       toast.success(
         `${requestedRole === "admin" ? "Admin" : "Composer"} request approved`,
       );
@@ -42,6 +47,7 @@ export const navbarService = {
         {
           method: "POST",
           body: JSON.stringify({ requestedRole }),
+          requiresAuth: true,
         },
       );
       toast.success(
@@ -61,6 +67,7 @@ export const navbarService = {
         `/admin/payment-submissions/${submissionId}/approve`,
         {
           method: "POST",
+          requiresAuth: true,
         },
       );
       toast.success("Payment approved");
@@ -78,6 +85,7 @@ export const navbarService = {
         `/admin/payment-submissions/${submissionId}/reject`,
         {
           method: "POST",
+          requiresAuth: true,
         },
       );
       toast.success("Payment rejected");

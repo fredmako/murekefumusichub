@@ -1,6 +1,7 @@
 import express from "express";
 import { supabaseAdmin } from "../lib/supabaseServer.js";
 import { verifySupabaseToken } from "../middleware/verifySupabaseToken.js";
+import { refreshCompositionPdfUrl } from "../utils/compositionPdfUrl.js";
 
 const router = express.Router();
 
@@ -33,6 +34,33 @@ async function resolvePurchaseBuyerIds(userId) {
   if (data?.id && !ids.includes(data.id)) ids.push(data.id);
   return ids;
 }
+async function resolveUserByAuthUid(authUid) {
+  const { data, error } = await supabaseAdmin
+    .from("users")
+    .select("id")
+    .eq("auth_uid", authUid)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data || null;
+}
+
+function buildSafePdfFilename(title) {
+  const cleaned = String(title || "composition")
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
+    .replace(/\s+/g, " ")
+    .slice(0, 120);
+  const base = cleaned || "composition";
+  return base.toLowerCase().endsWith(".pdf") ? base : `${base}.pdf`;
+}
+
+function appendDownloadQuery(url, fileName) {
+  if (!url) return null;
+  const separator = String(url).includes("?") ? "&" : "?";
+  return `${url}${separator}download=${encodeURIComponent(fileName)}`;
+}
+
 
 // GET /api/purchases - get buyer's purchases by auth UID
 router.get("/", verifySupabaseToken, async (req, res) => {
@@ -77,7 +105,22 @@ router.get("/", verifySupabaseToken, async (req, res) => {
 
     if (purchasesError) throw purchasesError;
 
-    return res.json(purchases || []);
+    const purchasesWithFreshPdfUrls = await Promise.all(
+      (purchases || []).map(async (purchase) => {
+        const composition = purchase?.compositions || purchase?.composition || null;
+        if (!composition?.pdf_url) return purchase;
+
+        const refreshedComposition = await refreshCompositionPdfUrl(composition);
+
+        return {
+          ...purchase,
+          compositions: refreshedComposition,
+          composition: refreshedComposition,
+        };
+      }),
+    );
+
+    return res.json(purchasesWithFreshPdfUrls);
   } catch (err) {
     console.error("[get-purchases] Error:", err);
     return res.status(500).json({
@@ -87,6 +130,100 @@ router.get("/", verifySupabaseToken, async (req, res) => {
   }
 });
 
+// GET /api/purchases/:id/download - get a fresh signed download URL for an authorized purchase
+router.get("/:id/download", verifySupabaseToken, async (req, res) => {
+  try {
+    const { id: purchaseId } = req.params;
+    const authUid = req.authUid;
+
+    if (!authUid) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    if (!purchaseId) {
+      return res.status(400).json({ message: "Purchase id is required" });
+    }
+
+    const user = await resolveUserByAuthUid(authUid);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const purchaseBuyerIds = await resolvePurchaseBuyerIds(user.id);
+
+    const { data: purchase, error: purchaseError } = await supabaseAdmin
+      .from("purchases")
+      .select(
+        `
+        id,
+        buyer_id,
+        composition_id,
+        is_active,
+        purchased_at,
+        compositions(
+          id,
+          title,
+          pdf_url
+        )
+      `,
+      )
+      .eq("id", purchaseId)
+      .in("buyer_id", purchaseBuyerIds)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (purchaseError) throw purchaseError;
+
+    if (!purchase) {
+      return res.status(404).json({
+        message: "Authorized purchase not found",
+      });
+    }
+
+    let composition = purchase?.compositions || null;
+
+    if (!composition && purchase?.composition_id) {
+      const { data: compositionRow, error: compositionError } = await supabaseAdmin
+        .from("compositions")
+        .select("id, title, pdf_url")
+        .eq("id", purchase.composition_id)
+        .maybeSingle();
+      if (compositionError) throw compositionError;
+      composition = compositionRow || null;
+    }
+
+    if (!composition?.pdf_url) {
+      return res.status(404).json({
+        message: "Composition PDF not available for this purchase",
+      });
+    }
+
+    const refreshedComposition = await refreshCompositionPdfUrl(composition);
+    if (!refreshedComposition?.pdf_url) {
+      return res.status(500).json({
+        message: "Failed to generate secure download URL",
+      });
+    }
+
+    const fileName = buildSafePdfFilename(
+      refreshedComposition.title || composition.title || "composition",
+    );
+    const downloadUrl = appendDownloadQuery(refreshedComposition.pdf_url, fileName);
+
+    return res.json({
+      purchaseId: purchase.id,
+      compositionId: refreshedComposition.id || composition.id || purchase.composition_id,
+      fileName,
+      downloadUrl,
+    });
+  } catch (err) {
+    console.error("[download-purchase-composition] Error:", err);
+    return res.status(500).json({
+      message: "Failed to generate download link",
+      error: err.message,
+    });
+  }
+});
 // POST /api/purchases - create a purchase
 router.post("/", verifySupabaseToken, async (req, res) => {
   try {
