@@ -34,6 +34,28 @@ function GetGitOutput([string]$repoPath, [string[]]$gitArgs) {
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $backendPath = Join-Path $repoRoot $BackendDir
 
+$FrontendRemotes = @(
+  $FrontendRemotes |
+    ForEach-Object { $_ -split "," } |
+    ForEach-Object { $_.Trim() } |
+    Where-Object { $_ -ne "" }
+)
+
+$BackendRemotes = @(
+  $BackendRemotes |
+    ForEach-Object { $_ -split "," } |
+    ForEach-Object { $_.Trim() } |
+    Where-Object { $_ -ne "" }
+)
+
+if ($FrontendRemotes.Count -eq 0) {
+  Fail "No frontend remotes were provided."
+}
+
+if ($BackendRemotes.Count -eq 0) {
+  Fail "No backend remotes were provided."
+}
+
 if (-not (Test-Path $backendPath)) {
   Fail "Backend directory '$BackendDir' was not found at $backendPath."
 }

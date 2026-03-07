@@ -52,6 +52,31 @@ pnpm run dev
 
 Visit [http://localhost:5173](http://localhost:5173)
 
+## Git Push Workflow (Frontend + Backend)
+
+Use one command from the project root to push both repositories:
+
+```bash
+npm run push:deploy
+```
+
+This pushes:
+- Frontend root repo -> `frontend` remote (`main`)
+- Backend repo in `server/` -> `backend` remote (`main`)
+
+If you also want to push frontend to both `frontend` and `origin`:
+
+```bash
+npm run push:deploy:all
+```
+
+Dry run commands:
+
+```bash
+npm run push:deploy:dry
+npm run push:deploy:all:dry
+```
+
 ## 📚 Documentation
 
 - **[Quick Start Guide](./QUICKSTART.md)** - Get up and running in 10 minutes
@@ -433,3 +458,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **Built with ❤️ for the choral music community**
 
 © 2026 Prime Media. All rights reserved.
+
