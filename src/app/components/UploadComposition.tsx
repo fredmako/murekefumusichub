@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Upload, CheckCircle } from "lucide-react";
+import { CheckCircle, Loader2 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
@@ -30,7 +30,7 @@ interface AnalyzedCompositionMetadata {
   voiceParts?: string[];
 }
 
-type MetadataMode = "ai" | "manual";
+type MetadataMode = "ai" | "manual" | null;
 type SelectOrOther = string;
 
 const CURRENCY_OPTIONS = [
@@ -82,7 +82,9 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [isAnalyzingPdf, setIsAnalyzingPdf] = useState(false);
-  const [metadataMode, setMetadataMode] = useState<MetadataMode>("manual");
+  const [metadataMode, setMetadataMode] = useState<MetadataMode>(null);
+  const [analysisAttempted, setAnalysisAttempted] = useState(false);
+  const [analysisFailed, setAnalysisFailed] = useState(false);
 
   const voicePartOptions = [
     "Soprano",
@@ -117,6 +119,24 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     formData.accompaniment,
     formData.customAccompaniment,
   );
+  const isAiMode = metadataMode === "ai";
+  const isManualMode = metadataMode === "manual";
+  const shouldShowMetadataFields =
+    isManualMode || (isAiMode && (analysisAttempted || analysisFailed));
+
+  const missingRequiredFields: string[] = [];
+  if (!formData.title.trim()) missingRequiredFields.push("Title");
+  if (!formData.description.trim()) missingRequiredFields.push("Description");
+  if (!formData.price.trim()) missingRequiredFields.push("Price");
+  if (!resolvedCurrency) missingRequiredFields.push("Currency");
+  if (!resolvedDifficulty) missingRequiredFields.push("Difficulty");
+  if (!formData.duration.trim()) missingRequiredFields.push("Duration");
+  if (!resolvedLanguage) missingRequiredFields.push("Language");
+  if (!resolvedAccompaniment) missingRequiredFields.push("Accompaniment");
+  if (formData.voiceParts.length === 0) {
+    missingRequiredFields.push("At least one voice part");
+  }
+  if (!pdfFile) missingRequiredFields.push("PDF score");
 
   const handleAddCustomVoicePart = () => {
     const value = formData.customVoicePart.trim();
@@ -231,10 +251,13 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
   const analyzePdf = async (file: File) => {
     try {
       setIsAnalyzingPdf(true);
+      setAnalysisAttempted(false);
+      setAnalysisFailed(false);
 
       const token = await getFreshAccessToken();
       if (!token) {
         toast.error("Not authenticated for PDF analysis");
+        setAnalysisFailed(true);
         return;
       }
 
@@ -258,20 +281,24 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
           // ignore parse failures
         }
         toast.error(message);
+        setAnalysisFailed(true);
         return;
       }
 
       const result = await response.json();
       if (!result?.success || !result?.metadata) {
         toast.error("PDF analysis returned no metadata");
+        setAnalysisFailed(true);
         return;
       }
 
       applyAnalyzedMetadata(result.metadata);
       toast.success("PDF analyzed. Review suggested fields.");
+      setAnalysisAttempted(true);
     } catch (error) {
       console.error("Error analyzing PDF:", error);
       toast.error("Could not analyze this PDF automatically");
+      setAnalysisFailed(true);
     } finally {
       setIsAnalyzingPdf(false);
     }
@@ -281,8 +308,11 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     const file = e.target.files?.[0];
     if (file && file.type === "application/pdf") {
       setPdfFile(file);
+      setUploadProgress(0);
+      setAnalysisAttempted(false);
+      setAnalysisFailed(false);
       toast.success("PDF file selected successfully");
-      if (metadataMode === "ai") {
+      if (isAiMode) {
         void analyzePdf(file);
       }
     } else {
@@ -295,6 +325,18 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     setIsSubmitting(true);
 
     try {
+      if (!metadataMode) {
+        toast.error("Select AI Analyze or Manual Fill to continue");
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (isAiMode && !analysisAttempted && !analysisFailed) {
+        toast.error("Upload a PDF and wait for AI analysis first");
+        setIsSubmitting(false);
+        return;
+      }
+
       // Validate form data
       const parsedPrice = Number.parseFloat(formData.price);
       if (!formData.title || !formData.description.trim()) {
@@ -455,6 +497,69 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     }
   };
 
+  const renderPdfUploadSection = () => (
+    <div>
+      <Label htmlFor="file">
+        PDF Score{" "}
+        {uploadProgress > 0 &&
+          uploadProgress < 100 &&
+          `(${Math.round(uploadProgress)}%)`}
+      </Label>
+      <div className="mt-2">
+        <Input
+          id="file"
+          type="file"
+          accept="application/pdf"
+          onChange={handleFileChange}
+          className="cursor-pointer"
+          disabled={isSubmitting}
+        />
+        {pdfFile && (
+          <p className="mt-2 text-sm text-gray-600">Selected: {pdfFile.name}</p>
+        )}
+
+        {isAiMode && isAnalyzingPdf && (
+          <div className="mt-3 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+            <div className="flex items-center gap-2 font-medium text-primary">
+              <Loader2 className="size-4 animate-spin" />
+              Analyzing your PDF...
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Extracting title, difficulty, language, accompaniment, and voice parts.
+            </p>
+          </div>
+        )}
+
+        {pdfFile && isAiMode && !isAnalyzingPdf && (
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-2"
+            onClick={() => void analyzePdf(pdfFile)}
+            disabled={isSubmitting}
+          >
+            {analysisAttempted ? "Re-analyze PDF" : "Analyze PDF with AI"}
+          </Button>
+        )}
+
+        {pdfFile && isManualMode && (
+          <p className="mt-2 text-xs text-gray-500">
+            Manual mode is active. Enter composition details below.
+          </p>
+        )}
+
+        {uploadProgress > 0 && uploadProgress < 100 && (
+          <div className="mt-2 h-2 w-full rounded-full bg-gray-200">
+            <div
+              className="h-2 rounded-full bg-blue-600 transition-all"
+              style={{ width: `${uploadProgress}%` }}
+            ></div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   if (isSuccess) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
@@ -476,7 +581,12 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
           <Button
             type="button"
             variant={metadataMode === "ai" ? "default" : "outline"}
-            onClick={() => setMetadataMode("ai")}
+            onClick={() => {
+              setMetadataMode("ai");
+              if (pdfFile) {
+                void analyzePdf(pdfFile);
+              }
+            }}
             disabled={isSubmitting}
           >
             AI Analyze
@@ -493,10 +603,46 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
         <p className="text-xs text-gray-600 mt-2">
           {metadataMode === "ai"
             ? "Upload a PDF and AI will suggest details. You can edit every field before publishing."
-            : "Fill all required details manually. PDF analysis will not run automatically."}
+            : metadataMode === "manual"
+              ? "Fill all required details manually. PDF analysis will not run automatically."
+              : "Choose one option to begin your upload flow."}
         </p>
       </div>
 
+      {metadataMode === null && (
+        <div className="rounded-lg border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
+          Select an upload option above to continue.
+        </div>
+      )}
+
+      {isAiMode && (
+        <>
+          <div className="rounded-lg border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
+            Step 2: Upload your PDF score. AI analysis will run automatically.
+          </div>
+          {renderPdfUploadSection()}
+
+          {analysisFailed && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+              AI analysis failed. Fill the required fields manually below.
+            </div>
+          )}
+
+          {analysisAttempted && missingRequiredFields.length > 0 && (
+            <div className="rounded-lg border border-border/70 bg-card/60 p-3 text-sm">
+              <p className="font-medium text-foreground">
+                Complete required details before upload:
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                {missingRequiredFields.join(", ")}
+              </p>
+            </div>
+          )}
+        </>
+      )}
+
+      {shouldShowMetadataFields && (
+        <>
       {/* Title */}
       <div>
         <Label htmlFor="title">Composition Title *</Label>
@@ -788,54 +934,17 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
           />
         )}
       </div>
+        </>
+      )}
 
-      {/* File Upload */}
-      <div>
-        <Label htmlFor="file">
-          PDF Score{" "}
-          {uploadProgress > 0 &&
-            uploadProgress < 100 &&
-            `(${Math.round(uploadProgress)}%)`}
-        </Label>
-        <div className="mt-2">
-          <Input
-            id="file"
-            type="file"
-            accept="application/pdf"
-            onChange={handleFileChange}
-            className="cursor-pointer"
-          />
-          {pdfFile && (
-            <p className="text-sm text-gray-600 mt-2">
-              Selected: {pdfFile.name}
-            </p>
-          )}
-          {pdfFile && metadataMode === "ai" && (
-            <Button
-              type="button"
-              variant="outline"
-              className="mt-2"
-              onClick={() => void analyzePdf(pdfFile)}
-              disabled={isAnalyzingPdf || isSubmitting}
-            >
-              {isAnalyzingPdf ? "Analyzing PDF..." : "Analyze PDF with AI"}
-            </Button>
-          )}
-          {pdfFile && metadataMode === "manual" && (
-            <p className="text-xs text-gray-500 mt-2">
-              Manual mode is active. Enter composition details in the form.
-            </p>
-          )}
-          {uploadProgress > 0 && uploadProgress < 100 && (
-            <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-              <div
-                className="bg-blue-600 h-2 rounded-full transition-all"
-                style={{ width: `${uploadProgress}%` }}
-              ></div>
-            </div>
-          )}
-        </div>
-      </div>
+      {isManualMode && (
+        <>
+          <div className="rounded-lg border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
+            Step 2: Upload your PDF score.
+          </div>
+          {renderPdfUploadSection()}
+        </>
+      )}
 
       {/* Submit Button */}
       <div className="flex gap-3 pt-4">
@@ -848,7 +957,16 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
         >
           Cancel
         </Button>
-        <Button type="submit" disabled={isSubmitting} className="flex-1">
+        <Button
+          type="submit"
+          disabled={
+            isSubmitting ||
+            !metadataMode ||
+            isAnalyzingPdf ||
+            (isAiMode && !shouldShowMetadataFields)
+          }
+          className="flex-1"
+        >
           {isSubmitting ? "Uploading..." : "Upload Composition"}
         </Button>
       </div>

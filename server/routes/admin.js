@@ -1802,7 +1802,7 @@ router.get("/notifications", async (req, res) => {
         throw paymentReqRes.error;
       }
       console.warn(
-        "[admin-notifications] payment_submissions table missing; payment notifications disabled",
+        "[admin-notifications] payment_submissions table missing; run migration 014/024 to enable payment notifications",
       );
     } else {
       paymentReqData = paymentReqRes.data || [];
@@ -1946,3 +1946,4 @@ router.get("/notifications", async (req, res) => {
 });
 
 export default router;
+

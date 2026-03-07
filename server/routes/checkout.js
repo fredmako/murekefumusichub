@@ -265,7 +265,7 @@ router.post("/submit", verifySupabaseToken, async (req, res) => {
     if (isMissingPaymentSubmissionsError(err)) {
       return res.status(500).json({
         message:
-          "payment_submissions table is missing. Run migration 014 and retry.",
+          "payment_submissions table is missing. Run migration 014 or 024 and retry.",
       });
     }
     if (err?.code === "23505") {
@@ -279,3 +279,4 @@ router.post("/submit", verifySupabaseToken, async (req, res) => {
 });
 
 export default router;
+

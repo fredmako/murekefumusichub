@@ -1,15 +1,23 @@
 import { supabase } from "@/lib/supabase";
 import { buildApiUrl } from "@/lib/apiBase";
 import { dispatchSessionExpired } from "@/lib/sessionEvents";
+import { dispatchAppError } from "@/lib/appErrorEvents";
 
 const ACCESS_TOKEN_SESSION_TIMEOUT_MS = 8000;
 const ACCESS_TOKEN_REFRESH_TIMEOUT_MS = 12000;
 const AUTH_REFRESH_BASE_BACKOFF_MS = 4000;
 const AUTH_REFRESH_MAX_BACKOFF_MS = 45000;
+const AUTH_TOKEN_DIAGNOSTIC_DEDUP_MS = 12000;
 
 let authRefreshFailures = 0;
 let authRefreshCooldownUntil = 0;
+let lastAuthTokenDiagnosticAt = 0;
+let lastAuthTokenDiagnosticKey = "";
 
+type AccessTokenResolution =
+  | { status: "ok"; token: string }
+  | { status: "no_session"; reason: string }
+  | { status: "transient_failure"; reason: string; statusCode: 408 | 503 };
 async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
@@ -35,13 +43,63 @@ function isTransientAuthNetworkError(err: any): boolean {
   return (
     name === "TypeError" ||
     name === "AuthRetryableFetchError" ||
+    name === "NavigatorLockAcquireTimeoutError" ||
     message.includes("failed to fetch") ||
     message.includes("network request failed") ||
     message.includes("network changed") ||
     message.includes("err_network_changed") ||
+    message.includes("navigator lock") ||
+    message.includes("lockacquiretimeout") ||
     message.includes("timeout") ||
     message.includes("timed out")
   );
+}
+
+function isTimeoutLikeError(err: any): boolean {
+  if (!err) return false;
+  const name = String(err?.name || "");
+  const message = String(err?.message || "").toLowerCase();
+  return (
+    name === "AbortError" ||
+    name === "NavigatorLockAcquireTimeoutError" ||
+    message.includes("timeout") ||
+    message.includes("timed out") ||
+    message.includes("lockacquiretimeout")
+  );
+}
+
+function isSessionMissingError(err: any): boolean {
+  if (!err) return false;
+  const message = String(err?.message || "").toLowerCase();
+  return (
+    message.includes("auth session missing") ||
+    message.includes("session missing") ||
+    message.includes("missing refresh token") ||
+    message.includes("refresh token not found") ||
+    message.includes("invalid refresh token") ||
+    message.includes("session not found")
+  );
+}
+
+function getTransientStatusCode(err: any): 408 | 503 {
+  return isTimeoutLikeError(err) ? 408 : 503;
+}
+
+function logAccessTokenDiagnostic(
+  status: "no_session" | "transient_failure",
+  reason: string,
+) {
+  const key = `${status}:${reason}`;
+  const now = Date.now();
+  if (
+    key === lastAuthTokenDiagnosticKey &&
+    now - lastAuthTokenDiagnosticAt < AUTH_TOKEN_DIAGNOSTIC_DEDUP_MS
+  ) {
+    return;
+  }
+  lastAuthTokenDiagnosticAt = now;
+  lastAuthTokenDiagnosticKey = key;
+  console.warn(`[auth-token] ${status} (${reason})`);
 }
 
 function canAttemptRefreshNow(): boolean {
@@ -67,8 +125,15 @@ function registerRefreshSuccess() {
 async function refreshSessionSafely(
   reason: string,
   timeoutMs: number = ACCESS_TOKEN_REFRESH_TIMEOUT_MS,
-): Promise<string | null> {
-  if (!canAttemptRefreshNow()) return null;
+): Promise<AccessTokenResolution> {
+  if (!canAttemptRefreshNow()) {
+    logAccessTokenDiagnostic("transient_failure", `${reason}:refresh_cooldown`);
+    return {
+      status: "transient_failure",
+      reason: "refresh_cooldown",
+      statusCode: 503,
+    };
+  }
 
   try {
     const { data, error } = await withTimeout(
@@ -76,37 +141,89 @@ async function refreshSessionSafely(
       timeoutMs,
       reason,
     );
-    if (error || !data?.session?.access_token) {
+    if (error) {
       registerRefreshFailure();
-      return null;
+      if (isSessionMissingError(error)) {
+        logAccessTokenDiagnostic("no_session", `${reason}:refresh_error`);
+        return { status: "no_session", reason: "refresh_error_no_session" };
+      }
+      logAccessTokenDiagnostic("transient_failure", `${reason}:refresh_error`);
+      return {
+        status: "transient_failure",
+        reason: "refresh_error",
+        statusCode: getTransientStatusCode(error),
+      };
     }
+
+    if (!data?.session?.access_token) {
+      registerRefreshFailure();
+      logAccessTokenDiagnostic("no_session", `${reason}:refresh_no_session`);
+      return { status: "no_session", reason: "refresh_no_session" };
+    }
+
     registerRefreshSuccess();
-    return data.session.access_token;
+    return { status: "ok", token: data.session.access_token };
   } catch (err: any) {
-    if (isTransientAuthNetworkError(err)) {
-      registerRefreshFailure();
-      console.warn(`[auth-refresh] ${reason} skipped after transient network error.`);
-      return null;
+    registerRefreshFailure();
+    if (isSessionMissingError(err)) {
+      logAccessTokenDiagnostic("no_session", `${reason}:refresh_exception`);
+      return { status: "no_session", reason: "refresh_exception_no_session" };
     }
-    throw err;
+    if (isTransientAuthNetworkError(err)) {
+      logAccessTokenDiagnostic("transient_failure", `${reason}:refresh_exception`);
+      return {
+        status: "transient_failure",
+        reason: "refresh_exception",
+        statusCode: getTransientStatusCode(err),
+      };
+    }
+    logAccessTokenDiagnostic("transient_failure", `${reason}:refresh_unknown`);
+    return { status: "transient_failure", reason: "refresh_unknown", statusCode: 503 };
   }
 }
 
-async function getAccessToken(): Promise<string | null> {
+async function getAccessToken(): Promise<AccessTokenResolution> {
   try {
     const { data, error } = await withTimeout(
       supabase.auth.getSession(),
       ACCESS_TOKEN_SESSION_TIMEOUT_MS,
       "Session lookup",
     );
-    if (error || !data?.session) {
-      try {
-        const refreshedToken = await refreshSessionSafely("Session refresh");
-        if (refreshedToken) return refreshedToken;
-      } catch {
-        // ignore and return null below
+
+    if (error) {
+      if (isSessionMissingError(error)) {
+        logAccessTokenDiagnostic("no_session", "get_session_error_no_session");
+        return { status: "no_session", reason: "get_session_error_no_session" };
       }
-      return null;
+      if (isTransientAuthNetworkError(error)) {
+        const refreshed = await refreshSessionSafely(
+          "Session refresh after getSession error",
+        );
+        if (refreshed.status === "ok") return refreshed;
+        logAccessTokenDiagnostic("transient_failure", "get_session_transient_error");
+        return {
+          status: "transient_failure",
+          reason: "get_session_transient_error",
+          statusCode: getTransientStatusCode(error),
+        };
+      }
+      logAccessTokenDiagnostic("transient_failure", "get_session_error_unknown");
+      return {
+        status: "transient_failure",
+        reason: "get_session_error_unknown",
+        statusCode: 503,
+      };
+    }
+
+    if (!data?.session) {
+      const refreshed = await refreshSessionSafely("Session refresh");
+      if (refreshed.status === "ok") return refreshed;
+      if (refreshed.status === "transient_failure") {
+        logAccessTokenDiagnostic("transient_failure", "session_missing_refresh_failed");
+        return refreshed;
+      }
+      logAccessTokenDiagnostic("no_session", "no_active_session");
+      return { status: "no_session", reason: "no_active_session" };
     }
 
     const session = data.session;
@@ -116,19 +233,35 @@ async function getAccessToken(): Promise<string | null> {
     // Refresh shortly before expiry to avoid edge-case 401s on slow requests.
     if (expiresAt - now <= 30) {
       try {
-        const refreshedToken = await refreshSessionSafely(
+        const refreshed = await refreshSessionSafely(
           "Proactive session refresh",
         );
-        if (refreshedToken) return refreshedToken;
+        if (refreshed.status === "ok") return refreshed;
       } catch {
         // Ignore refresh failures and return existing token as best effort.
       }
     }
 
-    return session.access_token;
-  } catch (err) {
-    console.warn("[getAccessToken] session lookup failed; proceeding without token:", err);
-    return null;
+    return { status: "ok", token: session.access_token };
+  } catch (err: any) {
+    if (isSessionMissingError(err)) {
+      logAccessTokenDiagnostic("no_session", "get_session_exception_no_session");
+      return { status: "no_session", reason: "get_session_exception_no_session" };
+    }
+    if (isTransientAuthNetworkError(err)) {
+      logAccessTokenDiagnostic("transient_failure", "get_session_exception_transient");
+      return {
+        status: "transient_failure",
+        reason: "get_session_exception_transient",
+        statusCode: getTransientStatusCode(err),
+      };
+    }
+    logAccessTokenDiagnostic("transient_failure", "get_session_exception_unknown");
+    return {
+      status: "transient_failure",
+      reason: "get_session_exception_unknown",
+      statusCode: 503,
+    };
   }
 }
 
@@ -159,16 +292,36 @@ export async function apiRequest<T>(
   options: RequestInit & { timeoutMs?: number; requiresAuth?: boolean } = {},
 ): Promise<T> {
   const { timeoutMs = 20000, requiresAuth = false, ...requestOptions } = options;
-  const token = await getAccessToken();
+  const tokenResult = await getAccessToken();
+  const token = tokenResult.status === "ok" ? tokenResult.token : null;
 
-  if (requiresAuth && !token) {
-    dispatchSessionExpired({
-      endpoint,
-      status: 401,
-      message: "No bearer token provided",
+  if (requiresAuth && tokenResult.status !== "ok") {
+    if (tokenResult.status === "no_session") {
+      dispatchSessionExpired({
+        endpoint,
+        status: 401,
+        message: "No bearer token provided",
+      });
+      const err = new Error("Your session has expired. Please log in again.");
+      (err as any).status = 401;
+      (err as any).reason = tokenResult.reason;
+      throw err;
+    }
+
+    const statusCode = tokenResult.statusCode || 503;
+    const transientMessage =
+      statusCode === 408
+        ? "Authentication timed out. Please check your connection and try again."
+        : "Authentication is temporarily unavailable. Please retry in a moment.";
+    dispatchAppError({
+      title: "Connection issue",
+      message: transientMessage,
+      status: statusCode,
+      actions: ["refresh", "ok"],
     });
-    const err = new Error("Your session has expired. Please log in again.");
-    (err as any).status = 401;
+    const err = new Error(transientMessage);
+    (err as any).status = statusCode;
+    (err as any).reason = tokenResult.reason;
     throw err;
   }
 
@@ -257,13 +410,13 @@ export async function apiRequest<T>(
   // If the access token is stale, refresh and retry once automatically.
   if (response.status === 401 && token) {
     try {
-      const refreshedToken = await refreshSessionSafely(
+      const refreshed = await refreshSessionSafely(
         "401 response session refresh",
         10000,
       );
 
-      if (refreshedToken && refreshedToken !== token) {
-        response = await executeFetch(refreshedToken);
+      if (refreshed.status === "ok" && refreshed.token !== token) {
+        response = await executeFetch(refreshed.token);
       }
     } catch {
       // Keep original 401 response path.
@@ -304,6 +457,15 @@ export async function apiRequest<T>(
         endpoint,
         status: 401,
         message,
+      });
+    }
+
+    if ((response.status >= 500) || response.status === 503 || response.status === 408) {
+      dispatchAppError({
+        title: response.status >= 500 ? "Server error" : "Connection issue",
+        message: message || "A request failed.",
+        status: response.status,
+        actions: response.status >= 500 ? ["refresh", "exit", "ok"] : ["refresh", "ok"],
       });
     }
 
@@ -919,4 +1081,3 @@ export const api = {
 };
 
 export default api;
-

@@ -4,6 +4,7 @@ import { navbarService } from "@/services/navbarService";
 import { buildProfileImageSrcSet, getOptimizedProfileImageUrl } from "@/services/profileImageService";
 import { useLocation, NavLink, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useTheme } from "@/context/ThemeContext";
 import { CartItem } from "@/app/types";
 import { toast } from "sonner";
 import {
@@ -14,6 +15,8 @@ import {
   Check,
   X,
   Loader,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -43,8 +46,14 @@ interface NavbarProps {
 export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   // use appUser from your AuthContext (Supabase)
   const { appUser, signOut } = useAuth();
+  const { mode, setMode } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
+  const isDarkMode = mode === "dark";
+
+  const handleToggleTheme = () => {
+    setMode(isDarkMode ? "light" : "dark");
+  };
 
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
   const totalPrice = cart.reduce(
@@ -318,6 +327,22 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
 
           {/* ================= Right Actions ================= */}
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={handleToggleTheme}
+              aria-label={
+                isDarkMode ? "Switch to light mode" : "Switch to dark mode"
+              }
+              title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {isDarkMode ? (
+                <Sun className="size-5" />
+              ) : (
+                <Moon className="size-5" />
+              )}
+            </Button>
             <span className="motion-float-delayed hidden rounded-full border border-border/80 bg-secondary/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-secondary-foreground xl:inline-flex">
               Live Marketplace
             </span>

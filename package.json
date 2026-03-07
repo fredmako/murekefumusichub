@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "dev": "vite"
+    "dev": "vite",
+    "push:deploy": "powershell -ExecutionPolicy Bypass -File ./scripts/push-deploy.ps1",
+    "push:deploy:dry": "powershell -ExecutionPolicy Bypass -File ./scripts/push-deploy.ps1 -DryRun"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

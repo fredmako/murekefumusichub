@@ -18,6 +18,8 @@ import { useAuth } from "@/context/AuthContext";
 import { THEME_MODES, THEME_PRESETS, ThemeMode, ThemePreset, useTheme } from "@/context/ThemeContext";
 import { toast } from "sonner";
 import { SESSION_EXPIRED_EVENT } from "@/lib/sessionEvents";
+import { APP_ERROR_EVENT, type AppErrorAction, type AppErrorDetail, dispatchAppError } from "@/lib/appErrorEvents";
+import { AppErrorDialog } from "@/app/components/AppErrorDialog";
 import { Guitar, Loader2 } from "lucide-react";
 import loadingStringsDark from "@/app/components/images/bg_9.jpg";
 import loadingStringsLight from "@/app/components/images/bg_11.jpg";
@@ -159,6 +161,8 @@ export default function App() {
   const { appUser, signOut } = useAuth();
   const { mode, setMode, setTheme } = useTheme();
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [appError, setAppError] = useState<AppErrorDetail | null>(null);
+  const [appErrorOpen, setAppErrorOpen] = useState(false);
   const lastSessionExpiredToastAt = useRef(0);
   const handlingSessionExpiredRef = useRef(false);
   const isDarkMode = mode === "dark";
@@ -205,6 +209,68 @@ export default function App() {
     }
   }, [appUser?.theme_settings?.mode, appUser?.theme_settings?.preset, setMode, setTheme]);
 
+  const handleAppErrorAction = (action: AppErrorAction, detail: AppErrorDetail | null) => {
+    if (!detail) return;
+    if (action === "refresh") {
+      window.location.reload();
+      return;
+    }
+    if (action === "exit") {
+      if (detail.exitTo) {
+        navigate(detail.exitTo, { replace: true });
+      } else {
+        navigate("/", { replace: true });
+      }
+      return;
+    }
+    setAppErrorOpen(false);
+  };
+
+  useEffect(() => {
+    const onAppError = (event: Event) => {
+      const detail = (event as CustomEvent<AppErrorDetail>).detail;
+      if (!detail) return;
+
+      const status = Number(detail.status || 0);
+      if (!detail.actions || detail.actions.length === 0) {
+        if (status === 401) {
+          detail.actions = ["ok", "exit", "refresh"];
+        } else if (status === 408 || status === 503) {
+          detail.actions = ["refresh", "ok"];
+        } else if (status >= 500) {
+          detail.actions = ["refresh", "exit", "ok"];
+        } else {
+          detail.actions = ["ok"];
+        }
+      }
+
+      setAppError(detail);
+      setAppErrorOpen(true);
+    };
+
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (!event?.reason) return;
+      const message =
+        event.reason?.message ||
+        String(event.reason) ||
+        "An unexpected error occurred.";
+      dispatchAppError({ message });
+    };
+
+    const onWindowError = (event: ErrorEvent) => {
+      if (!event?.error && !event?.message) return;
+      dispatchAppError({ message: event.error?.message || event.message });
+    };
+
+    window.addEventListener(APP_ERROR_EVENT, onAppError);
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+    window.addEventListener("error", onWindowError);
+    return () => {
+      window.removeEventListener(APP_ERROR_EVENT, onAppError);
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
+      window.removeEventListener("error", onWindowError);
+    };
+  }, [navigate]);
   useEffect(() => {
     const onSessionExpired = async () => {
       if (!appUser) return;
@@ -231,14 +297,17 @@ export default function App() {
         }
 
         await signOut(false);
-        toast.error("Your session has expired. Please log in again.");
 
-        if (!isAuthPage) {
-          const next = encodeURIComponent(currentPath || "/");
-          navigate(`/login?next=${next}&reason=session-expired`, {
-            replace: true,
-          });
-        }
+        const next = encodeURIComponent(currentPath || "/");
+        dispatchAppError({
+          title: "Session expired",
+          message: "Your session has expired. Please log in again.",
+          status: 401,
+          exitTo: isAuthPage
+            ? "/login?reason=session-expired"
+            : `/login?next=${next}&reason=session-expired`,
+          actions: ["ok", "refresh", "exit"],
+        });
       } finally {
         handlingSessionExpiredRef.current = false;
       }
@@ -307,6 +376,12 @@ export default function App() {
           </>
         )}
         <Navbar cart={cart} onRemoveFromCart={handleRemoveFromCart} />
+        <AppErrorDialog
+          open={appErrorOpen}
+          detail={appError}
+          onOpenChange={setAppErrorOpen}
+          onAction={handleAppErrorAction}
+        />
 
         <Suspense
           fallback={

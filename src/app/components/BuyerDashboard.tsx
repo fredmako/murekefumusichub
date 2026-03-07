@@ -51,7 +51,7 @@ export function BuyerDashboard({
 }: BuyerDashboardProps) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { appUser } = useAuth();
+  const { appUser, isLoading: isAuthLoading } = useAuth();
   const [activeTab, setActiveTab] = useState(
     searchParams.get("tab") === "checkout" ? "checkout" : "library",
   );
@@ -67,6 +67,11 @@ export function BuyerDashboard({
   }, [searchParams]);
 
   useEffect(() => {
+    if (isAuthLoading) {
+      setLoading(true);
+      return;
+    }
+
     let mounted = true;
 
     const fetchUserPurchases = async (showSpinner = true) => {
@@ -95,7 +100,23 @@ export function BuyerDashboard({
           0,
         );
         setTotalSpent(spent);
-      } catch (err) {
+      } catch (err: any) {
+        const status = Number(err?.status || 0);
+        if (status === 401) {
+          console.warn("Purchases request blocked by expired session");
+          return;
+        }
+
+        if (status === 503 || status === 408) {
+          console.warn("Purchases request failed due to transient auth/network issue");
+          if (showSpinner) {
+            toast.warning(
+              "Connection issue while loading your library. Retrying in the background...",
+            );
+          }
+          return;
+        }
+
         console.error("Error loading purchases:", err);
         if (showSpinner) {
           toast.error("Failed to load purchases");
@@ -114,14 +135,14 @@ export function BuyerDashboard({
       mounted = false;
       clearInterval(timer);
     };
-  }, [appUser?.id]);
+  }, [appUser?.id, isAuthLoading]);
 
   // Redirect to home if user logs out
   useEffect(() => {
-    if (appUser === null) {
+    if (!isAuthLoading && appUser === null) {
       navigate("/", { replace: true });
     }
-  }, [appUser, navigate]);
+  }, [appUser, isAuthLoading, navigate]);
 
   // Cart calculations
   const cartTotal = cart.reduce(

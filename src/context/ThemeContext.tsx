@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 export const THEME_PRESETS = [
   "emerald",
@@ -65,6 +72,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<ThemePreset>(getStoredTheme);
   const [mode, setModeState] = useState<ThemeMode>(getStoredMode);
 
+  const setTheme = useCallback((nextTheme: ThemePreset) => {
+    setThemeState(nextTheme);
+  }, []);
+
+  const setMode = useCallback((nextMode: ThemeMode) => {
+    setModeState(nextMode);
+  }, []);
+
   useEffect(() => {
     applyThemeToDom(theme, mode);
     try {
@@ -79,14 +94,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     () => ({
       theme,
       mode,
-      setTheme: (nextTheme: ThemePreset) => {
-        setThemeState(nextTheme);
-      },
-      setMode: (nextMode: ThemeMode) => {
-        setModeState(nextMode);
-      },
+      setTheme,
+      setMode,
     }),
-    [theme, mode],
+    [theme, mode, setTheme, setMode],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
