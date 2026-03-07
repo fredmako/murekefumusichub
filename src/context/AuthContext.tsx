@@ -55,6 +55,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     .split(",")
     .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
+  const AUTH_REDIRECT_BASE = String(
+    (import.meta as any).env?.VITE_AUTH_REDIRECT_BASE_URL || "",
+  ).trim();
+
+  const getAuthRedirectBase = (): string => {
+    const candidates: string[] = [];
+    if (AUTH_REDIRECT_BASE) candidates.push(AUTH_REDIRECT_BASE);
+    if (typeof window !== "undefined" && window.location?.origin) {
+      candidates.push(window.location.origin);
+    }
+    candidates.push("http://localhost:5173");
+
+    for (const raw of candidates) {
+      try {
+        const parsed = new URL(raw);
+        return parsed.origin;
+      } catch {
+        // try next candidate
+      }
+    }
+
+    return "http://localhost:5173";
+  };
+
+  const buildAuthRedirectUrl = (path: string): string => {
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    return `${getAuthRedirectBase()}${normalizedPath}`;
+  };
 
   const isAuthNetworkError = (err: any): boolean => {
     if (!err) return false;
@@ -156,6 +184,39 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
    */
   const syncUserProfile = async (authUid: string) => {
     try {
+      // Prefer backend profile endpoint so avatar URLs can be refreshed/signed server-side.
+      try {
+        const encodedAuthUid = encodeURIComponent(authUid);
+        const resp = await fetch(`${API_BASE_URL}/users/by-auth-uid/${encodedAuthUid}`, {
+          headers: { "Content-Type": "application/json" },
+        });
+
+        if (resp.ok) {
+          const serverUser = await resp.json();
+          let roles = Array.isArray(serverUser?.roles) ? serverUser.roles : [];
+          if (!roles.length) {
+            roles = await resolveFallbackRoles(
+              serverUser?.id || "",
+              serverUser?.email || null,
+            );
+          }
+
+          setAppUser({
+            id: serverUser.id,
+            auth_uid: serverUser.auth_uid,
+            email: serverUser.email,
+            display_name: serverUser.display_name,
+            avatar_url: normalizeAvatarUrl(serverUser.avatar_url),
+            theme_settings: serverUser.theme_settings || null,
+            roles,
+            isComposer: roles.includes("composer"),
+          });
+          return;
+        }
+      } catch (serverFetchErr) {
+        console.warn("[syncUserProfile] backend profile fetch failed:", serverFetchErr);
+      }
+
       // Try to fetch existing user row by auth_uid
       const { data: userData, error: userError } = await supabase
         .from("users")
@@ -343,7 +404,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
    */
   const signUpWithEmail = async (email: string, password: string) => {
     try {
-      const emailRedirectTo = `${window.location.origin}/login`;
+      const emailRedirectTo = buildAuthRedirectUrl("/login");
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -369,10 +430,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
    */
   const signInWithGoogle = async () => {
     try {
+      const redirectTo = buildAuthRedirectUrl("/auth/callback");
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo,
         },
       });
 
@@ -389,7 +451,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const resetPassword = async (email: string) => {
     try {
       const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: buildAuthRedirectUrl("/reset-password"),
       });
       if (error) throw error;
       // data contains user info maybe

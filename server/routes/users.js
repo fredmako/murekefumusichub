@@ -7,6 +7,7 @@ import {
   normalizeAvatarUrl,
   withNormalizedAvatar,
 } from "../utils/avatarUrl.js";
+import { refreshAvatarUrl } from "../utils/avatarSignedUrl.js";
 
 const router = express.Router();
 const ADMIN_IDENTIFIERS = new Set(
@@ -15,6 +16,10 @@ const ADMIN_IDENTIFIERS = new Set(
     .map((item) => item.trim().toLowerCase())
     .filter(Boolean),
 );
+
+async function prepareUserResponse(userRow) {
+  return await refreshAvatarUrl(withNormalizedAvatar(userRow));
+}
 
 // GET /api/users/:id
 router.get("/:id", async (req, res) => {
@@ -60,7 +65,8 @@ router.get("/:id", async (req, res) => {
       if (adminEmail && !roles.includes("admin")) roles.push("admin");
     }
 
-    return res.json({ ...withNormalizedAvatar(data), roles });
+    const prepared = await prepareUserResponse(data);
+    return res.json({ ...prepared, roles });
   } catch (err) {
     console.error("[get-user] Error:", err);
     return serverError(res, err);
@@ -112,7 +118,8 @@ router.get("/by-auth-uid/:authUid", async (req, res) => {
       if (adminEmail && !roles.includes("admin")) roles.push("admin");
     }
 
-    return res.json({ ...withNormalizedAvatar(data), roles });
+    const prepared = await prepareUserResponse(data);
+    return res.json({ ...prepared, roles });
   } catch (err) {
     console.error("[get-user-by-auth-uid] Error:", err);
     return serverError(res, err);
@@ -134,7 +141,7 @@ router.post("/ensure", async (req, res) => {
       .maybeSingle();
 
     if (existingErr) throw existingErr;
-    if (existing) return res.json(withNormalizedAvatar(existing));
+    if (existing) return res.json(await prepareUserResponse(existing));
 
     // Handle existing user rows by email to avoid unique constraint violations
     if (normalizedEmail) {
@@ -160,7 +167,7 @@ router.post("/ensure", async (req, res) => {
           .maybeSingle();
 
         if (updateErr) throw updateErr;
-        return res.json(withNormalizedAvatar(updated || emailMatch));
+        return res.json(await prepareUserResponse(updated || emailMatch));
       }
     }
 
@@ -215,11 +222,11 @@ router.post("/ensure", async (req, res) => {
           if (remapped) return res.json(withNormalizedAvatar(remapped));
         }
 
-        if (conflictRow) return res.json(withNormalizedAvatar(conflictRow));
+        if (conflictRow) return res.json(await prepareUserResponse(conflictRow));
       }
       throw createErr;
     }
-    return res.status(201).json(withNormalizedAvatar(created));
+    return res.status(201).json(await prepareUserResponse(created));
   } catch (err) {
     return serverError(res, err);
   }
@@ -257,7 +264,8 @@ router.put("/:id", verifySupabaseToken, async (req, res) => {
       .select()
       .single();
     if (error) throw error;
-    return res.json({ message: "User updated", user: withNormalizedAvatar(data) });
+    const prepared = await prepareUserResponse(data);
+    return res.json({ message: "User updated", user: prepared });
   } catch (err) {
     console.error("[update-user] Error:", err);
     return serverError(res, err);

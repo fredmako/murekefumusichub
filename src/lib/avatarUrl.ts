@@ -21,19 +21,8 @@ export function normalizeAvatarUrl(value: string | null | undefined): string | n
       decodedBucketAndPath = bucketAndPath;
     }
 
-    if (decodedBucketAndPath.startsWith("avatars/")) {
-      const relativePath = decodedBucketAndPath.slice("avatars/".length);
-      const encodedPath = relativePath
-        .split("/")
-        .filter(Boolean)
-        .map((segment) => encodeURIComponent(segment))
-        .join("/");
-
-      parsed.pathname = `/storage/v1/object/public/avatars/${encodedPath}`;
-      parsed.search = "";
-      parsed.hash = "";
-      return parsed.toString();
-    }
+    // Keep signed avatar URLs intact. Converting to /public breaks when bucket is private.
+    if (decodedBucketAndPath.startsWith("avatars/")) return raw;
   }
 
   if (parsed.pathname.includes("/storage/v1/object/public/avatars/")) {
