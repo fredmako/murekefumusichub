@@ -1,14 +1,16 @@
-const envApiBase = String((import.meta as any).env?.VITE_API_BASE_URL || "").trim();
+const envApiBase = String(
+  (import.meta as any).env?.VITE_API_BASE_URL || "",
+).trim();
 const isBrowser = typeof window !== "undefined";
 const isDev = Boolean((import.meta as any).env?.DEV);
 
 const defaultApiBase =
-  isBrowser && !isDev ? `${window.location.origin}/api` : "http://localhost:3001/api";
+  isBrowser && !isDev
+    ? `${window.location.origin}/api`
+    : "choral-server-production.up.railway.app";
 
 const isLoopbackHost = (hostname: string) =>
-  hostname === "localhost" ||
-  hostname === "127.0.0.1" ||
-  hostname === "::1";
+  hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 
 const hasApiBasePath = (pathname: string) => {
   const normalized = String(pathname || "")
