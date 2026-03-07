@@ -1,9 +1,11 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+import { resolvePostLoginRedirect } from "@/lib/authRedirect";
 
 export default function AuthCallback() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
     let mounted = true;
@@ -12,18 +14,11 @@ export default function AuthCallback() {
       if (mounted) navigate(path, { replace: true });
     };
 
-    const consumePostLoginRedirect = () => {
-      try {
-        const nextPath = sessionStorage.getItem("post_login_redirect");
-        if (nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")) {
-          sessionStorage.removeItem("post_login_redirect");
-          return nextPath;
-        }
-      } catch {
-        // ignore storage failures
-      }
-      return null;
-    };
+    const resolveTarget = () =>
+      resolvePostLoginRedirect({
+        queryNext: searchParams.get("next"),
+        consume: true,
+      });
 
     const handleAuth = async () => {
       try {
@@ -37,12 +32,12 @@ export default function AuthCallback() {
           return;
         }
 
-        const target = consumePostLoginRedirect();
+        const target = resolveTarget();
         safeNavigate(data?.session ? target || "/" : "/login");
       } catch (err: any) {
         if (err?.name === "NavigatorLockAcquireTimeoutError") {
           // Let AuthContext resolve auth state via listener after lock contention.
-          const target = consumePostLoginRedirect();
+          const target = resolveTarget();
           safeNavigate(target || "/");
           return;
         }
@@ -54,7 +49,7 @@ export default function AuthCallback() {
     const { data: authState } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
-        const target = consumePostLoginRedirect();
+        const target = resolveTarget();
         if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
           safeNavigate(target || "/");
           return;
@@ -75,7 +70,7 @@ export default function AuthCallback() {
       mounted = false;
       authState.subscription.unsubscribe();
     };
-  }, [navigate]);
+  }, [navigate, searchParams]);
 
   return (
     <div className="flex items-center justify-center min-h-screen">

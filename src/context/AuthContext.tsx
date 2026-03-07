@@ -11,6 +11,7 @@ import { supabase } from "../lib/supabase";
 import { normalizeAvatarUrl } from "../lib/avatarUrl";
 import { API_BASE_URL } from "@/lib/apiBase";
 import type { ThemeMode, ThemePreset } from "./ThemeContext";
+import { sanitizeRedirectPath } from "@/lib/authRedirect";
 
 const AUTH_SESSION_TIMEOUT_MS = 12000;
 const AUTH_PROFILE_SYNC_TIMEOUT_MS = 15000;
@@ -36,7 +37,7 @@ interface AuthContextType {
   signOut: (redirect?: boolean) => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (email: string, password: string) => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: (nextPath?: string | null) => Promise<void>;
   refreshRoles: () => Promise<void>;
   getAuthToken: () => Promise<string | null>;
   resetPassword: (email: string) => Promise<void>;
@@ -428,9 +429,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   /**
    * Sign in with Google via Supabase OAuth
    */
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (nextPath?: string | null) => {
     try {
-      const redirectTo = buildAuthRedirectUrl("/auth/callback");
+      const sanitizedNextPath = sanitizeRedirectPath(nextPath);
+      const callbackPath = sanitizedNextPath
+        ? `/auth/callback?next=${encodeURIComponent(sanitizedNextPath)}`
+        : "/auth/callback";
+      const redirectTo = buildAuthRedirectUrl(callbackPath);
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {

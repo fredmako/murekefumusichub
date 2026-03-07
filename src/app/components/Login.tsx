@@ -15,6 +15,10 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "sonner";
 import logo from "./images/system-logo-cutout.png";
+import {
+  persistPostLoginRedirect,
+  resolvePostLoginRedirect,
+} from "@/lib/authRedirect";
 
 type UserRole = "buyer" | "composer" | "admin";
 
@@ -56,33 +60,15 @@ export function Login() {
   /* ============================= */
   /* AUTO REDIRECT IF LOGGED IN */
   /* ============================= */
-  const resolveNextPath = (): string | null => {
-    const fromQuery = searchParams.get("next");
-    const fromStorage = (() => {
-      try {
-        return sessionStorage.getItem("post_login_redirect");
-      } catch {
-        return null;
-      }
-    })();
-
-    const candidate = fromQuery || fromStorage;
-    if (!candidate) return null;
-    if (!candidate.startsWith("/") || candidate.startsWith("//")) return null;
-    return candidate;
-  };
-
   useEffect(() => {
     if (!appUser) return; // Not logged in
 
     try {
-      const nextPath = resolveNextPath();
+      const nextPath = resolvePostLoginRedirect({
+        queryNext: searchParams.get("next"),
+        consume: true,
+      });
       if (nextPath) {
-        try {
-          sessionStorage.removeItem("post_login_redirect");
-        } catch {
-          // ignore storage failures
-        }
         navigate(nextPath, { replace: true });
         return;
       }
@@ -162,7 +148,14 @@ export function Login() {
     setIsLoading(true);
 
     try {
-      await signInWithGoogle();
+      const nextPath = resolvePostLoginRedirect({
+        queryNext: searchParams.get("next"),
+        consume: false,
+      });
+      if (nextPath) {
+        persistPostLoginRedirect(nextPath);
+      }
+      await signInWithGoogle(nextPath);
       toast.success("Google sign-in successful!");
       // The useEffect will handle redirect automatically when appUser updates
     } catch (error: any) {
