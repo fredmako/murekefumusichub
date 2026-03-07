@@ -30,6 +30,8 @@ interface SupportIssueButtonProps {
   triggerLabel?: string;
   triggerIcon?: "lifebuoy" | "message";
   triggerVariant?: "default" | "outline" | "secondary" | "ghost";
+  unreadCount?: number;
+  onInboxRefresh?: () => void;
 }
 
 function formatThreadTime(value?: string | null) {
@@ -45,6 +47,8 @@ export function SupportIssueButton({
   triggerLabel = "Contact Support",
   triggerIcon = "lifebuoy",
   triggerVariant = "outline",
+  unreadCount = 0,
+  onInboxRefresh,
 }: SupportIssueButtonProps) {
   const { appUser } = useAuth();
   const TriggerIcon = triggerIcon === "message" ? MessageSquare : LifeBuoy;
@@ -77,9 +81,10 @@ export function SupportIssueButton({
       if (!appUser?.id) return;
       setLoadingThreads(true);
       try {
-        const rows = await supportService.getMyThreads();
-        const nextThreads = rows || [];
+        const inbox = await supportService.getInbox();
+        const nextThreads = inbox?.threads || [];
         setThreads(nextThreads);
+        onInboxRefresh?.();
 
         setSelectedThreadId((currentSelected) => {
           if (!preserveSelection) return currentSelected;
@@ -96,7 +101,7 @@ export function SupportIssueButton({
         setLoadingThreads(false);
       }
     },
-    [appUser?.id],
+    [appUser?.id, onInboxRefresh],
   );
 
   const loadMessages = useCallback(
@@ -256,9 +261,14 @@ export function SupportIssueButton({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant={triggerVariant} className={className}>
+        <Button variant={triggerVariant} className={`relative ${className || ""}`}>
           <TriggerIcon className="mr-2 size-4" />
           {triggerLabel}
+          {unreadCount > 0 ? (
+            <Badge className="absolute -top-2 -right-2 size-5 min-w-5 px-1 text-[10px] leading-none">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </Badge>
+          ) : null}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[88vh] overflow-hidden p-0 sm:max-w-5xl">

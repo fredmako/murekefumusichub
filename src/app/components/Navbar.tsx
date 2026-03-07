@@ -68,6 +68,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   const isAuthenticated = Boolean(appUser?.id);
   const isAdmin = roles.includes("admin");
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [messengerUnreadCount, setMessengerUnreadCount] = useState(0);
   const [notifLoading, setNotifLoading] = useState(false);
   const [processingNotification, setProcessingNotification] = useState<
     string | null
@@ -85,13 +86,15 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     async function fetchNotifications() {
       if (!isAuthenticated) {
         setNotifications([]);
+        setMessengerUnreadCount(0);
         return;
       }
       setNotifLoading(true);
       try {
-        const items = await navbarService.fetchNotifications({ isAdmin });
+        const result = await navbarService.fetchNotifications({ isAdmin });
         if (!mounted) return;
-        setNotifications(ensureArray<any>(items, ["notifications"]));
+        setNotifications(ensureArray<any>(result?.items, ["notifications"]));
+        setMessengerUnreadCount(Math.max(0, Number(result?.messengerUnreadCount || 0)));
         timer = setTimeout(fetchNotifications, NOTIF_POLL_INTERVAL);
       } catch (err) {
         if (!mounted) return;
@@ -346,6 +349,22 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                 triggerLabel="Messenger"
                 triggerIcon="message"
                 triggerVariant="outline"
+                unreadCount={messengerUnreadCount}
+                onInboxRefresh={() => {
+                  void navbarService
+                    .fetchNotifications({ isAdmin })
+                    .then((result) => {
+                      setNotifications(
+                        ensureArray<any>(result?.items, ["notifications"]),
+                      );
+                      setMessengerUnreadCount(
+                        Math.max(0, Number(result?.messengerUnreadCount || 0)),
+                      );
+                    })
+                    .catch((error) => {
+                      console.warn("Navbar messenger refresh error:", error);
+                    });
+                }}
                 className="rounded-full border-border/80 bg-secondary/40 text-xs font-semibold tracking-[0.06em]"
               />
             )}
@@ -735,3 +754,4 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
 }
 
 export default Navbar;
+

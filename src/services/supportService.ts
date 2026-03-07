@@ -50,6 +50,13 @@ export interface SupportChatMessage {
   created_at: string;
 }
 
+export interface SupportInboxPayload {
+  threads: SupportChatThread[];
+  unreadThreads: SupportChatThread[];
+  unreadCount: number;
+  lastUpdatedAt?: string;
+}
+
 export type AdminThreadType = "notification" | "ticket" | "direct";
 
 export const supportService = {
@@ -58,6 +65,7 @@ export const supportService = {
       method: "POST",
       body: JSON.stringify(payload),
       timeoutMs: 30000,
+      requiresAuth: true,
     });
   },
 
@@ -70,6 +78,7 @@ export const supportService = {
       method: "POST",
       body: JSON.stringify(payload),
       timeoutMs: 30000,
+      requiresAuth: true,
     });
   },
 
@@ -89,17 +98,41 @@ export const supportService = {
       method: "POST",
       body: JSON.stringify(payload),
       timeoutMs: 30000,
+      requiresAuth: true,
     });
   },
 
+  async getInbox(limit = 100): Promise<SupportInboxPayload> {
+    const payload = await apiRequest<any>(`/support/inbox?limit=${limit}`, {
+      method: "GET",
+      timeoutMs: 30000,
+      requiresAuth: true,
+    });
+
+    const threads = ensureArray<SupportChatThread>(payload, ["threads", "tickets"]);
+    const unreadThreads = ensureArray<SupportChatThread>(payload?.unreadThreads, [
+      "threads",
+      "tickets",
+    ]);
+
+    return {
+      threads,
+      unreadThreads,
+      unreadCount:
+        Number.isFinite(Number(payload?.unreadCount)) &&
+        Number(payload?.unreadCount) >= 0
+          ? Number(payload.unreadCount)
+          : unreadThreads.length,
+      lastUpdatedAt: payload?.lastUpdatedAt,
+    };
+  },
+
   async getMyThreads(limit = 100) {
-    const payload = await apiRequest<any>(
-      `/support/threads/my?limit=${limit}`,
-      {
-        method: "GET",
-        timeoutMs: 30000,
-      },
-    );
+    const payload = await apiRequest<any>(`/support/threads/my?limit=${limit}`, {
+      method: "GET",
+      timeoutMs: 30000,
+      requiresAuth: true,
+    });
     return ensureArray<SupportChatThread>(payload, ["threads", "tickets"]);
   },
 
@@ -111,6 +144,7 @@ export const supportService = {
     }>(`/support/threads/${threadId}/messages`, {
       method: "GET",
       timeoutMs: 30000,
+      requiresAuth: true,
     });
   },
 
@@ -124,6 +158,7 @@ export const supportService = {
       method: "POST",
       body: JSON.stringify({ message }),
       timeoutMs: 30000,
+      requiresAuth: true,
     });
   },
 
@@ -135,17 +170,16 @@ export const supportService = {
     }>(`/support/threads/${threadId}/read`, {
       method: "POST",
       timeoutMs: 30000,
+      requiresAuth: true,
     });
   },
 
   async getAdminTicketQueue(limit = 200) {
-    const payload = await apiRequest<any>(
-      `/support/admin/tickets?limit=${limit}`,
-      {
-        method: "GET",
-        timeoutMs: 30000,
-      },
-    );
+    const payload = await apiRequest<any>(`/support/admin/tickets?limit=${limit}`, {
+      method: "GET",
+      timeoutMs: 30000,
+      requiresAuth: true,
+    });
     return ensureArray<SupportChatThread>(payload, ["tickets", "threads"]);
   },
 
@@ -157,6 +191,7 @@ export const supportService = {
     }>(`/support/admin/tickets/${threadId}/pick`, {
       method: "POST",
       timeoutMs: 30000,
+      requiresAuth: true,
     });
   },
 
@@ -171,6 +206,7 @@ export const supportService = {
     }>(`/support/admin/tickets/${threadId}/reject`, {
       method: "POST",
       timeoutMs: 30000,
+      requiresAuth: true,
     });
   },
 
@@ -180,6 +216,7 @@ export const supportService = {
       {
         method: "GET",
         timeoutMs: 30000,
+        requiresAuth: true,
       },
     );
     return ensureArray<SupportChatThread>(payload, ["threads", "tickets"]);
@@ -193,8 +230,10 @@ export const supportService = {
     }>(`/support/admin/threads/${threadId}`, {
       method: "DELETE",
       timeoutMs: 30000,
+      requiresAuth: true,
     });
   },
 };
 
 export default supportService;
+
