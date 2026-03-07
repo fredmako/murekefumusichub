@@ -287,6 +287,23 @@ function shouldRetryRequest(method: string): boolean {
   return m === "GET" || m === "HEAD" || m === "OPTIONS";
 }
 
+async function readResponsePayload(
+  response: Response,
+): Promise<{ text: string; json: any | null }> {
+  try {
+    const text = await response.text();
+    if (!text) return { text: "", json: null };
+
+    try {
+      return { text, json: JSON.parse(text) };
+    } catch {
+      return { text, json: null };
+    }
+  } catch {
+    return { text: "", json: null };
+  }
+}
+
 export async function apiRequest<T>(
   endpoint: string,
   options: RequestInit & { timeoutMs?: number; requiresAuth?: boolean } = {},
@@ -424,16 +441,9 @@ export async function apiRequest<T>(
   }
 
   if (!response.ok) {
-    let errorBody: any = { message: response.statusText };
-    try {
-      errorBody = await response.json();
-    } catch {
-      try {
-        errorBody = { message: await response.text() };
-      } catch {
-        // ignore parse failures
-      }
-    }
+    const payload = await readResponsePayload(response);
+    const errorBody: any =
+      payload.json ?? { message: payload.text || response.statusText };
 
     const message =
       errorBody?.message ||
@@ -475,11 +485,14 @@ export async function apiRequest<T>(
     throw err;
   }
 
-  try {
-    return await response.json();
-  } catch {
-    return (await response.text()) as unknown as T;
+  const payload = await readResponsePayload(response);
+  if (payload.json !== null) {
+    return payload.json as T;
   }
+  if (payload.text) {
+    return payload.text as unknown as T;
+  }
+  return undefined as unknown as T;
 }
 
 export const authService = {
@@ -909,10 +922,22 @@ export const storageService = {
     _userId: string,
     options?: { timeoutMs?: number },
   ): Promise<string> {
-    const token = await getAccessToken();
-    if (!token) {
-      throw new Error("No authentication token available");
+    const tokenResult = await getAccessToken();
+    if (tokenResult.status !== "ok") {
+      if (tokenResult.status === "no_session") {
+        const err = new Error("Your session has expired. Please log in again.");
+        (err as any).status = 401;
+        throw err;
+      }
+      const err = new Error(
+        tokenResult.statusCode === 408
+          ? "Authentication timed out. Please check your connection and try again."
+          : "Authentication is temporarily unavailable. Please retry in a moment.",
+      );
+      (err as any).status = tokenResult.statusCode || 503;
+      throw err;
     }
+    const token = tokenResult.token;
 
     if (!file) {
       throw new Error("No file selected for upload");
