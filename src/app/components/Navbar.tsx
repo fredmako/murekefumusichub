@@ -9,6 +9,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { CartItem } from "@/app/types";
 import { toast } from "sonner";
 import { ensureArray } from "@/lib/ensureArray";
+import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 import {
   ShoppingCart,
   LogOut,
@@ -740,7 +741,13 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                     </DropdownMenuItem>
                   </>
                 ) : (
-                  <DropdownMenuItem onClick={() => navigate("/login")}>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      const currentPath = `${location.pathname}${location.search}${location.hash}`;
+                      persistPostLoginRedirect(currentPath);
+                      navigate(buildLoginPath({ nextPath: currentPath }));
+                    }}
+                  >
                     Sign In
                   </DropdownMenuItem>
                 )}

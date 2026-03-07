@@ -16,6 +16,7 @@ import {
   SelectItem,
 } from "./ui/select";
 import { Music, User, Mail, BookOpen } from "lucide-react";
+import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 
 const musicClasses = [
   "Piano",
@@ -56,13 +57,9 @@ export const MusicEnrollmentPage: React.FC = () => {
     e.preventDefault();
 
     if (!appUser) {
-      try {
-        sessionStorage.setItem("post_login_redirect", "/enroll");
-      } catch {
-        // ignore storage failures
-      }
+      persistPostLoginRedirect("/enroll");
       toast.info("Please sign in before submitting an enrollment request.");
-      navigate("/login?next=%2Fenroll");
+      navigate(buildLoginPath({ nextPath: "/enroll" }));
       return;
     }
 

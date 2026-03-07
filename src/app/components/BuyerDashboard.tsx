@@ -11,7 +11,7 @@ import {
   Trash2,
   ArrowRight,
 } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/app/components/ui/button";
 import {
   Card,
@@ -52,6 +52,7 @@ export function BuyerDashboard({
   onRemoveFromCart,
 }: BuyerDashboardProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { appUser, isLoading: isAuthLoading } = useAuth();
   const [activeTab, setActiveTab] = useState(
@@ -143,9 +144,11 @@ export function BuyerDashboard({
   // Redirect to home if user logs out
   useEffect(() => {
     if (!isAuthLoading && appUser === null) {
-      navigate("/", { replace: true });
+      const currentPath = `${location.pathname}${location.search}${location.hash}`;
+      persistPostLoginRedirect(currentPath);
+      navigate(buildLoginPath({ nextPath: currentPath }), { replace: true });
     }
-  }, [appUser, isAuthLoading, navigate]);
+  }, [appUser, isAuthLoading, location.hash, location.pathname, location.search, navigate]);
 
   // Cart calculations
   const cartTotal = cart.reduce(

@@ -9,16 +9,20 @@ export default function AuthCallback() {
 
   useEffect(() => {
     let mounted = true;
+    let resolvedTargetPath: string | null | undefined;
 
     const safeNavigate = (path: string) => {
       if (mounted) navigate(path, { replace: true });
     };
 
-    const resolveTarget = () =>
-      resolvePostLoginRedirect({
+    const resolveTarget = () => {
+      if (resolvedTargetPath !== undefined) return resolvedTargetPath;
+      resolvedTargetPath = resolvePostLoginRedirect({
         queryNext: searchParams.get("next"),
         consume: true,
       });
+      return resolvedTargetPath;
+    };
 
     const handleAuth = async () => {
       try {

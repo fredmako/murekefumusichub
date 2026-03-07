@@ -1,6 +1,6 @@
 ﻿// src/app/components/ManageAccount.tsx
 import { useAuth, AppUser } from "@/context/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
@@ -44,6 +44,7 @@ import {
 import { API_BASE_URL } from "@/lib/apiBase";
 import { useTheme } from "@/context/ThemeContext";
 import { getOptimizedProfileImageUrl } from "@/services/profileImageService";
+import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 
 type RoleRequestState = "none" | "pending" | "approved" | "rejected";
 type InviteAvailability = {
@@ -66,6 +67,7 @@ export function ManageAccount() {
   const { appUser, signOut, getAuthToken, isLoading: authLoading } = useAuth();
   const { mode, setMode, theme } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
 
   // local UI/action loading (separate from auth provider loading)
   const [loading, setLoading] = useState(false);
@@ -116,9 +118,11 @@ export function ManageAccount() {
   // Do not auto-redirect by role; users may need to manage profile or request other roles.
   useEffect(() => {
     if (!authLoading && !appUser) {
-      navigate("/login", { replace: true });
+      const currentPath = `${location.pathname}${location.search}${location.hash}`;
+      persistPostLoginRedirect(currentPath);
+      navigate(buildLoginPath({ nextPath: currentPath }), { replace: true });
     }
-  }, [authLoading, appUser, navigate]);
+  }, [appUser, authLoading, location.hash, location.pathname, location.search, navigate]);
 
   // keep local `user` in sync with context `appUser`
   useEffect(() => {

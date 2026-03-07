@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Plus,
   DollarSign,
@@ -43,6 +44,7 @@ import { SupportIssueButton } from "@/app/components/SupportIssueButton";
 import { supabase } from "@/lib/supabase";
 import { compositionService } from "@/services/api";
 import { toast } from "sonner";
+import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 
 interface CompositionWithStats {
   id: string;
@@ -72,7 +74,9 @@ interface ComposerStats {
 }
 
 export function ComposerDashboard() {
-  const { appUser } = useAuth();
+  const { appUser, isLoading: authLoading } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -198,13 +202,14 @@ export function ComposerDashboard() {
     previousUploadOpen.current = isUploadOpen;
   }, [isUploadOpen]);
 
-  // Redirect to home on logout
+  // Redirect unauthenticated users to login and preserve their original route.
   useEffect(() => {
-    if (appUser === null) {
-      // using window.location to ensure full app redirect
-      window.location.href = "/";
+    if (!authLoading && appUser === null) {
+      const currentPath = `${location.pathname}${location.search}${location.hash}`;
+      persistPostLoginRedirect(currentPath);
+      navigate(buildLoginPath({ nextPath: currentPath }), { replace: true });
     }
-  }, [appUser]);
+  }, [appUser, authLoading, location.hash, location.pathname, location.search, navigate]);
 
   const { composerCompositions, totalRevenue, totalSales, loading } = stats;
   const publishedCount = composerCompositions.filter(

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Users,
   Music,
@@ -77,6 +77,7 @@ import { supportService, type AdminThreadType } from "@/services/supportService"
 import { getOptimizedProfileImageUrl } from "@/services/profileImageService";
 import { supabase } from "@/lib/supabase";
 import { ensureArray } from "@/lib/ensureArray";
+import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 import loadingStringsDark from "./images/bg_9.jpg";
 import loadingStringsLight from "./images/bg_11.jpg";
 
@@ -173,6 +174,7 @@ const ANNOUNCEMENT_ROLE_OPTIONS = [
 
 export function AdminPanel() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const { appUser, isLoading: authLoading } = useAuth();
   const { mode } = useTheme();
@@ -202,7 +204,7 @@ export function AdminPanel() {
   const [totalTransactions, setTotalTransactions] = useState(0);
 
   // UI
-  const [activeTab, setActiveTab] = useState<AdminTab>("users");
+  const [activeTab, setActiveTab] = useState<AdminTab>("overview");
   const [loading, setLoading] = useState(true);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -268,7 +270,9 @@ export function AdminPanel() {
     if (authLoading) return;
 
     if (!appUser) {
-      navigate("/", { replace: true });
+      const currentPath = `${location.pathname}${location.search}${location.hash}`;
+      persistPostLoginRedirect(currentPath);
+      navigate(buildLoginPath({ nextPath: currentPath }), { replace: true });
       return;
     }
 
@@ -281,7 +285,7 @@ export function AdminPanel() {
     // Initial load
     void fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, appUser?.auth_uid, appUser?.roles?.join(",")]);
+  }, [appUser, authLoading, location.hash, location.pathname, location.search, navigate]);
 
   /* ---------------- fetch all admin data ---------------- */
   const fetchAll = async () => {
@@ -479,7 +483,14 @@ export function AdminPanel() {
     if (overviewLoading) return;
     setOverviewLoading(true);
     try {
-      await Promise.all([fetchCompositions(false), fetchTransactions(false)]);
+      await Promise.all([
+        fetchUsers(),
+        fetchCompositions(false),
+        fetchTransactions(false),
+        fetchEnrollments("all"),
+        fetchSupportTickets(),
+        fetchSupportThreads("all"),
+      ]);
     } finally {
       setOverviewLoading(false);
     }
@@ -668,6 +679,40 @@ export function AdminPanel() {
           transaction.status === "pending",
       ).length,
     [transactions],
+  );
+
+  const pendingEnrollmentCount = useMemo(
+    () =>
+      (enrollments || []).filter(
+        (enrollment: any) => String(enrollment?.status || "pending") === "pending",
+      ).length,
+    [enrollments],
+  );
+
+  const admittedEnrollmentCount = useMemo(
+    () =>
+      (enrollments || []).filter(
+        (enrollment: any) => String(enrollment?.status || "") === "admitted",
+      ).length,
+    [enrollments],
+  );
+
+  const unverifiedCompositionsCount = useMemo(
+    () =>
+      (compositions || []).filter(
+        (composition: any) => !Boolean(composition?.is_verified),
+      ).length,
+    [compositions],
+  );
+
+  const activeUsersCount = useMemo(
+    () => (users || []).filter((user: any) => user?.is_active !== false).length,
+    [users],
+  );
+
+  const pendingInviteCount = useMemo(
+    () => (invites || []).filter((invite: any) => !invite?.used).length,
+    [invites],
   );
 
   const selectedAdminChatTarget = useMemo(
@@ -1751,7 +1796,7 @@ export function AdminPanel() {
                   <CardContent>
                     <div className="text-3xl font-bold">{totalUsers}</div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {composerCount} composers, {buyerCount} buyers
+                      {activeUsersCount} active, {composerCount} composers, {buyerCount} buyers
                     </p>
                   </CardContent>
                 </Card>
@@ -1793,6 +1838,95 @@ export function AdminPanel() {
                   </CardContent>
                 </Card>
               </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Operations Snapshot</CardTitle>
+                  <CardDescription>
+                    Live admin workload across users, enrollments, commerce, and support.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Pending Enrollments</p>
+                      <p className="text-2xl font-semibold">{pendingEnrollmentCount}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {admittedEnrollmentCount} admitted students
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Pending Payment Reviews</p>
+                      <p className="text-2xl font-semibold">{pendingPaymentReviewCount}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Awaiting manual confirmation
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Unverified Compositions</p>
+                      <p className="text-2xl font-semibold">{unverifiedCompositionsCount}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Needs review and verification
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Open Support Queue</p>
+                      <p className="text-2xl font-semibold">{supportTickets.length}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {supportUnreadCount} unread conversations
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Role Requests</p>
+                      <p className="text-2xl font-semibold">{pendingRequests.length}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Composer/admin access approvals
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Pending Invites</p>
+                      <p className="text-2xl font-semibold">{pendingInviteCount}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Unused composer invitation links
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setActiveTab("users")}>
+                      <Users className="mr-2 size-4" />
+                      Open Users
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveTab("enrollments")}
+                    >
+                      <GraduationCap className="mr-2 size-4" />
+                      Open Enrollments
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveTab("compositions")}
+                    >
+                      <Music className="mr-2 size-4" />
+                      Open Compositions
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveTab("transactions")}
+                    >
+                      <DollarSign className="mr-2 size-4" />
+                      Open Transactions
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setActiveTab("support")}>
+                      <MessageSquare className="mr-2 size-4" />
+                      Open Support
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
 
               <Card>
                 <CardHeader>
