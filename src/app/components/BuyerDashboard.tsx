@@ -38,6 +38,7 @@ import { Separator } from "@/app/components/ui/separator";
 import { SupportIssueButton } from "@/app/components/SupportIssueButton";
 import { toast } from "sonner";
 import { purchaseService } from "@/services/api";
+import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 import { CartItem } from "../types";
 import { ensureArray } from "@/lib/ensureArray";
 
@@ -154,12 +155,8 @@ export function BuyerDashboard({
 
   const handleCheckout = () => {
     if (!appUser) {
-      try {
-        sessionStorage.setItem("post_login_redirect", "/checkout");
-      } catch {
-        // ignore storage failures
-      }
-      navigate("/login?next=%2Fcheckout&intent=purchase");
+      persistPostLoginRedirect("/checkout");
+      navigate(buildLoginPath({ nextPath: "/checkout", intent: "purchase" }));
       return;
     }
     navigate("/checkout");

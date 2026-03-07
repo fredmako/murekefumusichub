@@ -16,6 +16,7 @@ import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { Separator } from "@/app/components/ui/separator";
 import { CartItem } from "../types";
+import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 
 const MPESA_BUSINESS_NUMBER = "400200";
 const MPESA_ACCOUNT_NUMBER = "11317282";
@@ -49,18 +50,17 @@ export function CheckoutPage({
 
   useEffect(() => {
     if (isLoading || appUser) return;
-    try {
-      sessionStorage.setItem("post_login_redirect", "/checkout");
-    } catch {
-      // ignore storage failures
-    }
-    navigate("/login?next=%2Fcheckout&intent=purchase", { replace: true });
+    persistPostLoginRedirect("/checkout");
+    navigate(buildLoginPath({ nextPath: "/checkout", intent: "purchase" }), {
+      replace: true,
+    });
   }, [appUser, isLoading, navigate]);
 
   const handleSubmit = async () => {
     if (!appUser) {
       toast.error("Please sign in to continue");
-      navigate("/login?next=%2Fcheckout&intent=purchase");
+      persistPostLoginRedirect("/checkout");
+      navigate(buildLoginPath({ nextPath: "/checkout", intent: "purchase" }));
       return;
     }
 

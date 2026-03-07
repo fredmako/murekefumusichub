@@ -23,6 +23,11 @@ import { AppErrorDialog } from "@/app/components/AppErrorDialog";
 import { Guitar, Loader2 } from "lucide-react";
 import loadingStringsDark from "@/app/components/images/bg_9.jpg";
 import loadingStringsLight from "@/app/components/images/bg_11.jpg";
+import {
+  buildLoginPath,
+  getCurrentPathWithQuery,
+  persistPostLoginRedirect,
+} from "@/lib/authRedirect";
 
 /* -----------------------------
    Lazy-loaded Pages
@@ -278,7 +283,7 @@ export default function App() {
       handlingSessionExpiredRef.current = true;
 
       try {
-        const currentPath = `${window.location.pathname}${window.location.search}`;
+        const currentPath = getCurrentPathWithQuery();
         const isAuthPage =
           currentPath.startsWith("/login") ||
           currentPath.startsWith("/auth/callback") ||
@@ -288,24 +293,20 @@ export default function App() {
         if (now - lastSessionExpiredToastAt.current < 3500) return;
         lastSessionExpiredToastAt.current = now;
 
-        if (!isAuthPage) {
-          try {
-            sessionStorage.setItem("post_login_redirect", currentPath);
-          } catch {
-            // ignore storage failures
-          }
-        }
+        if (!isAuthPage) persistPostLoginRedirect(currentPath);
 
         await signOut(false);
 
-        const next = encodeURIComponent(currentPath || "/");
         dispatchAppError({
           title: "Session expired",
           message: "Your session has expired. Please log in again.",
           status: 401,
           exitTo: isAuthPage
-            ? "/login?reason=session-expired"
-            : `/login?next=${next}&reason=session-expired`,
+            ? buildLoginPath({ reason: "session-expired" })
+            : buildLoginPath({
+                nextPath: currentPath,
+                reason: "session-expired",
+              }),
           actions: ["ok", "refresh", "exit"],
         });
       } finally {
@@ -324,13 +325,9 @@ export default function App() {
 
   const handleAddToCart = (composition: Composition) => {
     if (!appUser) {
-      try {
-        sessionStorage.setItem("post_login_redirect", "/buyer");
-      } catch {
-        // ignore storage errors
-      }
+      persistPostLoginRedirect("/buyer");
       toast.info("Please sign in to purchase compositions.");
-      navigate("/login?next=%2Fbuyer&intent=purchase");
+      navigate(buildLoginPath({ nextPath: "/buyer", intent: "purchase" }));
       return;
     }
 
