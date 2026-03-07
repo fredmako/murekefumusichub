@@ -75,6 +75,7 @@ import { SupportIssueButton } from "@/app/components/SupportIssueButton";
 import { supportService, type AdminThreadType } from "@/services/supportService";
 import { getOptimizedProfileImageUrl } from "@/services/profileImageService";
 import { supabase } from "@/lib/supabase";
+import { ensureArray } from "@/lib/ensureArray";
 import loadingStringsDark from "./images/bg_9.jpg";
 import loadingStringsLight from "./images/bg_11.jpg";
 
@@ -316,8 +317,8 @@ export function AdminPanel() {
     setUsersLoading(true);
     try {
       const data = await adminService.fetchUsers();
-      setUsers(data?.users || []);
-      setUserRoles(data?.userRoles || []);
+      setUsers(ensureArray<any>(data?.users, ["users"]));
+      setUserRoles(ensureArray<any>(data?.userRoles, ["userRoles"]));
       setUsersLoaded(true);
     } finally {
       setUsersLoading(false);

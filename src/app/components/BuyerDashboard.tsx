@@ -39,6 +39,7 @@ import { SupportIssueButton } from "@/app/components/SupportIssueButton";
 import { toast } from "sonner";
 import { purchaseService } from "@/services/api";
 import { CartItem } from "../types";
+import { ensureArray } from "@/lib/ensureArray";
 
 interface BuyerDashboardProps {
   cart: CartItem[];
@@ -86,16 +87,17 @@ export function BuyerDashboard({
         }
 
         // Fetch purchases via API (auth UID is resolved from token server-side)
-        const purchases = (await purchaseService.getByBuyer(appUser.id)) as any[];
+        const purchasesPayload = await purchaseService.getByBuyer(appUser.id);
+        const purchases = ensureArray<any>(purchasesPayload, ["purchases"]);
         if (!mounted) return;
 
-        const enriched = (purchases || []).map((p: any) => ({
+        const enriched = purchases.map((p: any) => ({
           ...p,
           composition: p.compositions || p.composition || null,
         }));
 
         setPurchasedCompositions(enriched);
-        const spent = (purchases || []).reduce(
+        const spent = purchases.reduce(
           (sum: number, p: any) => sum + (p.price_paid || 0),
           0,
         );

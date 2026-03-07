@@ -7,6 +7,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { CartItem } from "@/app/types";
 import { toast } from "sonner";
+import { ensureArray } from "@/lib/ensureArray";
 import {
   ShoppingCart,
   LogOut,
@@ -87,7 +88,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
       try {
         const items = await navbarService.fetchAdminNotifications();
         if (!mounted) return;
-        setNotifications(items);
+        setNotifications(ensureArray<any>(items, ["notifications"]));
         timer = setTimeout(fetchNotifications, NOTIF_POLL_INTERVAL);
       } catch (err) {
         if (!mounted) return;

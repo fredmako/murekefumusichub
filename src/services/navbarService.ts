@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { apiRequest } from "@/services/api";
+import { ensureArray } from "@/lib/ensureArray";
 
 export const navbarService = {
   async fetchUserRoles(authUid: string) {
@@ -13,10 +14,10 @@ export const navbarService = {
   },
 
   async fetchAdminNotifications() {
-    const notifications = await apiRequest<any[]>(`/admin/notifications`, {
+    const notifications = await apiRequest<any>(`/admin/notifications`, {
       requiresAuth: true,
     });
-    return notifications || [];
+    return ensureArray<any>(notifications, ["notifications"]);
   },
 
   async approveRoleRequest(userId: string, requestedRole: "composer" | "admin") {

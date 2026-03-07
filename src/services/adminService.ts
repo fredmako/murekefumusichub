@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { apiRequest } from "./api";
+import { ensureArray } from "@/lib/ensureArray";
 
 export const adminService = {
   async fetchBootstrap() {
@@ -37,7 +38,7 @@ export const adminService = {
   async fetchRoles() {
     try {
       const roles = await apiRequest<any>("/admin/roles");
-      return roles || [];
+      return ensureArray<any>(roles, ["roles"]);
     } catch (err: any) {
       console.warn("fetchRoles error:", err);
       return [];
@@ -60,7 +61,7 @@ export const adminService = {
       if (options?.limit) params.set("limit", String(options.limit));
       const endpoint = `/admin/compositions${params.toString() ? `?${params.toString()}` : ""}`;
       const compositions = await apiRequest<any>(endpoint);
-      return compositions || [];
+      return ensureArray<any>(compositions, ["compositions"]);
     } catch (err: any) {
       console.warn("fetchCompositions error:", err);
       return [];
@@ -73,7 +74,7 @@ export const adminService = {
       if (options?.limit) params.set("limit", String(options.limit));
       const endpoint = `/admin/transactions${params.toString() ? `?${params.toString()}` : ""}`;
       const transactions = await apiRequest<any>(endpoint);
-      return transactions || [];
+      return ensureArray<any>(transactions, ["transactions"]);
     } catch (err: any) {
       console.warn("fetchTransactions error:", err);
       return [];
@@ -92,7 +93,7 @@ export const adminService = {
       }
       const endpoint = `/admin/enrollments${params.toString() ? `?${params.toString()}` : ""}`;
       const enrollments = await apiRequest<any>(endpoint);
-      return enrollments || [];
+      return ensureArray<any>(enrollments, ["enrollments"]);
     } catch (err: any) {
       console.warn("fetchEnrollments error:", err);
       return [];
@@ -144,7 +145,10 @@ export const adminService = {
         params.set("type", options.type);
       }
       const endpoint = `/admin/registration/payments${params.toString() ? `?${params.toString()}` : ""}`;
-      return (await apiRequest<any>(endpoint)) || [];
+      return ensureArray<any>(await apiRequest<any>(endpoint), [
+        "payments",
+        "submissions",
+      ]);
     } catch (err: any) {
       console.warn("fetchRegistrationPayments error:", err);
       throw err;
@@ -190,7 +194,7 @@ export const adminService = {
   async fetchInvites() {
     try {
       const invites = await apiRequest<any>("/admin/invites");
-      return invites || [];
+      return ensureArray<any>(invites, ["invites"]);
     } catch (err: any) {
       console.warn("fetchInvites error:", err);
       return [];
@@ -200,7 +204,7 @@ export const adminService = {
   async fetchRequests() {
     try {
       const requests = await apiRequest<any>("/admin/composer-requests");
-      return requests || [];
+      return ensureArray<any>(requests, ["requests"]);
     } catch (err: any) {
       console.warn("fetchRequests error:", err);
       return [];

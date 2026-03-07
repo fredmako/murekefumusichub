@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { buildApiUrl } from "@/lib/apiBase";
 import { dispatchSessionExpired } from "@/lib/sessionEvents";
 import { dispatchAppError } from "@/lib/appErrorEvents";
+import { ensureArray } from "@/lib/ensureArray";
 
 const ACCESS_TOKEN_SESSION_TIMEOUT_MS = 8000;
 const ACCESS_TOKEN_REFRESH_TIMEOUT_MS = 12000;
@@ -553,10 +554,11 @@ export const compositionService = {
     if (filters?.search) params.set("search", String(filters.search));
 
     const endpoint = `/compositions${params.toString() ? `?${params.toString()}` : ""}`;
-    return await apiRequest<any[]>(endpoint, {
+    const payload = await apiRequest<any>(endpoint, {
       method: "GET",
       timeoutMs: 45000,
     });
+    return ensureArray<any>(payload, ["compositions"]);
   },
 
   async getById(id: string) {
@@ -638,7 +640,11 @@ export const purchaseService = {
   },
 
   async getByBuyer(_buyerId?: string) {
-    return await apiRequest(`/purchases`, { method: "GET", requiresAuth: true });
+    const payload = await apiRequest<any>(`/purchases`, {
+      method: "GET",
+      requiresAuth: true,
+    });
+    return ensureArray<any>(payload, ["purchases"]);
   },
 
   async getDownloadLink(purchaseId: string) {

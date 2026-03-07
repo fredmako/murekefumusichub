@@ -12,6 +12,7 @@ import {
 import { CompositionCard } from "@/app/components/CompositionCard";
 import { compositionService } from "@/services/api";
 import { toast } from "sonner";
+import { ensureArray } from "@/lib/ensureArray";
 
 interface Composition {
   id: string;
@@ -50,8 +51,9 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
       try {
         setLoading(true);
         // Use public backend endpoint to avoid anon RLS issues and N+1 client queries.
-        const compositionsData = await compositionService.getAll();
-        const mapped = (compositionsData || []).map((comp: any) => ({
+        const compositionsPayload = await compositionService.getAll();
+        const compositionsData = ensureArray<any>(compositionsPayload, ["compositions"]);
+        const mapped = compositionsData.map((comp: any) => ({
           id: comp.id,
           title: comp.title,
           composerName: comp.composers?.users?.display_name || "Unknown Composer",
