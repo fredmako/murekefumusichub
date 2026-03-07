@@ -4,6 +4,10 @@
     {
       "source": "/api/:path*",
       "destination": "https://choral-server-production.up.railway.app/api/:path*"
+    },
+    {
+      "source": "/:path*",
+      "destination": "/"
     }
   ]
 }
