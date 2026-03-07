@@ -36,12 +36,30 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { registrationService, storageService } from "@/services/api";
+import {
+  registrationService,
+  requestRoleService,
+  storageService,
+} from "@/services/api";
 import { API_BASE_URL } from "@/lib/apiBase";
 import { useTheme } from "@/context/ThemeContext";
 import { getOptimizedProfileImageUrl } from "@/services/profileImageService";
 
 type RoleRequestState = "none" | "pending" | "approved" | "rejected";
+type InviteAvailability = {
+  available: boolean;
+  requestedRole: "composer" | "admin";
+  canAccept?: boolean;
+  accepted?: boolean;
+  invite?: {
+    id: string;
+    email: string;
+    used: boolean;
+    usedBy: string | null;
+    usedAt: string | null;
+    createdAt: string | null;
+  };
+} | null;
 const MAX_AVATAR_SIZE_BYTES = 8 * 1024 * 1024;
 
 export function ManageAccount() {
@@ -81,6 +99,10 @@ export function ManageAccount() {
   const [composerPaymentRef, setComposerPaymentRef] = useState("");
   const [composerPaymentSubmitting, setComposerPaymentSubmitting] =
     useState(false);
+  const [composerInviteState, setComposerInviteState] =
+    useState<InviteAvailability>(null);
+  const [composerInviteLoading, setComposerInviteLoading] = useState(false);
+  const [composerInviteAccepting, setComposerInviteAccepting] = useState(false);
 
   // Form state
   const [displayName, setDisplayName] = useState<string>("");
@@ -118,12 +140,16 @@ export function ManageAccount() {
       setComposerRegulations(null);
       setComposerPaymentStatus("none");
       setComposerPaymentRecord(null);
+      setComposerInviteState(null);
+      setComposerInviteLoading(false);
+      setComposerInviteAccepting(false);
       return;
     }
 
-    void fetchComposerPaymentState();
+    void Promise.all([fetchComposerPaymentState(), fetchComposerInviteState()]);
     const timer = setInterval(() => {
       void fetchComposerPaymentState();
+      void fetchComposerInviteState();
     }, 15000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -196,6 +222,28 @@ export function ManageAccount() {
     } catch (err) {
       console.warn("[fetchComposerPaymentState] error:", err);
       setComposerPaymentStatus("none");
+    }
+  };
+
+  const fetchComposerInviteState = async () => {
+    if (!appUser) {
+      setComposerInviteState(null);
+      return;
+    }
+
+    setComposerInviteLoading(true);
+    try {
+      const inviteState = await requestRoleService.getInviteStatus("composer");
+      if (inviteState?.available) {
+        setComposerInviteState(inviteState);
+      } else {
+        setComposerInviteState(null);
+      }
+    } catch (err) {
+      console.warn("[fetchComposerInviteState] error:", err);
+      setComposerInviteState(null);
+    } finally {
+      setComposerInviteLoading(false);
     }
   };
 
@@ -466,6 +514,47 @@ export function ManageAccount() {
     }
   };
 
+  const handleAcceptComposerInvite = async () => {
+    if (!appUser) return;
+
+    setComposerInviteAccepting(true);
+    try {
+      const result = await requestRoleService.acceptInvite("composer");
+      toast.success(result?.message || "Composer invite accepted.");
+
+      if (result?.invite) {
+        setComposerInviteState((prev) =>
+          prev
+            ? {
+                ...prev,
+                accepted: true,
+                canAccept: false,
+                invite: result.invite,
+              }
+            : prev,
+        );
+      }
+
+      const freshStatus = await fetchRoleRequestStatus();
+      if (freshStatus) {
+        setRequestStatus(freshStatus.requests);
+        setUser((prev) =>
+          prev
+            ? {
+                ...prev,
+                roles: freshStatus.roles || prev.roles || [],
+              }
+            : prev,
+        );
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to accept composer invite");
+    } finally {
+      setComposerInviteAccepting(false);
+      await fetchComposerInviteState();
+    }
+  };
+
   const handleThemeModeChange = async (nextMode: "light" | "dark") => {
     if (!appUser) return;
     if (mode === nextMode) return;
@@ -650,8 +739,14 @@ export function ManageAccount() {
   const composerHasApprovedPayment =
     composerPaymentStatus === "approved" && !composerPaymentRecord?.is_consumed;
   const composerPaymentPending = composerPaymentStatus === "pending";
+  const composerInviteAvailable = Boolean(composerInviteState?.available);
+  const composerInviteCanAccept = Boolean(
+    composerInviteState?.available && composerInviteState?.canAccept,
+  );
+  const composerInviteAccepted = Boolean(composerInviteState?.accepted);
   const composerCanRequestAccess =
-    !composerRequiresPayment || composerHasApprovedPayment;
+    (!composerRequiresPayment || composerHasApprovedPayment) &&
+    !composerInviteCanAccept;
   const currentThemeMode: "light" | "dark" =
     user?.theme_settings?.mode === "dark" || mode === "dark" ? "dark" : "light";
 
@@ -992,7 +1087,46 @@ export function ManageAccount() {
                       </Button>
                     ) : (
                       <div className="space-y-3">
-                        {composerRequiresPayment && composerRegulations ? (
+                        {composerInviteAvailable ? (
+                          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 dark:border-emerald-900/60 dark:bg-emerald-950/25">
+                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700 dark:text-emerald-300">
+                              Composer Invite
+                            </p>
+                            <p className="mt-2 text-sm text-emerald-800 dark:text-emerald-100">
+                              {composerInviteAccepted
+                                ? "Invite accepted. Composer access should now be active."
+                                : "You have a composer invite linked to your account email."}
+                            </p>
+                            {composerInviteLoading ? (
+                              <p className="mt-2 text-xs text-muted-foreground">
+                                Checking invite state...
+                              </p>
+                            ) : composerInviteCanAccept ? (
+                              <Button
+                                type="button"
+                                className="mt-3 w-full"
+                                size="sm"
+                                onClick={() => void handleAcceptComposerInvite()}
+                                disabled={composerInviteAccepting}
+                              >
+                                {composerInviteAccepting ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Accepting...
+                                  </>
+                                ) : (
+                                  "Accept Invite"
+                                )}
+                              </Button>
+                            ) : (
+                              <p className="mt-2 text-xs text-muted-foreground">
+                                This invite is already in use.
+                              </p>
+                            )}
+                          </div>
+                        ) : null}
+
+                        {!composerInviteAvailable && composerRequiresPayment && composerRegulations ? (
                           <div className="rounded-xl border border-border/70 bg-muted/40 p-3">
                             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                               Registration Payment Required
@@ -1048,21 +1182,22 @@ export function ManageAccount() {
                               </div>
                             )}
                           </div>
-                        ) : (
-                          []
-                        )}
-                        <Button
-                          onClick={() => setShowRoleModal("composer")}
-                          className="w-full"
-                          size="sm"
-                          disabled={!composerCanRequestAccess}
-                        >
-                          {composerCanRequestAccess
-                            ? "Request Access"
-                            : composerPaymentPending
-                              ? "Awaiting Payment Approval"
-                              : "Payment Required"}
-                        </Button>
+                        ) : null}
+
+                        {!composerInviteAvailable ? (
+                          <Button
+                            onClick={() => setShowRoleModal("composer")}
+                            className="w-full"
+                            size="sm"
+                            disabled={!composerCanRequestAccess}
+                          >
+                            {composerCanRequestAccess
+                              ? "Request Access"
+                              : composerPaymentPending
+                                ? "Awaiting Payment Approval"
+                                : "Payment Required"}
+                          </Button>
+                        ) : null}
                         {composerRequestStatus === "rejected" ? (
                           <p className="text-xs text-destructive">
                             Your previous request was rejected. You can request

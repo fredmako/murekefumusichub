@@ -1,6 +1,7 @@
 // src/app/components/Navbar.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { navbarService } from "@/services/navbarService";
+import { SupportIssueButton } from "@/app/components/SupportIssueButton";
 import { buildProfileImageSrcSet, getOptimizedProfileImageUrl } from "@/services/profileImageService";
 import { useLocation, NavLink, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -18,6 +19,7 @@ import {
   Loader,
   Sun,
   Moon,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -63,6 +65,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   );
 
   const roles = appUser?.roles || [];
+  const isAuthenticated = Boolean(appUser?.id);
   const isAdmin = roles.includes("admin");
   const [notifications, setNotifications] = useState<any[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
@@ -71,33 +74,27 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   >(null);
   const previousNotificationCount = useRef(0);
 
-  // Polling interval (ms) for admin notifications
+  // Polling interval (ms) for navbar notifications
   const NOTIF_POLL_INTERVAL = 15000;
 
-  // Fetch admin notifications (role requests and composer requests)
+  // Fetch notifications for all authenticated users.
   useEffect(() => {
     let mounted = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     async function fetchNotifications() {
-      if (!isAdmin) {
+      if (!isAuthenticated) {
         setNotifications([]);
         return;
       }
       setNotifLoading(true);
       try {
-        const items = await navbarService.fetchAdminNotifications();
+        const items = await navbarService.fetchNotifications({ isAdmin });
         if (!mounted) return;
         setNotifications(ensureArray<any>(items, ["notifications"]));
         timer = setTimeout(fetchNotifications, NOTIF_POLL_INTERVAL);
       } catch (err) {
         if (!mounted) return;
-        const status = (err as any)?.status;
-        if (status === 403) {
-          // Access revoked or role changed; stop polling to prevent noisy retries.
-          setNotifications([]);
-          return;
-        }
         console.warn("Navbar notifications fetch error:", err);
         timer = setTimeout(fetchNotifications, NOTIF_POLL_INTERVAL);
       } finally {
@@ -105,17 +102,16 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
       }
     }
 
-    // only fetch when admin
-    if (isAdmin) fetchNotifications();
+    if (isAuthenticated) fetchNotifications();
 
     return () => {
       mounted = false;
       if (timer) clearTimeout(timer);
     };
-  }, [isAdmin]);
+  }, [isAdmin, isAuthenticated]);
 
   useEffect(() => {
-    if (!isAdmin) {
+    if (!isAuthenticated) {
       previousNotificationCount.current = 0;
       return;
     }
@@ -127,10 +123,10 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     if (previous > 0 && current > previous) {
       const added = current - previous;
       toast.info(
-        `${added} new admin notification${added > 1 ? "s" : ""} received`,
+        `${added} new notification${added > 1 ? "s" : ""} received`,
       );
     }
-  }, [notifications, isAdmin]);
+  }, [notifications, isAuthenticated]);
 
   // Handle approve/reject actions
   const handleApproveRequest = async (
@@ -344,11 +340,17 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                 <Moon className="size-5" />
               )}
             </Button>
-            <span className="motion-float-delayed hidden rounded-full border border-border/80 bg-secondary/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-secondary-foreground xl:inline-flex">
-              Live Marketplace
-            </span>
-            {/* ===== Admin Notifications (Admin Only) ===== */}
-            {roles.includes("admin") && (
+            {isAuthenticated && (
+              <SupportIssueButton
+                context="navbar-messenger"
+                triggerLabel="Messenger"
+                triggerIcon="message"
+                triggerVariant="outline"
+                className="rounded-full border-border/80 bg-secondary/40 text-xs font-semibold tracking-[0.06em]"
+              />
+            )}
+            {/* ===== Notifications (All Authenticated Roles) ===== */}
+            {isAuthenticated && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="icon" className="relative">
@@ -387,7 +389,21 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                     >
                       <div className="flex flex-col gap-2">
                         <div className="min-w-0">
-                          {n.type === "invite" ? (
+                          {n.type === "message" ? (
+                            <>
+                              <span className="font-semibold block">
+                                New Message
+                              </span>
+                              <span className="text-xs text-gray-500 line-clamp-1">
+                                {n.subject || "Messenger"}
+                              </span>
+                              {n.preview ? (
+                                <span className="text-xs text-gray-500 line-clamp-2 block mt-1">
+                                  {n.preview}
+                                </span>
+                              ) : null}
+                            </>
+                          ) : n.type === "invite" ? (
                             <>
                               <span className="font-semibold block">
                                 Composer Invite
@@ -536,9 +552,20 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                   ))}
 
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/admin")}>
-                    View all in Admin
-                  </DropdownMenuItem>
+                  {isAdmin ? (
+                    <DropdownMenuItem onClick={() => navigate("/admin")}>
+                      View all in Admin
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem
+                      onClick={() =>
+                        navigate(dashboardPaths[0]?.path || "/marketplace")
+                      }
+                    >
+                      <MessageSquare className="mr-2 size-4" />
+                      Open Messenger
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}

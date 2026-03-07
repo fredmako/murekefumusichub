@@ -20,6 +20,60 @@ export const navbarService = {
     return ensureArray<any>(notifications, ["notifications"]);
   },
 
+  async fetchSupportNotifications() {
+    const payload = await apiRequest<any>(`/support/threads/my?limit=200`, {
+      method: "GET",
+      timeoutMs: 30000,
+      requiresAuth: true,
+    });
+    const threads = ensureArray<any>(payload, ["threads", "tickets"]);
+
+    return threads
+      .filter((thread) => Boolean(thread?.is_user_unread))
+      .map((thread) => ({
+        id: `message:${thread.id}`,
+        type: "message",
+        threadId: thread.id,
+        subject: thread.subject || "New message",
+        preview: thread.last_message_preview || "",
+        status: thread.status || "active",
+        context: thread.context || "support",
+        createdAt:
+          thread.last_message_at ||
+          thread.updated_at ||
+          thread.created_at ||
+          new Date().toISOString(),
+      }));
+  },
+
+  async fetchNotifications(options: { isAdmin: boolean }) {
+    const { isAdmin } = options;
+    const [supportNotifications, adminNotifications] = await Promise.all([
+      this.fetchSupportNotifications().catch((err) => {
+        const status = Number((err as any)?.status || 0);
+        if (status !== 403 && status !== 404) {
+          console.warn("fetchSupportNotifications error:", err);
+        }
+        return [];
+      }),
+      isAdmin
+        ? this.fetchAdminNotifications().catch((err) => {
+            const status = Number((err as any)?.status || 0);
+            if (status !== 403) {
+              console.warn("fetchAdminNotifications error:", err);
+            }
+            return [];
+          })
+        : Promise.resolve([]),
+    ]);
+
+    return [...supportNotifications, ...adminNotifications].sort((a, b) => {
+      const aTime = new Date(a?.createdAt || a?.created_at || 0).getTime();
+      const bTime = new Date(b?.createdAt || b?.created_at || 0).getTime();
+      return bTime - aTime;
+    });
+  },
+
   async approveRoleRequest(userId: string, requestedRole: "composer" | "admin") {
     try {
       const endpoint =

@@ -815,6 +815,53 @@ export const registrationService = {
   },
 };
 
+export const requestRoleService = {
+  async getInviteStatus(requestedRole: "composer" | "admin" = "composer") {
+    const params = new URLSearchParams();
+    params.set("requestedRole", requestedRole);
+    return await apiRequest<{
+      available: boolean;
+      requestedRole: "composer" | "admin";
+      canAccept?: boolean;
+      accepted?: boolean;
+      invite?: {
+        id: string;
+        email: string;
+        used: boolean;
+        usedBy: string | null;
+        usedAt: string | null;
+        createdAt: string | null;
+      };
+    }>(`/request-role/invite-status?${params.toString()}`, {
+      method: "GET",
+      timeoutMs: 20000,
+      requiresAuth: true,
+    });
+  },
+
+  async acceptInvite(requestedRole: "composer" | "admin" = "composer") {
+    return await apiRequest<{
+      success: boolean;
+      message: string;
+      requestedRole: "composer" | "admin";
+      roles: string[];
+      invite: {
+        id: string;
+        email: string;
+        used: boolean;
+        usedBy: string | null;
+        usedAt: string | null;
+        createdAt: string | null;
+      } | null;
+    }>(`/request-role/accept-invite`, {
+      method: "POST",
+      body: JSON.stringify({ requestedRole }),
+      timeoutMs: 20000,
+      requiresAuth: true,
+    });
+  },
+};
+
 export const mediaService = {
   async getLandingImages(options?: {
     query?: string;

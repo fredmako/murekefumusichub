@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { LifeBuoy, Loader, MessageSquarePlus, Send } from "lucide-react";
+import {
+  LifeBuoy,
+  Loader,
+  MessageSquare,
+  MessageSquarePlus,
+  Send,
+} from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
@@ -21,6 +27,9 @@ import { supabase } from "@/lib/supabase";
 interface SupportIssueButtonProps {
   context: string;
   className?: string;
+  triggerLabel?: string;
+  triggerIcon?: "lifebuoy" | "message";
+  triggerVariant?: "default" | "outline" | "secondary" | "ghost";
 }
 
 function formatThreadTime(value?: string | null) {
@@ -30,8 +39,15 @@ function formatThreadTime(value?: string | null) {
   return date.toLocaleString();
 }
 
-export function SupportIssueButton({ context, className }: SupportIssueButtonProps) {
+export function SupportIssueButton({
+  context,
+  className,
+  triggerLabel = "Contact Support",
+  triggerIcon = "lifebuoy",
+  triggerVariant = "outline",
+}: SupportIssueButtonProps) {
   const { appUser } = useAuth();
+  const TriggerIcon = triggerIcon === "message" ? MessageSquare : LifeBuoy;
 
   const [open, setOpen] = useState(false);
   const [threads, setThreads] = useState<any[]>([]);
@@ -240,9 +256,9 @@ export function SupportIssueButton({ context, className }: SupportIssueButtonPro
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" className={className}>
-          <LifeBuoy className="mr-2 size-4" />
-          Contact Support
+        <Button variant={triggerVariant} className={className}>
+          <TriggerIcon className="mr-2 size-4" />
+          {triggerLabel}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[88vh] overflow-hidden p-0 sm:max-w-5xl">
