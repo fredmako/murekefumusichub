@@ -1,4 +1,5 @@
 import { apiRequest } from "@/services/api";
+import { ensureArray } from "@/lib/ensureArray";
 
 export interface SupportIssuePayload {
   subject?: string;
@@ -92,13 +93,14 @@ export const supportService = {
   },
 
   async getMyThreads(limit = 100) {
-    return await apiRequest<SupportChatThread[]>(
+    const payload = await apiRequest<any>(
       `/support/threads/my?limit=${limit}`,
       {
         method: "GET",
         timeoutMs: 30000,
       },
     );
+    return ensureArray<SupportChatThread>(payload, ["threads", "tickets"]);
   },
 
   async getThreadMessages(threadId: string) {
@@ -137,13 +139,14 @@ export const supportService = {
   },
 
   async getAdminTicketQueue(limit = 200) {
-    return await apiRequest<SupportChatThread[]>(
+    const payload = await apiRequest<any>(
       `/support/admin/tickets?limit=${limit}`,
       {
         method: "GET",
         timeoutMs: 30000,
       },
     );
+    return ensureArray<SupportChatThread>(payload, ["tickets", "threads"]);
   },
 
   async pickAdminTicket(threadId: string) {
@@ -172,13 +175,14 @@ export const supportService = {
   },
 
   async getAdminThreads(state: "all" | "unread" | "read" = "all", limit = 200) {
-    return await apiRequest<SupportChatThread[]>(
+    const payload = await apiRequest<any>(
       `/support/admin/threads?state=${state}&limit=${limit}`,
       {
         method: "GET",
         timeoutMs: 30000,
       },
     );
+    return ensureArray<SupportChatThread>(payload, ["threads", "tickets"]);
   },
 
   async deleteAdminThread(threadId: string) {

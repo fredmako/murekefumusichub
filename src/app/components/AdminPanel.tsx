@@ -284,8 +284,8 @@ export function AdminPanel() {
           }, 12000),
         ),
       ]);
-      setInvites(bootstrap?.invites || []);
-      setRequests(bootstrap?.requests || []);
+      setInvites(ensureArray<any>(bootstrap?.invites, ["invites"]));
+      setRequests(ensureArray<any>(bootstrap?.requests, ["requests"]));
 
       const stats = bootstrap?.stats || {};
       setTotalUsers(stats.totalUsers || 0);
@@ -338,7 +338,7 @@ export function AdminPanel() {
       const data = await adminService.fetchCompositions({
         limit: full ? 1000 : 60,
       });
-      setCompositions(data || []);
+      setCompositions(ensureArray<any>(data, ["compositions"]));
       setCompositionsLoadLevel(targetLevel);
     } finally {
       setCompositionsLoading(false);
@@ -358,7 +358,7 @@ export function AdminPanel() {
       const data = await adminService.fetchTransactions({
         limit: full ? 1000 : 60,
       });
-      setTransactions(data || []);
+      setTransactions(ensureArray<any>(data, ["transactions"]));
       setTransactionsLoadLevel(targetLevel);
     } finally {
       setTransactionsLoading(false);
@@ -376,7 +376,7 @@ export function AdminPanel() {
         limit: 1000,
         status: statusOverride,
       });
-      setEnrollments(data || []);
+      setEnrollments(ensureArray<any>(data, ["enrollments"]));
     } finally {
       setEnrollmentsLoading(false);
     }
@@ -384,12 +384,12 @@ export function AdminPanel() {
 
   const fetchInvites = async () => {
     const data = await adminService.fetchInvites();
-    setInvites(data || []);
+    setInvites(ensureArray<any>(data, ["invites"]));
   };
 
   const fetchRequests = async () => {
     const data = await adminService.fetchRequests();
-    setRequests(data || []);
+    setRequests(ensureArray<any>(data, ["requests"]));
   };
 
   const fetchSupportTickets = async () => {
@@ -397,7 +397,7 @@ export function AdminPanel() {
     setSupportTicketsLoading(true);
     try {
       const tickets = await supportService.getAdminTicketQueue();
-      setSupportTickets(tickets || []);
+      setSupportTickets(ensureArray<any>(tickets, ["tickets", "threads"]));
     } catch (error: any) {
       console.error("[admin-support] fetch tickets failed:", error);
       toast.error(error?.message || "Failed to load support tickets");
@@ -413,7 +413,7 @@ export function AdminPanel() {
     setSupportThreadsLoading(true);
     try {
       const threads = await supportService.getAdminThreads(stateOverride);
-      const nextThreads = threads || [];
+      const nextThreads = ensureArray<any>(threads, ["threads", "tickets"]);
       setSupportThreads(nextThreads);
       setSelectedSupportThreadId((currentSelected) => {
         if (!currentSelected) return nextThreads[0]?.id || null;
@@ -435,7 +435,7 @@ export function AdminPanel() {
     setSupportMessagesLoading(true);
     try {
       const response = await supportService.getThreadMessages(threadId);
-      setSupportMessages(response?.messages || []);
+      setSupportMessages(ensureArray<any>(response?.messages, ["messages"]));
 
       if (markRead && response?.thread?.is_admin_unread) {
         await supportService.markThreadRead(threadId).catch(() => null);
