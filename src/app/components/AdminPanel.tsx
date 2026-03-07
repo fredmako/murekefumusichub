@@ -134,6 +134,7 @@ type AdminTab =
   | "compositions"
   | "transactions"
   | "support"
+  | "announcements"
   | "invites";
 type ServiceMenuGroup = "customer" | "operations" | "commerce";
 
@@ -145,6 +146,7 @@ const ADMIN_TAB_LABELS: Record<AdminTab, string> = {
   compositions: "Compositions",
   transactions: "Transactions",
   support: "Support",
+  announcements: "Announcements",
   invites: "Composer Invites",
 };
 
@@ -253,6 +255,10 @@ export function AdminPanel() {
     useState<DataLoadLevel>("none");
   const [transactionsLoadLevel, setTransactionsLoadLevel] =
     useState<DataLoadLevel>("none");
+  const [selectedUserProfile, setSelectedUserProfile] = useState<any | null>(
+    null,
+  );
+  const [isUserProfileSheetOpen, setIsUserProfileSheetOpen] = useState(false);
   const isProcessing = Boolean(processingAction);
 
   const runAction = async (key: string, fn: () => Promise<void>) => {
@@ -518,6 +524,10 @@ export function AdminPanel() {
       void fetchSupportThreads();
       void fetchUsers();
     }
+    if (activeTab === "announcements") {
+      void fetchSupportThreads("all");
+      void fetchSupportTickets();
+    }
     if (activeTab === "invites") {
       void fetchInvites();
     }
@@ -740,6 +750,34 @@ export function AdminPanel() {
   const formatUserDisplay = (user: any) =>
     user?.display_name || user?.email || "Unknown user";
 
+  const resolveUserRoles = (user: any): string[] => {
+    const roleSet = new Set<string>();
+    if (Array.isArray(user?.roles)) {
+      user.roles
+        .map((role: any) => String(role || "").trim().toLowerCase())
+        .filter(Boolean)
+        .forEach((role: string) => roleSet.add(role));
+    }
+    const primaryRole = userIdToRole[user?.id];
+    if (primaryRole) roleSet.add(primaryRole);
+    (userRoles || []).forEach((ur: any) => {
+      if (ur?.user_id !== user?.id) return;
+      const roleName = String(ur?.roles?.name || ur?.role_name || "")
+        .trim()
+        .toLowerCase();
+      if (roleName) roleSet.add(roleName);
+    });
+    if (roleSet.size === 0) roleSet.add("buyer");
+    return [...roleSet].sort(
+      (a, b) => (rolePriority[b] || 0) - (rolePriority[a] || 0),
+    );
+  };
+
+  const selectedUserProfileRoles = useMemo(() => {
+    if (!selectedUserProfile) return [] as string[];
+    return resolveUserRoles(selectedUserProfile);
+  }, [selectedUserProfile, userRoles, userIdToRole]);
+
   const defaultAdminChatSubject = (
     type: AdminThreadType,
     user: any | null = null,
@@ -865,6 +903,11 @@ export function AdminPanel() {
     toast.info(
       `${ADMIN_CHAT_TYPE_LABELS[type]} ready for ${formatUserDisplay(user)} in Support.`,
     );
+  }
+
+  function openUserProfileSheet(user: any) {
+    setSelectedUserProfile(user || null);
+    setIsUserProfileSheetOpen(Boolean(user));
   }
 
   async function createAdminThread() {
@@ -1435,6 +1478,13 @@ export function AdminPanel() {
                         {supportThreads.length}
                       </Badge>
                     </Button>
+                    <Button
+                      className="w-full justify-start"
+                      variant={activeTab === "announcements" ? "default" : "outline"}
+                      onClick={() => goToTabFromMobileMenu("announcements")}
+                    >
+                      Announcements
+                    </Button>
                   </div>
 
                   <div className="space-y-2">
@@ -1525,6 +1575,137 @@ export function AdminPanel() {
           </div>
         </CardContent>
       </Card>
+      <Sheet
+        open={isUserProfileSheetOpen}
+        onOpenChange={(open) => {
+          setIsUserProfileSheetOpen(open);
+          if (!open) setSelectedUserProfile(null);
+        }}
+      >
+        <SheetContent side="right" className="w-[94vw] sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>User Profile</SheetTitle>
+            <SheetDescription>
+              Full profile details and quick contact actions.
+            </SheetDescription>
+          </SheetHeader>
+          {selectedUserProfile ? (
+            <div className="mt-5 space-y-5">
+              <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-muted/20 p-3">
+                {selectedUserProfile.avatar_url ? (
+                  <img
+                    src={
+                      getOptimizedProfileImageUrl(selectedUserProfile.avatar_url, {
+                        width: 160,
+                        height: 160,
+                        quality: 72,
+                        resize: "cover",
+                      }) || selectedUserProfile.avatar_url
+                    }
+                    alt={`${formatUserDisplay(selectedUserProfile)} avatar`}
+                    className="size-14 rounded-full border border-border/70 object-cover"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                ) : (
+                  <div className="size-14 rounded-full border border-border/70 bg-secondary/60 text-secondary-foreground grid place-items-center text-sm font-semibold">
+                    {getInitials(
+                      selectedUserProfile.display_name,
+                      selectedUserProfile.email,
+                    )}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="truncate text-base font-semibold">
+                    {selectedUserProfile.display_name || "N/A"}
+                  </p>
+                  <p className="truncate text-sm text-muted-foreground">
+                    {selectedUserProfile.email || "No email"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-3 text-sm">
+                <div className="rounded-lg border border-border/70 bg-card/70 p-3">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Phone
+                  </p>
+                  <p className="mt-1 font-medium">
+                    {selectedUserProfile.phone || "Not set"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-card/70 p-3">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Roles
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {selectedUserProfileRoles.map((role) => (
+                      <Badge key={role} variant="outline" className="capitalize">
+                        {role}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-card/70 p-3">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Account Status
+                  </p>
+                  <p className="mt-1 font-medium">
+                    {selectedUserProfile.is_active === false
+                      ? "Suspended"
+                      : "Active"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-card/70 p-3">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    User ID
+                  </p>
+                  <p className="mt-1 break-all font-mono text-xs">
+                    {selectedUserProfile.id}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-card/70 p-3">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Joined
+                  </p>
+                  <p className="mt-1 font-medium">
+                    {formatDateTime(selectedUserProfile.created_at) || "N/A"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-card/70 p-3">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Last Updated
+                  </p>
+                  <p className="mt-1 font-medium">
+                    {formatDateTime(selectedUserProfile.updated_at) || "N/A"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Button
+                  onClick={() => {
+                    openAdminChatComposer(selectedUserProfile, "direct");
+                    setIsUserProfileSheetOpen(false);
+                  }}
+                  disabled={isProcessing || selectedUserProfile.is_active === false}
+                >
+                  <MessageCircleMore className="mr-2 size-4" />
+                  Start Direct Chat
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsUserProfileSheetOpen(false);
+                  }}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </SheetContent>
+      </Sheet>
       <Tabs
         className="min-w-0"
         value={activeTab}
@@ -1623,6 +1804,16 @@ export function AdminPanel() {
                             </Badge>
                           </>
                         )}
+                      </Button>
+                      <Button
+                        type="button"
+                        className={sideMenuButtonClass(activeTab === "announcements")}
+                        onClick={() => setActiveTab("announcements")}
+                      >
+                        <Bell
+                          className={isServiceMenuCollapsed ? "size-4" : "mr-2 size-4"}
+                        />
+                        {!isServiceMenuCollapsed && "Announcements"}
                       </Button>
                     </div>
                   )}
@@ -1769,6 +1960,9 @@ export function AdminPanel() {
                 </TabsTrigger>
                 <TabsTrigger value="invites" className="flex-none px-3">
                   Invites
+                </TabsTrigger>
+                <TabsTrigger value="announcements" className="flex-none px-3">
+                  Announcements
                 </TabsTrigger>
                 <TabsTrigger value="overview" className="flex-none px-3">
                   Overview
@@ -1923,6 +2117,14 @@ export function AdminPanel() {
                     <Button size="sm" variant="outline" onClick={() => setActiveTab("support")}>
                       <MessageSquare className="mr-2 size-4" />
                       Open Support
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveTab("announcements")}
+                    >
+                      <Bell className="mr-2 size-4" />
+                      Open Announcements
                     </Button>
                   </div>
                 </CardContent>
@@ -2112,6 +2314,14 @@ export function AdminPanel() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuItem
+                              onClick={() => openUserProfileSheet(u)}
+                              disabled={isProcessing}
+                            >
+                              <Eye className="mr-2 size-4" />
+                              View Full Profile
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
 
                             <DropdownMenuItem
                               onClick={() => promoteUserToComposer(u.id)}
@@ -2674,6 +2884,109 @@ export function AdminPanel() {
           </Card>
         </TabsContent>
 
+        {/* Announcements */}        
+        <TabsContent value="announcements" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="size-5 text-primary" />
+                Announcements
+              </CardTitle>
+              <CardDescription>
+                Broadcast updates to selected user roles with AI-assisted drafting.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-xl border border-border/70">
+                <div className="border-b border-border/60 px-3 py-2 text-sm font-semibold">
+                  Make Announcement
+                </div>
+                <div className="space-y-3 p-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                      Target Roles
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {ANNOUNCEMENT_ROLE_OPTIONS.map((roleOption) => (
+                        <label
+                          key={roleOption.value}
+                          className="flex items-center gap-2 rounded-md border border-border/70 px-2 py-1.5 text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={announcementRoles.includes(roleOption.value)}
+                            onChange={() => toggleAnnouncementRole(roleOption.value)}
+                            disabled={isProcessing}
+                          />
+                          <span>{roleOption.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                      Announcement Subject
+                    </label>
+                    <input
+                      className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm"
+                      value={announcementSubject}
+                      onChange={(e) => setAnnouncementSubject(e.target.value)}
+                      placeholder="Platform announcement"
+                      disabled={isProcessing}
+                      maxLength={160}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                      Announcement Message
+                    </label>
+                    <Textarea
+                      value={announcementMessage}
+                      onChange={(e) => setAnnouncementMessage(e.target.value)}
+                      placeholder="Write your announcement for the selected roles..."
+                      rows={5}
+                      maxLength={4000}
+                      disabled={isProcessing}
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1 min-w-[140px]"
+                      onClick={() => void improveAnnouncementDraft()}
+                      disabled={
+                        isProcessing ||
+                        announcementRoles.length === 0 ||
+                        !announcementMessage.trim()
+                      }
+                    >
+                      <Sparkles className="mr-2 size-4" />
+                      AI Compose
+                    </Button>
+                    <Button
+                      type="button"
+                      className="flex-1 min-w-[170px]"
+                      onClick={() => void sendRoleAnnouncement()}
+                      disabled={
+                        isProcessing ||
+                        announcementRoles.length === 0 ||
+                        !announcementMessage.trim()
+                      }
+                    >
+                      <Send className="mr-2 size-4" />
+                      Send Announcement
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* Support Panel */}
         <TabsContent value="support" className="mt-6">
           <Card>
@@ -2838,93 +3151,6 @@ export function AdminPanel() {
                               Start {ADMIN_CHAT_TYPE_LABELS[adminChatType]}
                             </>
                           )}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-border/70">
-                    <div className="border-b border-border/60 px-3 py-2 text-sm font-semibold">
-                      Make Announcement
-                    </div>
-                    <div className="space-y-3 p-3">
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                          Target Roles
-                        </label>
-                        <div className="grid grid-cols-2 gap-2">
-                          {ANNOUNCEMENT_ROLE_OPTIONS.map((roleOption) => (
-                            <label
-                              key={roleOption.value}
-                              className="flex items-center gap-2 rounded-md border border-border/70 px-2 py-1.5 text-sm"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={announcementRoles.includes(roleOption.value)}
-                                onChange={() => toggleAnnouncementRole(roleOption.value)}
-                                disabled={isProcessing}
-                              />
-                              <span>{roleOption.label}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                          Announcement Subject
-                        </label>
-                        <input
-                          className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm"
-                          value={announcementSubject}
-                          onChange={(e) => setAnnouncementSubject(e.target.value)}
-                          placeholder="Platform announcement"
-                          disabled={isProcessing}
-                          maxLength={160}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                          Announcement Message
-                        </label>
-                        <Textarea
-                          value={announcementMessage}
-                          onChange={(e) => setAnnouncementMessage(e.target.value)}
-                          placeholder="Write your announcement for the selected roles..."
-                          rows={4}
-                          maxLength={4000}
-                          disabled={isProcessing}
-                        />
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="flex-1 min-w-[140px]"
-                          onClick={() => void improveAnnouncementDraft()}
-                          disabled={
-                            isProcessing ||
-                            announcementRoles.length === 0 ||
-                            !announcementMessage.trim()
-                          }
-                        >
-                          <Sparkles className="mr-2 size-4" />
-                          AI Compose
-                        </Button>
-                        <Button
-                          type="button"
-                          className="flex-1 min-w-[170px]"
-                          onClick={() => void sendRoleAnnouncement()}
-                          disabled={
-                            isProcessing ||
-                            announcementRoles.length === 0 ||
-                            !announcementMessage.trim()
-                          }
-                        >
-                          <Send className="mr-2 size-4" />
-                          Send Announcement
                         </Button>
                       </div>
                     </div>

@@ -22,6 +22,7 @@ export interface AppUser {
   auth_uid: string;
   email: string | null;
   display_name: string | null;
+  phone?: string | null;
   avatar_url: string | null; // ✅ ADD THIS
   theme_settings?: {
     preset?: ThemePreset;
@@ -207,6 +208,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             auth_uid: serverUser.auth_uid,
             email: serverUser.email,
             display_name: serverUser.display_name,
+            phone: serverUser.phone ?? null,
             avatar_url: normalizeAvatarUrl(serverUser.avatar_url),
             theme_settings: serverUser.theme_settings || null,
             roles,
@@ -221,7 +223,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Try to fetch existing user row by auth_uid
       const { data: userData, error: userError } = await supabase
         .from("users")
-        .select("id, auth_uid, email, display_name, avatar_url, theme_settings")
+        .select("id, auth_uid, email, display_name, phone, avatar_url, theme_settings")
         .eq("auth_uid", authUid)
         .maybeSingle();
 
@@ -273,7 +275,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           try {
             const { data: createdUser, error: fetchUserErr } = await supabase
               .from("users")
-              .select("id, auth_uid, email, display_name, avatar_url, theme_settings")
+              .select("id, auth_uid, email, display_name, phone, avatar_url, theme_settings")
               .eq("auth_uid", authUid)
               .maybeSingle();
 
@@ -319,6 +321,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         auth_uid: finalUser.auth_uid,
         email: finalUser.email,
         display_name: finalUser.display_name,
+        phone: (finalUser as any).phone ?? null,
         avatar_url: normalizedAvatarUrl,
         theme_settings: finalUser.theme_settings || null,
         roles,
@@ -654,3 +657,4 @@ export const useAuth = () => {
   }
   return context;
 };
+

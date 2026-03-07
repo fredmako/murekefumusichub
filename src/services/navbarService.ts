@@ -9,6 +9,15 @@ type NavbarNotificationItem = {
   [key: string]: any;
 };
 
+function normalizeContext(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isSystemNotificationContext(context: unknown) {
+  const normalized = normalizeContext(context);
+  return normalized.includes("announcement") || normalized.includes("notification");
+}
+
 export const navbarService = {
   async fetchUserRoles(authUid: string) {
     try {
@@ -43,24 +52,41 @@ export const navbarService = {
         ? Number(payload.unreadCount)
         : unreadThreads.length;
 
-    const items: NavbarNotificationItem[] = unreadThreads.map((thread) => ({
-      id: `message:${thread.id}`,
-      type: "message",
-      threadId: thread.id,
-      subject: thread.subject || "New message",
-      preview: thread.last_message_preview || "",
-      status: thread.status || "active",
-      context: thread.context || "support",
-      createdAt:
-        thread.last_message_at ||
-        thread.updated_at ||
-        thread.created_at ||
-        new Date().toISOString(),
-    }));
+    const mappedThreads: NavbarNotificationItem[] = unreadThreads.map((thread) => {
+      const context = thread.context || "support";
+      return {
+        id: `message:${thread.id}`,
+        type: "message",
+        threadId: thread.id,
+        subject: thread.subject || "New message",
+        preview: thread.last_message_preview || "",
+        status: thread.status || "active",
+        context,
+        createdAt:
+          thread.last_message_at ||
+          thread.updated_at ||
+          thread.created_at ||
+          new Date().toISOString(),
+      };
+    });
+
+    const notificationItems = mappedThreads
+      .filter((thread) => isSystemNotificationContext(thread.context))
+      .map((thread) => ({
+        ...thread,
+        type: normalizeContext(thread.context).includes("announcement")
+          ? "announcement"
+          : "notification",
+      }));
+    const messengerItems = mappedThreads.filter(
+      (thread) => !isSystemNotificationContext(thread.context),
+    );
 
     return {
       unreadCount,
-      items,
+      messengerUnreadCount: messengerItems.length,
+      messengerItems,
+      notificationItems,
     };
   },
 
@@ -75,7 +101,9 @@ export const navbarService = {
         }
         return {
           unreadCount: 0,
-          items: [] as NavbarNotificationItem[],
+          messengerUnreadCount: 0,
+          messengerItems: [] as NavbarNotificationItem[],
+          notificationItems: [] as NavbarNotificationItem[],
         };
       }),
       isAdmin
@@ -89,7 +117,13 @@ export const navbarService = {
         : Promise.resolve([]),
     ]);
 
-    const items = [...(inboxResult.items || []), ...(adminNotifications || [])].sort(
+    const supportNotificationItems = isAdmin
+      ? []
+      : ensureArray<any>(inboxResult.notificationItems, ["notifications"]);
+    const notificationItems = [
+      ...supportNotificationItems,
+      ...ensureArray<any>(adminNotifications, ["notifications"]),
+    ].sort(
       (a, b) => {
         const aTime = new Date(a?.createdAt || a?.created_at || 0).getTime();
         const bTime = new Date(b?.createdAt || b?.created_at || 0).getTime();
@@ -98,8 +132,11 @@ export const navbarService = {
     );
 
     return {
-      items,
-      messengerUnreadCount: Number(inboxResult.unreadCount || 0),
+      notificationItems,
+      messengerUnreadCount: Math.max(
+        0,
+        Number(inboxResult.messengerUnreadCount || 0),
+      ),
     };
   },
 
@@ -177,6 +214,21 @@ export const navbarService = {
     } catch (err: any) {
       console.error("rejectPaymentSubmission error:", err);
       toast.error(err.message || "Failed to reject payment");
+      throw err;
+    }
+  },
+
+  async admitEnrollment(enrollmentId: string) {
+    try {
+      const result = await apiRequest<any>(`/admin/enrollments/${enrollmentId}/admit`, {
+        method: "POST",
+        requiresAuth: true,
+      });
+      toast.success("Enrollment admitted");
+      return result;
+    } catch (err: any) {
+      console.error("admitEnrollment error:", err);
+      toast.error(err.message || "Failed to admit enrollment");
       throw err;
     }
   },

@@ -1,5 +1,5 @@
 // src/app/App.tsx
-import React, { Suspense, useEffect, useRef, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { PrivacyPolicy } from "./components/PrivacyPolicy";
 import {
@@ -21,8 +21,16 @@ import { SESSION_EXPIRED_EVENT } from "@/lib/sessionEvents";
 import { APP_ERROR_EVENT, type AppErrorAction, type AppErrorDetail, dispatchAppError } from "@/lib/appErrorEvents";
 import { AppErrorDialog } from "@/app/components/AppErrorDialog";
 import { Guitar, Loader2 } from "lucide-react";
-import loadingStringsDark from "@/app/components/images/bg_9.jpg";
-import loadingStringsLight from "@/app/components/images/bg_11.jpg";
+import bg1 from "@/app/components/images/bg_1.jpg";
+import bg2 from "@/app/components/images/bg_2.jpg";
+import bg3 from "@/app/components/images/bg_3.jpg";
+import bg4 from "@/app/components/images/bg_4.jpg";
+import bg5 from "@/app/components/images/bg_5.jpg";
+import bg6 from "@/app/components/images/bg_6.jpg";
+import bg7 from "@/app/components/images/bg_7.jpg";
+import bg9 from "@/app/components/images/bg_9.jpg";
+import bg10 from "@/app/components/images/bg_10.jpg";
+import bg11 from "@/app/components/images/bg_11.jpg";
 import {
   buildLoginPath,
   getCurrentPathWithQuery,
@@ -89,6 +97,124 @@ const SetNewPassword = React.lazy(() =>
     default: (m as any).SetNewPassword ?? (m as any).default,
   })),
 );
+
+type RouteBackdropConfig = {
+  light: string;
+  dark: string;
+  overlayLight: string;
+  overlayDark: string;
+};
+
+const DEFAULT_ROUTE_BACKDROP: RouteBackdropConfig = {
+  light: bg11,
+  dark: bg9,
+  overlayLight:
+    "linear-gradient(140deg, rgba(247,252,255,0.62), rgba(242,249,255,0.5), rgba(236,245,251,0.58))",
+  overlayDark:
+    "linear-gradient(140deg, rgba(5,11,24,0.62), rgba(16,10,32,0.5), rgba(8,24,48,0.58))",
+};
+
+function resolveRouteBackdrop(pathname: string): RouteBackdropConfig {
+  const path = String(pathname || "/").toLowerCase();
+
+  if (path === "/" || path.startsWith("/home")) {
+    return {
+      light: bg1,
+      dark: bg9,
+      overlayLight:
+        "linear-gradient(140deg, rgba(248,253,255,0.58), rgba(244,250,254,0.46), rgba(240,248,253,0.56))",
+      overlayDark:
+        "linear-gradient(140deg, rgba(4,10,22,0.58), rgba(16,9,31,0.46), rgba(7,23,45,0.56))",
+    };
+  }
+
+  if (path.startsWith("/marketplace")) {
+    return {
+      light: bg3,
+      dark: bg5,
+      overlayLight:
+        "linear-gradient(140deg, rgba(250,253,255,0.52), rgba(247,251,255,0.42), rgba(243,249,255,0.52))",
+      overlayDark:
+        "linear-gradient(140deg, rgba(4,10,22,0.56), rgba(14,10,30,0.44), rgba(7,22,42,0.54))",
+    };
+  }
+
+  if (path.startsWith("/buyer") || path.startsWith("/checkout")) {
+    return {
+      light: bg4,
+      dark: bg6,
+      overlayLight:
+        "linear-gradient(140deg, rgba(248,253,255,0.56), rgba(246,251,255,0.46), rgba(240,247,255,0.56))",
+      overlayDark:
+        "linear-gradient(140deg, rgba(5,11,24,0.58), rgba(16,10,34,0.46), rgba(8,24,46,0.56))",
+    };
+  }
+
+  if (path.startsWith("/composer") || path.startsWith("/upload")) {
+    return {
+      light: bg7,
+      dark: bg10,
+      overlayLight:
+        "linear-gradient(140deg, rgba(248,252,255,0.54), rgba(244,250,255,0.44), rgba(240,247,252,0.54))",
+      overlayDark:
+        "linear-gradient(140deg, rgba(5,11,25,0.58), rgba(18,10,34,0.46), rgba(8,24,47,0.56))",
+    };
+  }
+
+  if (path.startsWith("/admin")) {
+    return {
+      light: bg10,
+      dark: bg9,
+      overlayLight:
+        "linear-gradient(140deg, rgba(247,252,255,0.58), rgba(243,249,255,0.48), rgba(239,247,253,0.58))",
+      overlayDark:
+        "linear-gradient(140deg, rgba(4,10,22,0.6), rgba(17,10,34,0.48), rgba(8,24,47,0.58))",
+    };
+  }
+
+  if (
+    path.startsWith("/about") ||
+    path.startsWith("/contact") ||
+    path.startsWith("/privacy-policy")
+  ) {
+    return {
+      light: bg2,
+      dark: bg5,
+      overlayLight:
+        "linear-gradient(140deg, rgba(248,253,255,0.56), rgba(245,250,255,0.46), rgba(240,247,252,0.56))",
+      overlayDark:
+        "linear-gradient(140deg, rgba(4,10,22,0.58), rgba(17,10,33,0.46), rgba(8,24,46,0.56))",
+    };
+  }
+
+  if (path.startsWith("/enroll")) {
+    return {
+      light: bg6,
+      dark: bg10,
+      overlayLight:
+        "linear-gradient(140deg, rgba(248,253,255,0.56), rgba(244,250,255,0.46), rgba(239,247,253,0.56))",
+      overlayDark:
+        "linear-gradient(140deg, rgba(5,11,24,0.58), rgba(17,10,33,0.46), rgba(8,24,47,0.56))",
+    };
+  }
+
+  if (
+    path.startsWith("/login") ||
+    path.startsWith("/reset-password") ||
+    path.startsWith("/auth/callback")
+  ) {
+    return {
+      light: bg11,
+      dark: bg9,
+      overlayLight:
+        "linear-gradient(140deg, rgba(247,252,255,0.62), rgba(244,250,255,0.5), rgba(239,247,253,0.6))",
+      overlayDark:
+        "linear-gradient(140deg, rgba(5,11,24,0.62), rgba(17,10,34,0.5), rgba(8,24,48,0.6))",
+    };
+  }
+
+  return DEFAULT_ROUTE_BACKDROP;
+}
 
 /* -----------------------------
    Error Boundary
@@ -171,36 +297,16 @@ export default function App() {
   const lastSessionExpiredToastAt = useRef(0);
   const handlingSessionExpiredRef = useRef(false);
   const isDarkMode = mode === "dark";
-  const loadingBackdropImage = isDarkMode
-    ? loadingStringsDark
-    : loadingStringsLight;
-  const loadingBackdropOverlay = isDarkMode
-    ? "linear-gradient(145deg, rgba(6,12,28,0.9), rgba(26,14,46,0.78), rgba(9,35,66,0.8))"
-    : "linear-gradient(145deg, rgba(245,251,252,0.9), rgba(236,246,240,0.84), rgba(244,238,252,0.82))";
-  const [appBackdropReady, setAppBackdropReady] = useState(false);
-
-  useEffect(() => {
-    if (!isDarkMode) {
-      setAppBackdropReady(false);
-      return;
-    }
-
-    let cancelled = false;
-    const image = new Image();
-    const markReady = () => {
-      if (!cancelled) setAppBackdropReady(true);
-    };
-
-    image.onload = markReady;
-    image.onerror = markReady;
-    image.src = loadingStringsDark;
-
-    return () => {
-      cancelled = true;
-      image.onload = null;
-      image.onerror = null;
-    };
-  }, [isDarkMode]);
+  const routeBackdrop = useMemo(
+    () => resolveRouteBackdrop(location.pathname),
+    [location.pathname],
+  );
+  const routeBackdropImage = isDarkMode
+    ? routeBackdrop.dark
+    : routeBackdrop.light;
+  const routeBackdropOverlay = isDarkMode
+    ? routeBackdrop.overlayDark
+    : routeBackdrop.overlayLight;
 
   useEffect(() => {
     const preset = appUser?.theme_settings?.preset;
@@ -358,20 +464,17 @@ export default function App() {
           isDarkMode ? "bg-black" : "bg-background"
         }`}
       >
-        {isDarkMode && (
-          <>
-            <div className="pointer-events-none fixed inset-0 -z-20 bg-black" aria-hidden="true" />
-            <div
-              className={`pointer-events-none fixed inset-0 -z-10 bg-cover bg-center bg-no-repeat transition-opacity duration-700 ${
-                appBackdropReady ? "opacity-100" : "opacity-0"
-              }`}
-              style={{
-                backgroundImage: `linear-gradient(145deg, rgba(4,8,18,0.9), rgba(24,12,43,0.76), rgba(8,28,52,0.82)), url(${loadingStringsDark})`,
-              }}
-              aria-hidden="true"
-            />
-          </>
-        )}
+        <div
+          className="pointer-events-none fixed inset-0 -z-20 bg-background"
+          aria-hidden="true"
+        />
+        <div
+          className="pointer-events-none fixed inset-0 -z-10 bg-cover bg-center bg-no-repeat"
+          style={{
+            backgroundImage: `${routeBackdropOverlay}, url(${routeBackdropImage})`,
+          }}
+          aria-hidden="true"
+        />
         <Navbar cart={cart} onRemoveFromCart={handleRemoveFromCart} />
         <AppErrorDialog
           open={appErrorOpen}
@@ -386,7 +489,7 @@ export default function App() {
               <div
                 className="pointer-events-none absolute inset-0 bg-cover bg-center"
                 style={{
-                  backgroundImage: `${loadingBackdropOverlay}, url(${loadingBackdropImage})`,
+                  backgroundImage: `${routeBackdropOverlay}, url(${routeBackdropImage})`,
                 }}
                 aria-hidden="true"
               />

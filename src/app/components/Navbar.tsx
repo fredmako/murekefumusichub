@@ -94,7 +94,9 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
       try {
         const result = await navbarService.fetchNotifications({ isAdmin });
         if (!mounted) return;
-        setNotifications(ensureArray<any>(result?.items, ["notifications"]));
+        setNotifications(
+          ensureArray<any>(result?.notificationItems, ["notifications"]),
+        );
         setMessengerUnreadCount(Math.max(0, Number(result?.messengerUnreadCount || 0)));
         timer = setTimeout(fetchNotifications, NOTIF_POLL_INTERVAL);
       } catch (err) {
@@ -190,6 +192,21 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
       setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
     } catch (err) {
       console.error("Failed to reject payment submission:", err);
+    } finally {
+      setProcessingNotification(null);
+    }
+  };
+
+  const handleAdmitEnrollment = async (
+    notificationId: string,
+    enrollmentId: string,
+  ) => {
+    setProcessingNotification(notificationId);
+    try {
+      await navbarService.admitEnrollment(enrollmentId);
+      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+    } catch (err) {
+      console.error("Failed to admit enrollment:", err);
     } finally {
       setProcessingNotification(null);
     }
@@ -356,7 +373,10 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                     .fetchNotifications({ isAdmin })
                     .then((result) => {
                       setNotifications(
-                        ensureArray<any>(result?.items, ["notifications"]),
+                        ensureArray<any>(
+                          result?.notificationItems,
+                          ["notifications"],
+                        ),
                       );
                       setMessengerUnreadCount(
                         Math.max(0, Number(result?.messengerUnreadCount || 0)),
@@ -423,6 +443,39 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                                 </span>
                               ) : null}
                             </>
+                          ) : n.type === "announcement" ? (
+                            <>
+                              <span className="font-semibold block">
+                                Announcement
+                              </span>
+                              <span className="text-xs text-gray-500 line-clamp-1">
+                                {n.subject || "Platform announcement"}
+                              </span>
+                              {n.preview ? (
+                                <span className="text-xs text-gray-500 line-clamp-2 block mt-1">
+                                  {n.preview}
+                                </span>
+                              ) : null}
+                              {Number(n.recipientCount || 0) > 0 ? (
+                                <span className="text-xs text-gray-500 block mt-1">
+                                  Audience: {Number(n.recipientCount)} user(s)
+                                </span>
+                              ) : null}
+                            </>
+                          ) : n.type === "notification" ? (
+                            <>
+                              <span className="font-semibold block">
+                                Notification
+                              </span>
+                              <span className="text-xs text-gray-500 line-clamp-1">
+                                {n.subject || "System notification"}
+                              </span>
+                              {n.preview ? (
+                                <span className="text-xs text-gray-500 line-clamp-2 block mt-1">
+                                  {n.preview}
+                                </span>
+                              ) : null}
+                            </>
                           ) : n.type === "invite" ? (
                             <>
                               <span className="font-semibold block">
@@ -443,6 +496,19 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                               <span className="text-xs text-gray-500 block mt-1">
                                 Ref: {n.mpesaCode || "-"} | Amount: $
                                 {Number(n.amount || 0).toFixed(2)}
+                              </span>
+                            </>
+                          ) : n.type === "enrollment_request" ? (
+                            <>
+                              <span className="font-semibold block">
+                                Enrollment Request
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {n.displayName || n.email}
+                              </span>
+                              <span className="text-xs text-gray-500 block mt-1">
+                                Program: {n.program || "-"} | Level:{" "}
+                                {n.skillLevel || "-"}
                               </span>
                             </>
                           ) : (
@@ -523,6 +589,41 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                             </Button>
                           </div>
                         )}
+                        {n.type === "enrollment_request" && (
+                          <div className="flex gap-2 mt-2">
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="flex-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAdmitEnrollment(n.id, n.enrollmentId);
+                              }}
+                              disabled={
+                                processingNotification === n.id ||
+                                n.canApprove === false
+                              }
+                            >
+                              {processingNotification === n.id ? (
+                                <Loader className="size-4 mr-1 animate-spin" />
+                              ) : (
+                                <Check className="size-4 mr-1" />
+                              )}
+                              Admit
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="flex-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate("/admin");
+                              }}
+                            >
+                              Open Admin
+                            </Button>
+                          </div>
+                        )}
                         {n.type === "payment_request" && (
                           <div className="flex gap-2 mt-2">
                             <Button
@@ -533,7 +634,10 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                                 e.stopPropagation();
                                 handleApprovePayment(n.id, n.submissionId);
                               }}
-                              disabled={processingNotification === n.id}
+                              disabled={
+                                processingNotification === n.id ||
+                                n.canApprove === false
+                              }
                             >
                               {processingNotification === n.id ? (
                                 <Loader className="size-4 mr-1 animate-spin" />
@@ -561,10 +665,10 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                             </Button>
                           </div>
                         )}
-                        {n.type === "request" && n.canApprove === false && (
+                        {n.canApprove === false && (
                           <p className="text-xs text-amber-700">
-                            User profile missing. You can reject this stale
-                            request.
+                            {n.cannotApproveReason ||
+                              "This item cannot be approved by your account."}
                           </p>
                         )}
                       </div>

@@ -187,6 +187,7 @@ export const supportService = {
       thread: SupportChatThread;
       messages: SupportChatMessage[];
       admin: boolean;
+      actorRole?: "member" | "admin";
     }>(`/support/threads/${threadId}/messages`, {
       method: "GET",
       timeoutMs: 30000,
@@ -213,6 +214,7 @@ export const supportService = {
       success: boolean;
       thread: SupportChatThread;
       admin: boolean;
+      actorRole?: "member" | "admin";
     }>(`/support/threads/${threadId}/read`, {
       method: "POST",
       timeoutMs: 30000,

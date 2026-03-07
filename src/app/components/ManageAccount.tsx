@@ -108,6 +108,7 @@ export function ManageAccount() {
 
   // Form state
   const [displayName, setDisplayName] = useState<string>("");
+  const [phone, setPhone] = useState<string>("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
 
@@ -130,11 +131,13 @@ export function ManageAccount() {
       setUser(appUser);
       setSupabaseId(appUser.id);
       setDisplayName(appUser.display_name || "");
+      setPhone(appUser.phone || "");
       setAvatarUrl(appUser.avatar_url || null);
     } else {
       setUser(null);
       setSupabaseId(null);
       setDisplayName("");
+      setPhone("");
       setAvatarUrl(null);
     }
   }, [appUser]);
@@ -329,6 +332,7 @@ export function ManageAccount() {
             auth_uid: appUser.auth_uid,
             email: appUser.email,
             displayName,
+            phone,
             avatarUrl: finalAvatarUrl,
           }),
         });
@@ -355,6 +359,7 @@ export function ManageAccount() {
             roles: freshData.roles || [],
           });
           setDisplayName(freshData.display_name || "");
+          setPhone(freshData.phone || "");
           setAvatarUrl(freshData.avatar_url || null);
         } else {
           // fallback local state update
@@ -363,10 +368,12 @@ export function ManageAccount() {
               ? {
                   ...u,
                   display_name: displayName || null,
+                  phone: phone || null,
                   avatar_url: finalAvatarUrl || null,
                 }
               : u,
           );
+          setPhone(phone || "");
           setAvatarUrl(finalAvatarUrl || null);
         }
       } catch (refetchErr) {
@@ -379,10 +386,12 @@ export function ManageAccount() {
             ? {
                 ...u,
                 display_name: displayName || null,
+                phone: phone || null,
                 avatar_url: finalAvatarUrl || null,
               }
             : u,
         );
+        setPhone(phone || "");
         setAvatarUrl(finalAvatarUrl || null);
       }
 
@@ -857,6 +866,19 @@ export function ManageAccount() {
                       </p>
                     </div>
 
+                    <div className="space-y-2 sm:col-span-2">
+                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Phone Number
+                      </div>
+                      <p className="text-base font-medium text-foreground">
+                        {user?.phone || (
+                          <span className="italic text-muted-foreground">
+                            Not set
+                          </span>
+                        )}
+                      </p>
+                    </div>
+
                     <div className="space-y-3 sm:col-span-2">
                       <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         Current Roles
@@ -964,6 +986,21 @@ export function ManageAccount() {
                       className="h-11 bg-input-background"
                     />
                   </div>
+                  <div className="space-y-3">
+                    <Label
+                      htmlFor="phone"
+                      className="text-sm font-semibold text-foreground"
+                    >
+                      Phone Number
+                    </Label>
+                    <Input
+                      id="phone"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="e.g., +254712345678"
+                      className="h-11 bg-input-background"
+                    />
+                  </div>
                 </div>
 
                 <div className="flex flex-col gap-3 border-t border-border/70 pt-6 sm:flex-row">
@@ -984,6 +1021,7 @@ export function ManageAccount() {
                     onClick={() => {
                       setIsEditing(false);
                       setDisplayName(user?.display_name || "");
+                      setPhone(user?.phone || "");
                       setAvatarUrl(user?.avatar_url || null);
                       setAvatarFile(null);
                     }}
