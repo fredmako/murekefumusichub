@@ -6,6 +6,10 @@
       "destination": "https://choral-server-production.up.railway.app/api/:path*"
     },
     {
+      "source": "/auth/callback/",
+      "destination": "/auth/callback"
+    },
+    {
       "source": "/:path*",
       "destination": "/"
     }

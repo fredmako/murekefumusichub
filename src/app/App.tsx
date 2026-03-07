@@ -452,7 +452,7 @@ export default function App() {
                 <Route path="/about" element={<AboutPage />} />
                 <Route path="/privacy-policy" element={<PrivacyPolicy />} />
                 <Route path="/manage-account" element={<ManageAccount />} />
-                <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/auth/callback/*" element={<AuthCallback />} />
 
                 {/* Dashboards */}
                 <Route
