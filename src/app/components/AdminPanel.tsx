@@ -25,6 +25,7 @@ import {
   MessageCircleMore,
   PanelLeftClose,
   PanelLeftOpen,
+  Sparkles,
 } from "lucide-react";
 import {
   Card,
@@ -163,6 +164,12 @@ const ADMIN_CHAT_TYPE_LABELS: Record<AdminThreadType, string> = {
   ticket: "Ticket Chat",
   direct: "Direct Chat",
 };
+const ANNOUNCEMENT_ROLE_OPTIONS = [
+  { value: "student", label: "Students" },
+  { value: "buyer", label: "Buyers" },
+  { value: "composer", label: "Composers" },
+  { value: "admin", label: "Admins" },
+] as const;
 
 export function AdminPanel() {
   const navigate = useNavigate();
@@ -233,6 +240,12 @@ export function AdminPanel() {
   const [adminChatTargetUserId, setAdminChatTargetUserId] = useState("");
   const [adminChatSubject, setAdminChatSubject] = useState("");
   const [adminChatMessage, setAdminChatMessage] = useState("");
+  const [announcementRoles, setAnnouncementRoles] = useState<string[]>([
+    "student",
+    "buyer",
+  ]);
+  const [announcementSubject, setAnnouncementSubject] = useState("");
+  const [announcementMessage, setAnnouncementMessage] = useState("");
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [compositionsLoadLevel, setCompositionsLoadLevel] =
     useState<DataLoadLevel>("none");
@@ -670,6 +683,15 @@ export function AdminPanel() {
     }));
   };
 
+  const toggleAnnouncementRole = (role: string) => {
+    setAnnouncementRoles((current) => {
+      if (current.includes(role)) {
+        return current.filter((entry) => entry !== role);
+      }
+      return [...current, role];
+    });
+  };
+
   const formatUserDisplay = (user: any) =>
     user?.display_name || user?.email || "Unknown user";
 
@@ -689,6 +711,12 @@ export function AdminPanel() {
 
   const resolveThreadContextLabel = (context?: string | null) => {
     const normalized = String(context || "").toLowerCase();
+    if (normalized.includes("announcement")) {
+      return {
+        label: "Announcement",
+        className: "bg-violet-100 text-violet-800",
+      };
+    }
     if (normalized.includes("notification")) {
       return {
         label: "Notification",
@@ -830,6 +858,114 @@ export function AdminPanel() {
       }
 
       toast.success(`${ADMIN_CHAT_TYPE_LABELS[adminChatType]} started`);
+    });
+  }
+
+  async function improveAdminChatDraft() {
+    const message = adminChatMessage.trim();
+    if (!message) {
+      toast.error("Type a message first, then use AI polish.");
+      return;
+    }
+
+    await runAction(`support:ai:admin-chat:${adminChatType}`, async () => {
+      const result = await supportService.draftMessageWithAi({
+        useCase: "message",
+        subject: adminChatSubject.trim() || undefined,
+        message,
+        context: `admin-${adminChatType}`,
+      });
+
+      setAdminChatMessage(result?.draft?.message || message);
+      if (!adminChatSubject.trim() && result?.draft?.subject) {
+        setAdminChatSubject(result.draft.subject);
+      }
+      toast.success("Message polished with AI");
+    });
+  }
+
+  async function improveSupportReplyDraft() {
+    const message = supportReply.trim();
+    if (!message) {
+      toast.error("Type a reply first, then use AI polish.");
+      return;
+    }
+
+    await runAction("support:ai:reply", async () => {
+      const result = await supportService.draftMessageWithAi({
+        useCase: "support",
+        message,
+        context: selectedSupportThread?.context || "admin-support-reply",
+      });
+      setSupportReply(result?.draft?.message || message);
+      toast.success("Reply polished with AI");
+    });
+  }
+
+  async function improveAnnouncementDraft() {
+    const message = announcementMessage.trim();
+    if (!message) {
+      toast.error("Write your announcement first, then use AI compose.");
+      return;
+    }
+    if (announcementRoles.length === 0) {
+      toast.error("Select at least one target role.");
+      return;
+    }
+
+    await runAction("support:ai:announcement", async () => {
+      const result = await supportService.draftMessageWithAi({
+        useCase: "announcement",
+        message,
+        subject: announcementSubject.trim() || undefined,
+        audienceRoles: announcementRoles,
+        context: "admin-announcement",
+      });
+      setAnnouncementMessage(result?.draft?.message || message);
+      if (!announcementSubject.trim() && result?.draft?.subject) {
+        setAnnouncementSubject(result.draft.subject);
+      }
+      toast.success("Announcement draft generated");
+    });
+  }
+
+  async function sendRoleAnnouncement() {
+    const message = announcementMessage.trim();
+    const subject = announcementSubject.trim();
+    if (announcementRoles.length === 0) {
+      toast.error("Select at least one target role.");
+      return;
+    }
+    if (!message) {
+      toast.error("Type an announcement message before sending.");
+      return;
+    }
+
+    const actionKey = `support:announcement:${announcementRoles
+      .slice()
+      .sort()
+      .join(",")}`;
+    await runAction(actionKey, async () => {
+      const response = await supportService.createRoleAnnouncement({
+        roles: announcementRoles,
+        subject: subject || undefined,
+        message,
+        context: "admin-announcement",
+      });
+
+      setSupportStateFilter("all");
+      setAnnouncementMessage("");
+      await Promise.all([fetchSupportThreads("all"), fetchSupportTickets()]);
+
+      const createdThreadId = response?.createdThreadIds?.[0] || null;
+      if (createdThreadId) {
+        setSelectedSupportThreadId(createdThreadId);
+        await fetchSupportMessages(createdThreadId, false);
+      }
+
+      toast.success(
+        `Announcement sent to ${Number(response?.recipientCount || 0)} user(s).`,
+      );
     });
   }
 
@@ -1193,7 +1329,7 @@ export function AdminPanel() {
         </div>
         <SupportIssueButton context="admin-dashboard" />
       </div>
-      <Card className="border-border/70 bg-card/95 lg:hidden">
+      <Card className="border-border/70 bg-card/95 xl:hidden">
         <CardContent className="space-y-3 p-3">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -1352,11 +1488,11 @@ export function AdminPanel() {
         <div
           className={`grid gap-6 ${
             isServiceMenuCollapsed
-              ? "lg:grid-cols-[96px_minmax(0,1fr)]"
-              : "lg:grid-cols-[320px_minmax(0,1fr)]"
+              ? "xl:grid-cols-[88px_minmax(0,1fr)]"
+              : "xl:grid-cols-[280px_minmax(0,1fr)]"
           } min-w-0`}
         >
-          <aside className="hidden space-y-4 lg:sticky lg:top-6 lg:block lg:self-start">
+          <aside className="hidden space-y-4 xl:sticky xl:top-24 xl:block xl:self-start">
             <Card className="texture-speckle border-border/70 bg-card/95">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between gap-2">
@@ -1570,7 +1706,7 @@ export function AdminPanel() {
           </aside>
 
           <div className="min-w-0">
-            <div className="w-full overflow-x-auto lg:hidden">
+            <div className="w-full overflow-x-auto xl:hidden">
               <TabsList className="h-auto min-w-max gap-2 rounded-xl border border-border/70 bg-card/90 p-1">
                 <TabsTrigger value="users" className="flex-none px-3">
                   Users
@@ -2444,8 +2580,8 @@ export function AdminPanel() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[380px_1fr]">
-                <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(320px,360px)_minmax(0,1fr)]">
+                <div className="min-w-0 space-y-4">
                   <div className="rounded-xl border border-border/70">
                     <div className="border-b border-border/60 px-3 py-2 text-sm font-semibold">
                       Start User Chat
@@ -2537,27 +2673,126 @@ export function AdminPanel() {
                         />
                       </div>
 
-                      <Button
-                        onClick={() => void createAdminThread()}
-                        className="w-full"
-                        disabled={
-                          isProcessing ||
-                          !adminChatTargetUserId.trim() ||
-                          !adminChatMessage.trim()
-                        }
-                      >
-                        {isProcessing ? (
-                          <>
-                            <Loader className="mr-2 size-4 animate-spin" />
-                            Starting...
-                          </>
-                        ) : (
-                          <>
-                            <Send className="mr-2 size-4" />
-                            Start {ADMIN_CHAT_TYPE_LABELS[adminChatType]}
-                          </>
-                        )}
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="flex-1 min-w-[140px]"
+                          onClick={() => void improveAdminChatDraft()}
+                          disabled={isProcessing || !adminChatMessage.trim()}
+                        >
+                          <Sparkles className="mr-2 size-4" />
+                          AI Polish
+                        </Button>
+                        <Button
+                          onClick={() => void createAdminThread()}
+                          className="flex-1 min-w-[170px]"
+                          disabled={
+                            isProcessing ||
+                            !adminChatTargetUserId.trim() ||
+                            !adminChatMessage.trim()
+                          }
+                        >
+                          {isProcessing ? (
+                            <>
+                              <Loader className="mr-2 size-4 animate-spin" />
+                              Starting...
+                            </>
+                          ) : (
+                            <>
+                              <Send className="mr-2 size-4" />
+                              Start {ADMIN_CHAT_TYPE_LABELS[adminChatType]}
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-border/70">
+                    <div className="border-b border-border/60 px-3 py-2 text-sm font-semibold">
+                      Make Announcement
+                    </div>
+                    <div className="space-y-3 p-3">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                          Target Roles
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {ANNOUNCEMENT_ROLE_OPTIONS.map((roleOption) => (
+                            <label
+                              key={roleOption.value}
+                              className="flex items-center gap-2 rounded-md border border-border/70 px-2 py-1.5 text-sm"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={announcementRoles.includes(roleOption.value)}
+                                onChange={() => toggleAnnouncementRole(roleOption.value)}
+                                disabled={isProcessing}
+                              />
+                              <span>{roleOption.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                          Announcement Subject
+                        </label>
+                        <input
+                          className="w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm"
+                          value={announcementSubject}
+                          onChange={(e) => setAnnouncementSubject(e.target.value)}
+                          placeholder="Platform announcement"
+                          disabled={isProcessing}
+                          maxLength={160}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                          Announcement Message
+                        </label>
+                        <Textarea
+                          value={announcementMessage}
+                          onChange={(e) => setAnnouncementMessage(e.target.value)}
+                          placeholder="Write your announcement for the selected roles..."
+                          rows={4}
+                          maxLength={4000}
+                          disabled={isProcessing}
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="flex-1 min-w-[140px]"
+                          onClick={() => void improveAnnouncementDraft()}
+                          disabled={
+                            isProcessing ||
+                            announcementRoles.length === 0 ||
+                            !announcementMessage.trim()
+                          }
+                        >
+                          <Sparkles className="mr-2 size-4" />
+                          AI Compose
+                        </Button>
+                        <Button
+                          type="button"
+                          className="flex-1 min-w-[170px]"
+                          onClick={() => void sendRoleAnnouncement()}
+                          disabled={
+                            isProcessing ||
+                            announcementRoles.length === 0 ||
+                            !announcementMessage.trim()
+                          }
+                        >
+                          <Send className="mr-2 size-4" />
+                          Send Announcement
+                        </Button>
+                      </div>
                     </div>
                   </div>
 
@@ -2697,10 +2932,10 @@ export function AdminPanel() {
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-border/70">
+                <div className="min-w-0 overflow-hidden rounded-xl border border-border/70">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
                     <div>
-                      <p className="font-semibold">
+                      <p className="max-w-full break-words font-semibold">
                         {selectedSupportThread?.subject || "Select an assigned support chat"}
                       </p>
                       {selectedSupportThread && (
@@ -2814,7 +3049,20 @@ export function AdminPanel() {
                       maxLength={4000}
                       disabled={!selectedSupportThread || isProcessing}
                     />
-                    <div className="mt-3 flex justify-end">
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void improveSupportReplyDraft()}
+                        disabled={
+                          !selectedSupportThread ||
+                          !supportReply.trim() ||
+                          isProcessing
+                        }
+                      >
+                        <Sparkles className="mr-2 size-4" />
+                        AI Polish Reply
+                      </Button>
                       <Button
                         onClick={() => void sendSupportReply()}
                         disabled={

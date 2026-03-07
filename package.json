@@ -7,7 +7,9 @@
     "build": "vite build",
     "dev": "vite",
     "push:deploy": "powershell -ExecutionPolicy Bypass -File ./scripts/push-deploy.ps1",
-    "push:deploy:dry": "powershell -ExecutionPolicy Bypass -File ./scripts/push-deploy.ps1 -DryRun"
+    "push:deploy:dry": "powershell -ExecutionPolicy Bypass -File ./scripts/push-deploy.ps1 -DryRun",
+    "push:deploy:all": "powershell -ExecutionPolicy Bypass -File ./scripts/push-deploy.ps1 -FrontendRemotes frontend,origin -BackendRemotes backend",
+    "push:deploy:all:dry": "powershell -ExecutionPolicy Bypass -File ./scripts/push-deploy.ps1 -FrontendRemotes frontend,origin -BackendRemotes backend -DryRun"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

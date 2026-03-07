@@ -14,6 +14,7 @@ import {
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { supabase } from "@/lib/supabase";
 import { API_BASE_URL } from "@/lib/apiBase";
+import { compositionService, mediaService } from "@/services/api";
 import { toast } from "sonner";
 
 interface UploadCompositionProps {
@@ -28,6 +29,21 @@ interface AnalyzedCompositionMetadata {
   language?: string;
   accompaniment?: string;
   voiceParts?: string[];
+}
+
+interface CompositionBackgroundItem {
+  id: number;
+  alt?: string;
+  photographer?: string;
+  src: {
+    original?: string | null;
+    large2x?: string | null;
+    large?: string | null;
+    landscape?: string | null;
+    medium?: string | null;
+    portrait?: string | null;
+    small?: string | null;
+  };
 }
 
 type MetadataMode = "ai" | "manual" | null;
@@ -85,6 +101,20 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
   const [metadataMode, setMetadataMode] = useState<MetadataMode>(null);
   const [analysisAttempted, setAnalysisAttempted] = useState(false);
   const [analysisFailed, setAnalysisFailed] = useState(false);
+  const [backgroundPrompt, setBackgroundPrompt] = useState("");
+  const [backgroundCandidates, setBackgroundCandidates] = useState<
+    CompositionBackgroundItem[]
+  >([]);
+  const [selectedBackgroundUrl, setSelectedBackgroundUrl] = useState("");
+  const [isGeneratingBackground, setIsGeneratingBackground] = useState(false);
+  const [isConvertingPrice, setIsConvertingPrice] = useState(false);
+  const [priceConversion, setPriceConversion] = useState<{
+    originalAmount: number;
+    originalCurrency: string;
+    usdAmount: number;
+    rateToUsd: number;
+    detectedBy: "ai" | "heuristic";
+  } | null>(null);
 
   const voicePartOptions = [
     "Soprano",
@@ -123,6 +153,14 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
   const isManualMode = metadataMode === "manual";
   const shouldShowMetadataFields =
     isManualMode || (isAiMode && (analysisAttempted || analysisFailed));
+
+  const getBackgroundImageUrl = (item?: CompositionBackgroundItem | null) =>
+    item?.src?.landscape ||
+    item?.src?.large ||
+    item?.src?.large2x ||
+    item?.src?.medium ||
+    item?.src?.original ||
+    "";
 
   const missingRequiredFields: string[] = [];
   if (!formData.title.trim()) missingRequiredFields.push("Title");
@@ -304,6 +342,124 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     }
   };
 
+  const generateMarketingBackground = async (options?: {
+    silent?: boolean;
+    autoSelect?: boolean;
+  }): Promise<string | null> => {
+    const title = formData.title.trim();
+    if (!title) {
+      if (!options?.silent) {
+        toast.error("Enter a composition title first");
+      }
+      return null;
+    }
+
+    try {
+      setIsGeneratingBackground(true);
+      const payload = await mediaService.getCompositionBackground({
+        title,
+        description: formData.description.trim() || undefined,
+        language: resolvedLanguage || undefined,
+        accompaniment: resolvedAccompaniment || undefined,
+        voiceParts: formData.voiceParts,
+        perPage: 9,
+      });
+
+      const candidates = Array.isArray(payload?.items) ? payload.items : [];
+      setBackgroundPrompt(payload?.shortDescription || "");
+      setBackgroundCandidates(candidates);
+
+      if (candidates.length === 0) {
+        if (!options?.silent) {
+          toast.error(
+            payload?.warning ||
+              "No Pexels background found. Try editing title or description.",
+          );
+        }
+        return null;
+      }
+
+      const topUrl = getBackgroundImageUrl(candidates[0]);
+      let nextSelectedUrl = selectedBackgroundUrl;
+      if (options?.autoSelect || !nextSelectedUrl) {
+        nextSelectedUrl = topUrl || "";
+        if (nextSelectedUrl) {
+          setSelectedBackgroundUrl(nextSelectedUrl);
+        }
+      }
+
+      if (!options?.silent) {
+        toast.success("Marketing-friendly backgrounds generated");
+      }
+      return nextSelectedUrl || topUrl || null;
+    } catch (error) {
+      console.error("[UploadComposition] background generation failed:", error);
+      if (!options?.silent) {
+        toast.error("Failed to generate marketing background");
+      }
+      return null;
+    } finally {
+      setIsGeneratingBackground(false);
+    }
+  };
+
+  const convertCurrentPriceToUsd = async (options?: { silent?: boolean }) => {
+    const rawPriceInput = formData.price.trim();
+    const currencyHint = resolveCustomOrPreset(
+      formData.currency,
+      formData.customCurrency,
+    );
+
+    if (!rawPriceInput && !currencyHint) {
+      if (!options?.silent) {
+        toast.error("Enter a price first");
+      }
+      return null;
+    }
+
+    try {
+      setIsConvertingPrice(true);
+      const converted = await compositionService.convertPriceToUsd({
+        priceInput: rawPriceInput,
+        currencyHint: currencyHint || undefined,
+      });
+
+      setPriceConversion({
+        originalAmount: Number(converted.originalAmount || 0),
+        originalCurrency: String(converted.originalCurrency || "USD"),
+        usdAmount: Number(converted.usdAmount || 0),
+        rateToUsd: Number(converted.rateToUsd || 1),
+        detectedBy: converted.detectedBy || "heuristic",
+      });
+
+      setFormData((prev) => ({
+        ...prev,
+        price: Number(converted.usdAmount || 0).toFixed(2),
+        currency: "USD",
+        customCurrency: "",
+      }));
+
+      if (!options?.silent) {
+        toast.success(
+          `Converted to USD $${Number(converted.usdAmount || 0).toFixed(2)}`,
+        );
+      }
+      return converted;
+    } catch (error) {
+      console.error("[UploadComposition] price conversion failed:", error);
+      if (!options?.silent) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Failed to detect/convert price to USD",
+        );
+      }
+      return null;
+    } finally {
+      setIsConvertingPrice(false);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && file.type === "application/pdf") {
@@ -337,16 +493,30 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
         return;
       }
 
-      // Validate form data
-      const parsedPrice = Number.parseFloat(formData.price);
+      // Validate and normalize price to USD
+      let parsedPrice = Number.parseFloat(formData.price);
+      let finalCurrency = resolvedCurrency || "USD";
+      if (!Number.isFinite(parsedPrice) || parsedPrice <= 0 || finalCurrency !== "USD") {
+        const converted = await convertCurrentPriceToUsd({ silent: true });
+        if (!converted) {
+          toast.error(
+            "Could not detect and convert the entered price to USD. Use a format like 'KES 3500', '€25', or select currency then convert.",
+          );
+          setIsSubmitting(false);
+          return;
+        }
+        parsedPrice = Number(converted.usdAmount || 0);
+        finalCurrency = "USD";
+      }
+
       if (!formData.title || !formData.description.trim()) {
         toast.error("Please fill in title and description");
         setIsSubmitting(false);
         return;
       }
 
-      if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
-        toast.error("Please enter a valid non-negative price");
+      if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+        toast.error("Please enter a valid positive price");
         setIsSubmitting(false);
         return;
       }
@@ -430,6 +600,17 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
         return;
       }
 
+      let thumbnailUrl = selectedBackgroundUrl.trim();
+      if (!thumbnailUrl) {
+        const generatedUrl = await generateMarketingBackground({
+          silent: true,
+          autoSelect: true,
+        });
+        if (generatedUrl) {
+          thumbnailUrl = generatedUrl;
+        }
+      }
+
       // Step 2: Save composition metadata through backend API.
       // Server resolves composer_id from authenticated user.
       const createResponse = await fetch(`${API_BASE_URL}/compositions`, {
@@ -442,7 +623,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
           title: formData.title,
           description: formData.description,
           price: parsedPrice,
-          price_currency: resolvedCurrency,
+          price_currency: finalCurrency,
           difficulty: resolvedDifficulty,
           duration: formData.duration || null,
           language: resolvedLanguage,
@@ -450,6 +631,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
           voice_parts:
             formData.voiceParts.length > 0 ? formData.voiceParts : null,
           pdf_url: pdfUrl,
+          thumbnail_url: thumbnailUrl || null,
           is_published: true,
         }),
       });
@@ -470,7 +652,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
           payload: {
             title: formData.title,
             price: formData.price,
-            price_currency: resolvedCurrency,
+            price_currency: finalCurrency,
             difficulty: resolvedDifficulty,
             language: resolvedLanguage,
             accompaniment: resolvedAccompaniment,
@@ -672,6 +854,79 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
         />
       </div>
 
+      {/* Marketing Background */}
+      <div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Label>Marketing Background (AI + Pexels)</Label>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() =>
+              void generateMarketingBackground({ silent: false, autoSelect: true })
+            }
+            disabled={isSubmitting || isGeneratingBackground || !formData.title.trim()}
+          >
+            {isGeneratingBackground ? "Generating..." : "Generate Background"}
+          </Button>
+        </div>
+        <p className="mt-2 text-xs text-gray-600">
+          Uses your title and description to generate a short visual prompt, then
+          searches Pexels for marketing-friendly composition artwork.
+        </p>
+        {backgroundPrompt && (
+          <p className="mt-2 rounded-md border border-border/70 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            AI visual brief: {backgroundPrompt}
+          </p>
+        )}
+
+        {selectedBackgroundUrl ? (
+          <div className="mt-3 overflow-hidden rounded-lg border border-border/70 bg-muted/20">
+            <img
+              src={selectedBackgroundUrl}
+              alt="Selected composition background"
+              className="h-40 w-full object-cover"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+        ) : (
+          <div className="mt-3 rounded-lg border border-dashed border-border/70 bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
+            No background selected yet. Generate one for better marketplace
+            presentation.
+          </div>
+        )}
+
+        {backgroundCandidates.length > 0 && (
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {backgroundCandidates.map((item) => {
+              const imageUrl = getBackgroundImageUrl(item);
+              if (!imageUrl) return null;
+              const isActive = selectedBackgroundUrl === imageUrl;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`overflow-hidden rounded-md border transition ${
+                    isActive
+                      ? "border-primary ring-2 ring-primary/40"
+                      : "border-border/70 hover:border-primary/50"
+                  }`}
+                  onClick={() => setSelectedBackgroundUrl(imageUrl)}
+                >
+                  <img
+                    src={imageUrl}
+                    alt={item.alt || "Pexels composition background option"}
+                    className="h-24 w-full object-cover"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Price */}
       <div>
         <Label>Price *</Label>
@@ -680,11 +935,14 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
             <Select
               value={formData.currency}
               onValueChange={(value) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  currency: value,
-                  customCurrency: value === "Other" ? prev.customCurrency : "",
-                }))
+                {
+                  setPriceConversion(null);
+                  setFormData((prev) => ({
+                    ...prev,
+                    currency: value,
+                    customCurrency: value === "Other" ? prev.customCurrency : "",
+                  }));
+                }
               }
               required
             >
@@ -703,19 +961,18 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
           <div className="sm:col-span-2">
             <Input
               id="price"
-              type="number"
-              step="0.01"
-              min="0"
+              type="text"
               value={formData.price}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, price: e.target.value }))
-              }
+              onChange={(e) => {
+                setPriceConversion(null);
+                setFormData((prev) => ({ ...prev, price: e.target.value }));
+              }}
               placeholder={
                 formData.currency === "KES"
-                  ? "e.g., 3500"
+                  ? "e.g., 3500 or KES 3500"
                   : formData.currency === "EUR"
-                    ? "e.g., 25.00"
-                    : "e.g., 29.99"
+                    ? "e.g., 25.00 or EUR 25"
+                    : "e.g., 29.99 or USD 29.99"
               }
               required
             />
@@ -726,18 +983,39 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
             className="mt-3"
             value={formData.customCurrency}
             onChange={(e) =>
-              setFormData((prev) => ({
-                ...prev,
-                customCurrency: e.target.value.toUpperCase(),
-              }))
+              {
+                setPriceConversion(null);
+                setFormData((prev) => ({
+                  ...prev,
+                  customCurrency: e.target.value.toUpperCase(),
+                }));
+              }
             }
             placeholder="Enter currency code or name (e.g., GBP)"
             required
           />
         )}
         <p className="mt-2 text-xs text-gray-600">
-          Select currency first, then enter the numeric amount.
+          Enter amount with or without currency code. Example: KES 3500, €25,
+          USD 29.99.
         </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void convertCurrentPriceToUsd({ silent: false })}
+            disabled={isSubmitting || isConvertingPrice || !formData.price.trim()}
+          >
+            {isConvertingPrice ? "Converting..." : "AI Detect & Convert to USD"}
+          </Button>
+          {priceConversion && (
+            <span className="text-xs text-muted-foreground">
+              {priceConversion.detectedBy === "ai" ? "AI" : "Rule"} detected{" "}
+              {priceConversion.originalCurrency} {priceConversion.originalAmount.toFixed(2)}{" "}
+              {"->"} USD {priceConversion.usdAmount.toFixed(2)}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Voice Parts */}

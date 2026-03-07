@@ -5,6 +5,7 @@ import {
   MessageSquare,
   MessageSquarePlus,
   Send,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -62,6 +63,7 @@ export function SupportIssueButton({
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [creatingThread, setCreatingThread] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [improvingDraft, setImprovingDraft] = useState(false);
 
   const [newSubject, setNewSubject] = useState("");
   const [draftMessage, setDraftMessage] = useState("");
@@ -248,6 +250,39 @@ export function SupportIssueButton({
       toast.error(error?.message || "Failed to send message");
     } finally {
       setSendingMessage(false);
+    }
+  };
+
+  const handleImproveDraftWithAi = async () => {
+    const normalizedMessage = draftMessage.trim();
+    if (!normalizedMessage) {
+      toast.error("Type your message first, then use AI assist.");
+      return;
+    }
+
+    setImprovingDraft(true);
+    try {
+      const response = await supportService.draftMessageWithAi({
+        useCase: "support",
+        subject: selectedThread ? selectedThread.subject : newSubject,
+        message: normalizedMessage,
+        context: selectedThread?.context || context,
+      });
+
+      const nextMessage = response?.draft?.message || normalizedMessage;
+      setDraftMessage(nextMessage);
+
+      const nextSubject = response?.draft?.subject || "";
+      if (!selectedThread && !newSubject.trim() && nextSubject) {
+        setNewSubject(nextSubject);
+      }
+
+      toast.success("Message polished with AI");
+    } catch (error: any) {
+      console.error("[support-chat] ai assist failed:", error);
+      toast.error(error?.message || "Failed to generate AI draft");
+    } finally {
+      setImprovingDraft(false);
     }
   };
 
@@ -448,17 +483,48 @@ export function SupportIssueButton({
                   }
                   rows={3}
                   maxLength={4000}
-                  disabled={creatingThread || sendingMessage || selectedThreadClosed}
+                  disabled={
+                    creatingThread ||
+                    sendingMessage ||
+                    improvingDraft ||
+                    selectedThreadClosed
+                  }
                 />
               </div>
 
-              <div className="mt-3 flex justify-end">
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleImproveDraftWithAi()}
+                  disabled={
+                    creatingThread ||
+                    sendingMessage ||
+                    improvingDraft ||
+                    selectedThreadClosed ||
+                    !draftMessage.trim() ||
+                    !appUser?.id
+                  }
+                >
+                  {improvingDraft ? (
+                    <>
+                      <Loader className="mr-2 size-4 animate-spin" />
+                      Refining...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="mr-2 size-4" />
+                      AI Assist
+                    </>
+                  )}
+                </Button>
                 <Button
                   type="button"
                   onClick={() => void handleSendMessage()}
                   disabled={
                     creatingThread ||
                     sendingMessage ||
+                    improvingDraft ||
                     !draftMessage.trim() ||
                     selectedThreadClosed ||
                     !appUser?.id

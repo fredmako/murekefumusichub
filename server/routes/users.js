@@ -21,6 +21,56 @@ async function prepareUserResponse(userRow) {
   return await refreshAvatarUrl(withNormalizedAvatar(userRow));
 }
 
+async function resolveUserRoles(userRow) {
+  const roles = ["buyer"];
+  const userId = userRow?.id;
+  const normalizedEmail = String(userRow?.email || "")
+    .trim()
+    .toLowerCase();
+
+  if (!userId) {
+    if (normalizedEmail && ADMIN_IDENTIFIERS.has(normalizedEmail)) {
+      roles.push("admin");
+    }
+    return roles;
+  }
+
+  // Primary source: explicit role assignments
+  const { data: roleRows, error: roleRowsErr } = await supabaseAdmin
+    .from("user_roles")
+    .select("roles(name)")
+    .eq("user_id", userId);
+  if (roleRowsErr) throw roleRowsErr;
+
+  (roleRows || []).forEach((row) => {
+    const roleName = row?.roles?.name;
+    if (roleName && !roles.includes(roleName)) roles.push(roleName);
+  });
+
+  // Safety check for composer legacy compatibility.
+  const { data: composer } = await supabaseAdmin
+    .from("composers")
+    .select("id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (composer && !roles.includes("composer")) roles.push("composer");
+
+  // Admin via env allowlist / admin_emails fallback.
+  if (normalizedEmail && ADMIN_IDENTIFIERS.has(normalizedEmail)) {
+    if (!roles.includes("admin")) roles.push("admin");
+  } else if (normalizedEmail) {
+    const { data: adminEmail } = await supabaseAdmin
+      .from("admin_emails")
+      .select("id")
+      .ilike("email", normalizedEmail)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (adminEmail && !roles.includes("admin")) roles.push("admin");
+  }
+
+  return roles;
+}
+
 // GET /api/users/:id
 router.get("/:id", async (req, res) => {
   try {
@@ -38,32 +88,7 @@ router.get("/:id", async (req, res) => {
     if (error) throw error;
     if (!data) return res.status(404).json({ message: "User not found" });
 
-    // Determine roles: check composers table + admin email list
-    const roles = ["buyer"];
-
-    // Check if user has composer record
-    const { data: composer } = await supabaseAdmin
-      .from("composers")
-      .select("id")
-      .eq("user_id", data.id)
-      .maybeSingle();
-    if (composer && !roles.includes("composer")) roles.push("composer");
-
-    const normalizedEmail = String(data.email || "")
-      .trim()
-      .toLowerCase();
-    if (normalizedEmail && ADMIN_IDENTIFIERS.has(normalizedEmail)) {
-      roles.push("admin");
-    } else if (normalizedEmail) {
-      // Check if user is admin (via admin_emails table)
-      const { data: adminEmail } = await supabaseAdmin
-        .from("admin_emails")
-        .select("id")
-        .ilike("email", normalizedEmail)
-        .eq("is_active", true)
-        .maybeSingle();
-      if (adminEmail && !roles.includes("admin")) roles.push("admin");
-    }
+    const roles = await resolveUserRoles(data);
 
     const prepared = await prepareUserResponse(data);
     return res.json({ ...prepared, roles });
@@ -91,32 +116,7 @@ router.get("/by-auth-uid/:authUid", async (req, res) => {
     if (error) throw error;
     if (!data) return res.status(404).json({ message: "User not found" });
 
-    // Determine roles: check composers table + admin email list
-    const roles = ["buyer"];
-
-    // Check if user has composer record
-    const { data: composer } = await supabaseAdmin
-      .from("composers")
-      .select("id")
-      .eq("user_id", data.id)
-      .maybeSingle();
-    if (composer && !roles.includes("composer")) roles.push("composer");
-
-    const normalizedEmail = String(data.email || "")
-      .trim()
-      .toLowerCase();
-    if (normalizedEmail && ADMIN_IDENTIFIERS.has(normalizedEmail)) {
-      roles.push("admin");
-    } else if (normalizedEmail) {
-      // Check if user is admin (via admin_emails table)
-      const { data: adminEmail } = await supabaseAdmin
-        .from("admin_emails")
-        .select("id")
-        .ilike("email", normalizedEmail)
-        .eq("is_active", true)
-        .maybeSingle();
-      if (adminEmail && !roles.includes("admin")) roles.push("admin");
-    }
+    const roles = await resolveUserRoles(data);
 
     const prepared = await prepareUserResponse(data);
     return res.json({ ...prepared, roles });

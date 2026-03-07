@@ -58,6 +58,15 @@ export interface SupportInboxPayload {
 }
 
 export type AdminThreadType = "notification" | "ticket" | "direct";
+export type AiDraftUseCase = "support" | "message" | "announcement";
+
+export interface SupportAiDraftPayload {
+  useCase: AiDraftUseCase;
+  message: string;
+  subject?: string;
+  audienceRoles?: string[];
+  context?: string;
+}
 
 export const supportService = {
   async submitIssue(payload: SupportIssuePayload) {
@@ -98,6 +107,43 @@ export const supportService = {
       method: "POST",
       body: JSON.stringify(payload),
       timeoutMs: 30000,
+      requiresAuth: true,
+    });
+  },
+
+  async draftMessageWithAi(payload: SupportAiDraftPayload) {
+    return await apiRequest<{
+      success: boolean;
+      useCase: AiDraftUseCase;
+      model: string;
+      draft: {
+        subject?: string;
+        message: string;
+      };
+    }>("/support/ai/draft", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      timeoutMs: 45000,
+      requiresAuth: true,
+    });
+  },
+
+  async createRoleAnnouncement(payload: {
+    roles: string[];
+    subject?: string;
+    message: string;
+    context?: string;
+  }) {
+    return await apiRequest<{
+      success: boolean;
+      recipientCount: number;
+      targetRoles: string[];
+      createdThreadIds: string[];
+      message: string;
+    }>("/support/admin/announcements", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      timeoutMs: 45000,
       requiresAuth: true,
     });
   },

@@ -565,6 +565,29 @@ export const compositionService = {
     return await apiRequest(`/compositions/${id}`, { method: "GET" });
   },
 
+  async convertPriceToUsd(payload: {
+    priceInput?: string;
+    amount?: number;
+    currencyHint?: string;
+  }) {
+    return await apiRequest<{
+      success: boolean;
+      detectedBy: "ai" | "heuristic";
+      aiConfidence?: number | null;
+      originalAmount: number;
+      originalCurrency: string;
+      rateToUsd: number;
+      usdAmount: number;
+      usdCurrency: "USD";
+      convertedAt: string;
+    }>("/compositions/price-to-usd", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      requiresAuth: true,
+      timeoutMs: 30000,
+    });
+  },
+
   async create(compositionData: {
     title: string;
     description: string;
@@ -897,6 +920,51 @@ export const mediaService = {
         url?: string | null;
       }>;
     }>(`/media/landing-images?${params.toString()}`, { method: "GET" });
+  },
+
+  async getCompositionBackground(options: {
+    title: string;
+    description?: string;
+    language?: string;
+    accompaniment?: string;
+    voiceParts?: string[];
+    perPage?: number;
+  }) {
+    const params = new URLSearchParams();
+    params.set("title", options.title);
+    if (options.description) params.set("description", options.description);
+    if (options.language) params.set("language", options.language);
+    if (options.accompaniment)
+      params.set("accompaniment", options.accompaniment);
+    if (Array.isArray(options.voiceParts) && options.voiceParts.length > 0) {
+      params.set("voiceParts", options.voiceParts.join(","));
+    }
+    params.set("perPage", String(options.perPage ?? 10));
+
+    return await apiRequest<{
+      source: string;
+      shortDescription?: string;
+      queries?: string[];
+      warning?: string;
+      errors?: string[];
+      items: Array<{
+        id: number;
+        photographer: string;
+        width?: number;
+        height?: number;
+        alt?: string;
+        src: {
+          original?: string | null;
+          large2x?: string | null;
+          large?: string | null;
+          landscape?: string | null;
+          medium?: string | null;
+          portrait?: string | null;
+          small?: string | null;
+        };
+        url?: string | null;
+      }>;
+    }>(`/media/composition-background?${params.toString()}`, { method: "GET" });
   },
 };
 

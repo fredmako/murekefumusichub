@@ -1,8 +1,8 @@
 param(
-  [string]$FrontendRemote = "frontend",
+  [string[]]$FrontendRemotes = @("frontend"),
   [string]$FrontendBranch = "main",
   [string]$BackendDir = "server",
-  [string]$BackendRemote = "backend",
+  [string[]]$BackendRemotes = @("backend"),
   [string]$BackendBranch = "main",
   [switch]$SkipDirtyCheck,
   [switch]$DryRun
@@ -42,14 +42,28 @@ if (-not (Test-Path (Join-Path $backendPath ".git"))) {
   Fail "Backend directory '$BackendDir' is not a git repository."
 }
 
-$frontendRemoteUrl = GetGitOutput $repoRoot @("remote", "get-url", $FrontendRemote)
-if (-not $frontendRemoteUrl) {
-  Fail "Frontend remote '$FrontendRemote' is not configured in root repo."
+$resolvedFrontendRemotes = @()
+foreach ($frontendRemote in $FrontendRemotes) {
+  $frontendRemoteUrl = GetGitOutput $repoRoot @("remote", "get-url", $frontendRemote)
+  if (-not $frontendRemoteUrl) {
+    Fail "Frontend remote '$frontendRemote' is not configured in root repo."
+  }
+  $resolvedFrontendRemotes += [PSCustomObject]@{
+    Name = $frontendRemote
+    Url  = $frontendRemoteUrl
+  }
 }
 
-$backendRemoteUrl = GetGitOutput $backendPath @("remote", "get-url", $BackendRemote)
-if (-not $backendRemoteUrl) {
-  Fail "Backend remote '$BackendRemote' is not configured in $BackendDir repo."
+$resolvedBackendRemotes = @()
+foreach ($backendRemote in $BackendRemotes) {
+  $backendRemoteUrl = GetGitOutput $backendPath @("remote", "get-url", $backendRemote)
+  if (-not $backendRemoteUrl) {
+    Fail "Backend remote '$backendRemote' is not configured in $BackendDir repo."
+  }
+  $resolvedBackendRemotes += [PSCustomObject]@{
+    Name = $backendRemote
+    Url  = $backendRemoteUrl
+  }
 }
 
 $frontendConflicts = GetGitOutput $repoRoot @("diff", "--name-only", "--diff-filter=U")
@@ -77,20 +91,34 @@ if (-not $SkipDirtyCheck) {
 $frontendRef = "HEAD:$FrontendBranch"
 $backendRef = "HEAD:$BackendBranch"
 
-Write-Host "[push-deploy] Frontend remote: $FrontendRemote -> $frontendRemoteUrl"
-Write-Host "[push-deploy] Backend remote:  $BackendRemote -> $backendRemoteUrl"
+Write-Host "[push-deploy] Frontend target branch: $FrontendBranch"
+Write-Host "[push-deploy] Backend target branch:  $BackendBranch"
+foreach ($target in $resolvedFrontendRemotes) {
+  Write-Host "[push-deploy] Frontend remote: $($target.Name) -> $($target.Url)"
+}
+foreach ($target in $resolvedBackendRemotes) {
+  Write-Host "[push-deploy] Backend remote:  $($target.Name) -> $($target.Url)"
+}
 
 if ($DryRun) {
   Write-Host "[push-deploy] DRY RUN mode enabled. No push was executed." -ForegroundColor Yellow
-  Write-Host "[push-deploy] Would run: git -C $repoRoot push $FrontendRemote $frontendRef"
-  Write-Host "[push-deploy] Would run: git -C $backendPath push $BackendRemote $backendRef"
+  foreach ($target in $resolvedFrontendRemotes) {
+    Write-Host "[push-deploy] Would run: git -C $repoRoot push $($target.Name) $frontendRef"
+  }
+  foreach ($target in $resolvedBackendRemotes) {
+    Write-Host "[push-deploy] Would run: git -C $backendPath push $($target.Name) $backendRef"
+  }
   exit 0
 }
 
-Write-Host "[push-deploy] Pushing frontend..."
-RunGit $repoRoot @("push", $FrontendRemote, $frontendRef)
+foreach ($target in $resolvedFrontendRemotes) {
+  Write-Host "[push-deploy] Pushing frontend -> $($target.Name)..."
+  RunGit $repoRoot @("push", $target.Name, $frontendRef)
+}
 
-Write-Host "[push-deploy] Pushing backend..."
-RunGit $backendPath @("push", $BackendRemote, $backendRef)
+foreach ($target in $resolvedBackendRemotes) {
+  Write-Host "[push-deploy] Pushing backend -> $($target.Name)..."
+  RunGit $backendPath @("push", $target.Name, $backendRef)
+}
 
 Write-Host "[push-deploy] Completed successfully." -ForegroundColor Green
