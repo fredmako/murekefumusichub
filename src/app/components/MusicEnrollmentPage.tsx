@@ -167,29 +167,25 @@ export const MusicEnrollmentPage: React.FC = () => {
       case "approved":
         return {
           label: "Payment approved",
-          tone:
-            "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200",
+          tone: "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200",
           Icon: CheckCircle2,
         };
       case "pending":
         return {
           label: "Payment pending review",
-          tone:
-            "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200",
+          tone: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200",
           Icon: Clock3,
         };
       case "rejected":
         return {
           label: "Payment needs resubmission",
-          tone:
-            "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200",
+          tone: "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200",
           Icon: ShieldAlert,
         };
       default:
         return {
           label: "Payment not submitted",
-          tone:
-            "border-border/70 bg-muted/40 text-muted-foreground",
+          tone: "border-border/70 bg-muted/40 text-muted-foreground",
           Icon: CreditCard,
         };
     }
@@ -226,7 +222,9 @@ export const MusicEnrollmentPage: React.FC = () => {
         ? submissions[0] || null
         : null;
       setPaymentRecord(latestSubmission);
-      setPaymentStatus(latestSubmission?.status === "pending" ? "pending" : "none");
+      setPaymentStatus(
+        latestSubmission?.status === "pending" ? "pending" : "none",
+      );
     } catch (error: any) {
       console.error("[enrollment-payment-submit] error:", error);
       toast.error(
@@ -293,141 +291,6 @@ export const MusicEnrollmentPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white px-4 py-12 dark:from-[#071121] dark:to-[#0d1c31]">
       <div className="container mx-auto max-w-4xl space-y-6">
-        <div className="text-center">
-          <div className="mb-4 flex justify-center text-primary">
-            <Music className="h-12 w-12" />
-          </div>
-          <h1 className="mb-2 text-4xl font-bold text-gray-900 dark:text-white">
-            Music Class Enrollment
-          </h1>
-          <p className="text-gray-600 dark:text-slate-300">
-            Enroll in professional music classes and complete any required
-            registration payment from the same workflow.
-          </p>
-        </div>
-
-        <Card className="shadow-xl">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CreditCard className="size-5 text-primary" />
-              Registration Payment
-            </CardTitle>
-            <CardDescription>
-              The backend can require an approved registration payment before an
-              enrollment is accepted.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {paymentStateLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" />
-                Loading enrollment payment requirements...
-              </div>
-            ) : (
-              <>
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="rounded-xl border border-border/70 bg-card/70 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      Required Fee
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold">
-                      {enrollmentPaymentRequired
-                        ? formatKesAmount(enrollmentFee)
-                        : "No fee"}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-border/70 bg-card/70 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      Bank
-                    </p>
-                    <p className="mt-2 text-base font-semibold">
-                      {registrationRegulations?.bankName || "I&M Bank"}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {registrationRegulations?.accountName || "Murekefu Music Hub"}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-border/70 bg-card/70 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      Account Number
-                    </p>
-                    <p className="mt-2 break-all text-base font-semibold">
-                      {registrationRegulations?.bankAccountNumber ||
-                        "0030 7335 5161 50"}
-                    </p>
-                  </div>
-                </div>
-
-                <div
-                  className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-sm ${paymentStatusMeta.tone}`}
-                >
-                  <paymentStatusMeta.Icon className="size-4 shrink-0" />
-                  <div>
-                    <p className="font-medium">{paymentStatusMeta.label}</p>
-                    {paymentRecord?.payment_ref ? (
-                      <p className="text-xs opacity-80">
-                        Latest reference: {paymentRecord.payment_ref}
-                      </p>
-                    ) : null}
-                    {paymentRecord?.admin_notes ? (
-                      <p className="text-xs opacity-80">
-                        Admin notes: {paymentRecord.admin_notes}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-
-                {enrollmentPaymentRequired ? (
-                  <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
-                    <div className="mb-3 flex items-center gap-2">
-                      <Building2 className="size-4 text-primary" />
-                      <p className="text-sm font-medium">
-                        Submit the payment reference used for the enrollment fee
-                      </p>
-                    </div>
-                    <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-                      <Input
-                        value={paymentRef}
-                        onChange={(e) => setPaymentRef(e.target.value)}
-                        placeholder="Enter bank or M-Pesa transaction reference"
-                        disabled={
-                          paymentLoading ||
-                          paymentStatus === "pending" ||
-                          paymentStatus === "approved"
-                        }
-                      />
-                      <Button
-                        type="button"
-                        onClick={handleRegistrationPaymentSubmit}
-                        disabled={
-                          paymentLoading ||
-                          !paymentRef.trim() ||
-                          paymentStatus === "pending" ||
-                          paymentStatus === "approved"
-                        }
-                      >
-                        {paymentLoading ? (
-                          <>
-                            <Loader2 className="mr-2 size-4 animate-spin" />
-                            Submitting...
-                          </>
-                        ) : (
-                          "Submit Payment Ref"
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Enrollment can be submitted immediately because no fee is
-                    currently configured.
-                  </p>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
-
         <Card className="shadow-xl">
           <CardHeader>
             <CardTitle>Student Information</CardTitle>
