@@ -7,6 +7,7 @@ import { useLocation, NavLink, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { CartItem } from "@/app/types";
+import { formatKesAmount } from "@/lib/currency";
 import { toast } from "sonner";
 import { ensureArray } from "@/lib/ensureArray";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
@@ -71,6 +72,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [messengerUnreadCount, setMessengerUnreadCount] = useState(0);
   const [notifLoading, setNotifLoading] = useState(false);
+  const [markingAllRead, setMarkingAllRead] = useState(false);
   const [processingNotification, setProcessingNotification] = useState<
     string | null
   >(null);
@@ -212,6 +214,30 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     }
   };
 
+  const handleMarkAllAsRead = async () => {
+    if (notifications.length === 0 || markingAllRead) return;
+    setMarkingAllRead(true);
+    try {
+      const result = await navbarService.markNotificationsRead(notifications);
+      if (result.partialFailure) {
+        const refreshed = await navbarService.fetchNotifications({ isAdmin });
+        setNotifications(
+          ensureArray<any>(refreshed?.notificationItems, ["notifications"]),
+        );
+        setMessengerUnreadCount(
+          Math.max(0, Number(refreshed?.messengerUnreadCount || 0)),
+        );
+      } else {
+        setNotifications([]);
+      }
+    } catch (err) {
+      console.error("Failed to mark notifications as read:", err);
+      toast.error("Failed to mark notifications as read");
+    } finally {
+      setMarkingAllRead(false);
+    }
+  };
+
   const navItems = [
     {
       label: "Learn Music",
@@ -296,12 +322,12 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   })();
 
   return (
-    <nav className="texture-fabric sticky top-0 z-40 overflow-x-clip border-b border-border/80 bg-card/90 backdrop-blur-md">
+    <nav className="texture-fabric sticky top-0 z-40 overflow-x-clip border-b border-border/80 bg-card/95">
       <div className="app-shell">
-        <div className="flex h-16 min-w-0 items-center justify-between gap-2">
+        <div className="flex h-16 min-w-0 items-center justify-between gap-2 sm:gap-3">
           {/* ================= Logo ================= */}
-          <Link to="/" className="flex min-w-0 items-center gap-2">
-            <span className="inline-flex items-center rounded-xl border border-[#0a2e43]/20 bg-gradient-to-br from-[#0b2940] to-[#081e32] px-2 py-1 shadow-[0_10px_20px_-14px_rgba(2,24,39,0.95)]">
+          <Link to="/" className="flex min-w-0 flex-1 items-center gap-2 lg:flex-none">
+            <span className="inline-flex shrink-0 items-center rounded-xl border border-[#0a2e43]/20 bg-gradient-to-br from-[#0b2940] to-[#081e32] px-2 py-1 shadow-[0_10px_20px_-14px_rgba(2,24,39,0.95)]">
               <img
                 src={systemLogo}
                 alt="Murekefu Music Hub logo"
@@ -309,10 +335,13 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
               />
             </span>
             <div className="min-w-0">
-              <h1 className="truncate text-base font-semibold leading-tight tracking-tight text-foreground sm:text-lg">
+              <h1 className="hidden truncate text-base font-semibold leading-tight tracking-tight text-foreground sm:block sm:text-lg">
                 Murekefu Music Hub
               </h1>
-              <p className="hidden truncate text-xs text-muted-foreground sm:block">Choral Music Hub</p>
+              <h1 className="truncate text-sm font-semibold leading-tight tracking-tight text-foreground sm:hidden">
+                Music Hub
+              </h1>
+              <p className="hidden truncate text-xs text-muted-foreground md:block">Choral Music Hub</p>
             </div>
           </Link>
 
@@ -365,6 +394,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
               <SupportIssueButton
                 context="navbar-messenger"
                 triggerLabel="Messenger"
+                hideLabelOnMobile
                 triggerIcon="message"
                 triggerVariant="outline"
                 unreadCount={messengerUnreadCount}
@@ -407,38 +437,59 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                   <DropdownMenuLabel>
                     <div className="flex items-center justify-between">
                       <span className="font-medium">Notifications</span>
-                      <span className="text-xs text-gray-500">
-                        {notifLoading
-                          ? "Refreshing..."
-                          : `${notifications.length}`}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {notifications.length > 0 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              void handleMarkAllAsRead();
+                            }}
+                            disabled={notifLoading || markingAllRead}
+                          >
+                            {markingAllRead ? (
+                              <Loader className="mr-1 size-3 animate-spin" />
+                            ) : null}
+                            Mark all as read
+                          </Button>
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {notifLoading ? "Refreshing..." : `${notifications.length}`}
+                        </span>
+                      </div>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
 
                   {notifications.length === 0 && (
-                    <div className="px-4 py-3 text-sm text-gray-600">
+                    <div className="px-4 py-3 text-sm text-muted-foreground">
                       No notifications
                     </div>
                   )}
 
-                  {notifications.map((n) => (
-                    <div
-                      key={n.id}
-                      className="px-4 py-3 border-b hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex flex-col gap-2">
+                  {notifications.length > 0 && (
+                    <div className="max-h-[26rem] space-y-2 overflow-y-auto px-2 pb-2">
+                      {notifications.map((n) => (
+                        <div
+                          key={n.id}
+                          className="rounded-xl border border-border/70 bg-card/95 px-4 py-3 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.55)] transition-colors hover:bg-muted/35"
+                        >
+                          <div className="flex flex-col gap-2">
                         <div className="min-w-0">
                           {n.type === "message" ? (
                             <>
                               <span className="font-semibold block">
                                 New Message
                               </span>
-                              <span className="text-xs text-gray-500 line-clamp-1">
+                              <span className="text-xs text-muted-foreground line-clamp-1">
                                 {n.subject || "Messenger"}
                               </span>
                               {n.preview ? (
-                                <span className="text-xs text-gray-500 line-clamp-2 block mt-1">
+                                <span className="text-xs text-muted-foreground line-clamp-2 block mt-1">
                                   {n.preview}
                                 </span>
                               ) : null}
@@ -448,16 +499,16 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                               <span className="font-semibold block">
                                 Announcement
                               </span>
-                              <span className="text-xs text-gray-500 line-clamp-1">
+                              <span className="text-xs text-muted-foreground line-clamp-1">
                                 {n.subject || "Platform announcement"}
                               </span>
                               {n.preview ? (
-                                <span className="text-xs text-gray-500 line-clamp-2 block mt-1">
+                                <span className="text-xs text-muted-foreground line-clamp-2 block mt-1">
                                   {n.preview}
                                 </span>
                               ) : null}
                               {Number(n.recipientCount || 0) > 0 ? (
-                                <span className="text-xs text-gray-500 block mt-1">
+                                <span className="text-xs text-muted-foreground block mt-1">
                                   Audience: {Number(n.recipientCount)} user(s)
                                 </span>
                               ) : null}
@@ -467,11 +518,11 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                               <span className="font-semibold block">
                                 Notification
                               </span>
-                              <span className="text-xs text-gray-500 line-clamp-1">
+                              <span className="text-xs text-muted-foreground line-clamp-1">
                                 {n.subject || "System notification"}
                               </span>
                               {n.preview ? (
-                                <span className="text-xs text-gray-500 line-clamp-2 block mt-1">
+                                <span className="text-xs text-muted-foreground line-clamp-2 block mt-1">
                                   {n.preview}
                                 </span>
                               ) : null}
@@ -481,7 +532,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                               <span className="font-semibold block">
                                 Composer Invite
                               </span>
-                              <span className="text-xs text-gray-500">
+                              <span className="text-xs text-muted-foreground">
                                 {n.email}
                               </span>
                             </>
@@ -490,12 +541,12 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                               <span className="font-semibold block">
                                 Pending M-Pesa Payment
                               </span>
-                              <span className="text-xs text-gray-500">
+                              <span className="text-xs text-muted-foreground">
                                 {n.displayName || n.email}
                               </span>
-                              <span className="text-xs text-gray-500 block mt-1">
-                                Ref: {n.mpesaCode || "-"} | Amount: $
-                                {Number(n.amount || 0).toFixed(2)}
+                              <span className="text-xs text-muted-foreground block mt-1">
+                                Ref: {n.mpesaCode || "-"} | Amount:{" "}
+                                {formatKesAmount(n.amount || 0)}
                               </span>
                             </>
                           ) : n.type === "enrollment_request" ? (
@@ -503,10 +554,10 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                               <span className="font-semibold block">
                                 Enrollment Request
                               </span>
-                              <span className="text-xs text-gray-500">
+                              <span className="text-xs text-muted-foreground">
                                 {n.displayName || n.email}
                               </span>
-                              <span className="text-xs text-gray-500 block mt-1">
+                              <span className="text-xs text-muted-foreground block mt-1">
                                 Program: {n.program || "-"} | Level:{" "}
                                 {n.skillLevel || "-"}
                               </span>
@@ -523,12 +574,12 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                                     .slice(1)}{" "}
                                 Access Request
                               </span>
-                              <span className="text-xs text-gray-500">
+                              <span className="text-xs text-muted-foreground">
                                 {n.displayName || n.email}
                               </span>
                             </>
                           )}
-                          <span className="text-xs text-gray-400 block mt-1">
+                          <span className="text-xs text-muted-foreground/80 block mt-1">
                             {new Date(
                               n.createdAt || n.created_at,
                             ).toLocaleString()}
@@ -666,14 +717,16 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                           </div>
                         )}
                         {n.canApprove === false && (
-                          <p className="text-xs text-amber-700">
+                          <p className="text-xs text-amber-700 dark:text-amber-300">
                             {n.cannotApproveReason ||
                               "This item cannot be approved by your account."}
                           </p>
                         )}
                       </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
 
                   <DropdownMenuSeparator />
                   {isAdmin ? (
@@ -732,7 +785,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                             {item.composition.composerName}
                           </p>
                           <p className="font-semibold">
-                            ${item.composition.price.toFixed(2)}
+                            {formatKesAmount(item.composition.price)}
                           </p>
                         </div>
                         <Button
@@ -750,7 +803,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                         <div className="flex justify-between mb-4">
                           <span className="font-semibold">Total</span>
                           <span className="text-xl font-bold">
-                            ${totalPrice.toFixed(2)}
+                            {formatKesAmount(totalPrice)}
                           </span>
                         </div>
                         <Button
@@ -857,6 +910,34 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
+          </div>
+        </div>
+
+        <div className="lg:hidden pb-3">
+          <div className="flex gap-2 overflow-x-auto whitespace-nowrap rounded-full border border-border/70 bg-background/55 p-1">
+            {navItems.map((item) => {
+              const isVisible =
+                item.showOn.includes("any") ||
+                item.showOn.includes(location.pathname);
+              const hasRole =
+                item.roles.length === 0 ||
+                item.roles.some((role) => roles.includes(role));
+              if (!isVisible || !hasRole) return null;
+
+              return (
+                <NavLink key={`mobile-${item.path}`} to={item.path}>
+                  {({ isActive }) => (
+                    <Button
+                      variant={isActive ? "default" : "ghost"}
+                      size="sm"
+                      className={`rounded-full px-4 ${isActive ? "" : "text-muted-foreground"}`}
+                    >
+                      {item.label}
+                    </Button>
+                  )}
+                </NavLink>
+              );
+            })}
           </div>
         </div>
       </div>

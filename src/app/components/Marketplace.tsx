@@ -18,17 +18,19 @@ import {
 } from "@/services/api";
 import { toast } from "sonner";
 import { ensureArray } from "@/lib/ensureArray";
+import { parseAccompanimentList } from "@/lib/compositionMeta";
 
 interface Composition {
   id: string;
   title: string;
   composerName: string;
   price: number;
+  priceCurrency?: string | null;
   description?: string;
-  difficulty: string;
+  difficulty?: string;
   duration: string;
   language: string;
-  accompaniment: string;
+  accompaniment: string[];
   voiceParts: string[];
   pdfUrl?: string;
   createdAt: string;
@@ -59,11 +61,12 @@ function mapComposition(comp: any): Composition {
       comp.composers?.users?.display_name ||
       "Unknown Composer",
     price: Number(comp.price || 0),
+    priceCurrency: comp.price_currency || "KES",
     description: comp.description || "",
-    difficulty: comp.difficulty || "Intermediate",
+    difficulty: comp.difficulty || "",
     duration: comp.duration || "",
     language: comp.language || "",
-    accompaniment: comp.accompaniment || "",
+    accompaniment: parseAccompanimentList(comp.accompaniment),
     voiceParts: Array.isArray(comp.voice_parts) ? comp.voice_parts : [],
     pdfUrl: comp.pdf_url || undefined,
     createdAt: comp.created_at || "",
@@ -159,7 +162,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         languageFilter === "all" || comp.language === languageFilter;
       const matchesAccompaniment =
         accompanimentFilter === "all" ||
-        comp.accompaniment === accompanimentFilter;
+        comp.accompaniment.includes(accompanimentFilter);
       const matchesCategory =
         categoryFilter === "all" ||
         String(comp.categoryId || "") === categoryFilter;

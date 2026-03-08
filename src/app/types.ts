@@ -11,11 +11,12 @@ export interface Composition {
   title: string;
   composerName: string;
   price: number;
+  priceCurrency?: string | null;
   category?: string;
   description?: string;
   duration?: string;
   language?: string;
-  accompaniment?: string;
+  accompaniment?: string | string[];
   pdfUrl?: string;
   createdAt?: string;
   stats?: {

@@ -36,6 +36,18 @@ export const navbarService = {
     return ensureArray<any>(notifications, ["notifications"]);
   },
 
+  async fetchReadNotificationIds() {
+    const payload = await apiRequest<any>(`/notifications/read`, {
+      method: "GET",
+      requiresAuth: true,
+    });
+    return new Set(
+      ensureArray<string>(payload, ["ids", "notificationIds"])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    );
+  },
+
   async fetchSupportInbox(limit = 200) {
     const payload = await apiRequest<any>(`/support/inbox?limit=${limit}`, {
       method: "GET",
@@ -93,7 +105,7 @@ export const navbarService = {
   async fetchNotifications(options: { isAdmin: boolean }) {
     const { isAdmin } = options;
 
-    const [inboxResult, adminNotifications] = await Promise.all([
+    const [inboxResult, adminNotifications, readNotificationIds] = await Promise.all([
       this.fetchSupportInbox().catch((err) => {
         const status = Number((err as any)?.status || 0);
         if (status !== 403 && status !== 404) {
@@ -114,7 +126,16 @@ export const navbarService = {
             }
             return [];
           })
-        : Promise.resolve([]),
+        : Promise.resolve([] as NavbarNotificationItem[]),
+      isAdmin
+        ? this.fetchReadNotificationIds().catch((err) => {
+            const status = Number((err as any)?.status || 0);
+            if (status !== 403 && status !== 404) {
+              console.warn("fetchReadNotificationIds error:", err);
+            }
+            return new Set<string>();
+          })
+        : Promise.resolve(new Set<string>()),
     ]);
 
     const supportNotificationItems = isAdmin
@@ -123,13 +144,15 @@ export const navbarService = {
     const notificationItems = [
       ...supportNotificationItems,
       ...ensureArray<any>(adminNotifications, ["notifications"]),
-    ].sort(
+    ]
+      .filter((item) => !readNotificationIds.has(String(item?.id || "").trim()))
+      .sort(
       (a, b) => {
         const aTime = new Date(a?.createdAt || a?.created_at || 0).getTime();
         const bTime = new Date(b?.createdAt || b?.created_at || 0).getTime();
         return bTime - aTime;
       },
-    );
+      );
 
     return {
       notificationItems,
@@ -137,6 +160,75 @@ export const navbarService = {
         0,
         Number(inboxResult.messengerUnreadCount || 0),
       ),
+    };
+  },
+
+  async markNotificationsRead(items: NavbarNotificationItem[]) {
+    const normalizedItems = ensureArray<NavbarNotificationItem>(items, ["notifications"]);
+    const threadIds = [...new Set(
+      normalizedItems
+        .map((item) => String(item?.threadId || "").trim())
+        .filter(Boolean),
+    )];
+    const notificationIds = [...new Set(
+      normalizedItems
+        .filter((item) => !item?.threadId)
+        .map((item) => String(item?.id || "").trim())
+        .filter(Boolean),
+    )];
+
+    const operations: Promise<unknown>[] = [];
+    if (threadIds.length > 0) {
+      operations.push(
+        Promise.all(
+          threadIds.map((threadId) =>
+            apiRequest(`/support/threads/${threadId}/read`, {
+              method: "POST",
+              requiresAuth: true,
+            }),
+          ),
+        ),
+      );
+    }
+    if (notificationIds.length > 0) {
+      operations.push(
+        apiRequest(`/notifications/mark-read`, {
+          method: "POST",
+          body: JSON.stringify({ notificationIds }),
+          requiresAuth: true,
+        }),
+      );
+    }
+
+    if (operations.length === 0) {
+      return {
+        markedCount: 0,
+        threadIds,
+        notificationIds,
+        partialFailure: false,
+      };
+    }
+
+    const results = await Promise.allSettled(operations);
+    const failureCount = results.filter((result) => result.status === "rejected").length;
+
+    if (failureCount === results.length) {
+      const firstFailure = results.find(
+        (result): result is PromiseRejectedResult => result.status === "rejected",
+      );
+      throw firstFailure?.reason || new Error("Failed to mark notifications as read");
+    }
+
+    const markedCount = threadIds.length + notificationIds.length;
+    if (markedCount > 0) {
+      toast.success("Notifications marked as read");
+    }
+
+    return {
+      markedCount,
+      threadIds,
+      notificationIds,
+      partialFailure: failureCount > 0,
     };
   },
 

@@ -45,6 +45,7 @@ import { supabase } from "@/lib/supabase";
 import { compositionService } from "@/services/api";
 import { toast } from "sonner";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
+import { formatKesAmount } from "@/lib/currency";
 
 interface CompositionWithStats {
   id: string;
@@ -269,6 +270,7 @@ export function ComposerDashboard() {
         title: editForm.title.trim(),
         description: editForm.description.trim(),
         price: parsedPrice,
+        price_currency: "KES",
         is_published: editForm.is_published,
         difficulty: editForm.difficulty || null,
         duration: editForm.duration || null,
@@ -392,7 +394,7 @@ export function ComposerDashboard() {
                       Price
                     </p>
                     <p className="mt-1 text-base font-semibold">
-                      ${Number(selectedComposition.price || 0).toFixed(2)}
+                      {formatKesAmount(Number(selectedComposition.price || 0))}
                     </p>
                   </div>
                   <div className="rounded-lg border border-border/60 bg-card/60 p-3">
@@ -477,7 +479,7 @@ export function ComposerDashboard() {
               </div>
               <div>
                 <p className="mb-1 text-sm font-medium text-muted-foreground">
-                  Price (USD)
+                  Price (KES)
                 </p>
                 <Input
                   type="number"
@@ -601,7 +603,7 @@ export function ComposerDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-semibold tracking-tight">
-                ${totalRevenue.toFixed(2)}
+                {formatKesAmount(totalRevenue)}
               </div>
               <p className="mt-1 text-xs text-white/80">From {totalSales} sales</p>
             </CardContent>
@@ -634,7 +636,7 @@ export function ComposerDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-semibold tracking-tight">
-                ${averagePrice.toFixed(2)}
+                {formatKesAmount(averagePrice)}
               </div>
               <p className="mt-1 text-xs text-white/80">
                 Across {composerCompositions.length} listing
@@ -712,7 +714,7 @@ export function ComposerDashboard() {
                             </div>
                           </TableCell>
                           <TableCell className="font-medium">
-                            ${comp.price.toFixed(2)}
+                            {formatKesAmount(comp.price)}
                           </TableCell>
                           <TableCell className="text-right">
                             {compStats.views}

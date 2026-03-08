@@ -537,7 +537,7 @@ export default function App() {
                 aria-hidden="true"
               />
               <div className="relative z-10 flex min-h-[calc(100vh-4rem)] items-center justify-center p-6">
-                <div className="w-full max-w-xl rounded-3xl border border-border/70 bg-card/85 p-7 shadow-[0_30px_60px_-36px_rgba(15,23,42,0.9)] backdrop-blur-md sm:p-10">
+                <div className="w-full max-w-xl rounded-3xl border border-border/70 bg-card/95 p-7 shadow-[0_30px_60px_-36px_rgba(15,23,42,0.9)] sm:p-10">
                   <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                     <Guitar className="size-4 text-primary" />
                     String Session

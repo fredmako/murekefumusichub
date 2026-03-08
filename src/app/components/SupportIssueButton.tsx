@@ -29,6 +29,7 @@ interface SupportIssueButtonProps {
   context: string;
   className?: string;
   triggerLabel?: string;
+  hideLabelOnMobile?: boolean;
   triggerIcon?: "lifebuoy" | "message";
   triggerVariant?: "default" | "outline" | "secondary" | "ghost";
   unreadCount?: number;
@@ -46,6 +47,7 @@ export function SupportIssueButton({
   context,
   className,
   triggerLabel = "Contact Support",
+  hideLabelOnMobile = false,
   triggerIcon = "lifebuoy",
   triggerVariant = "outline",
   unreadCount = 0,
@@ -297,8 +299,10 @@ export function SupportIssueButton({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant={triggerVariant} className={`relative ${className || ""}`}>
-          <TriggerIcon className="mr-2 size-4" />
-          {triggerLabel}
+          <TriggerIcon className={`${hideLabelOnMobile ? "" : "mr-2"} size-4 sm:mr-2`} />
+          <span className={hideLabelOnMobile ? "hidden sm:inline" : ""}>
+            {triggerLabel}
+          </span>
           {unreadCount > 0 ? (
             <Badge className="absolute -top-2 -right-2 size-5 min-w-5 px-1 text-[10px] leading-none">
               {unreadCount > 99 ? "99+" : unreadCount}

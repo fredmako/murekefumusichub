@@ -1,0 +1,1 @@
+function i(t){const n=Array.isArray(t)?t:[t??""];return[...new Set(n.flatMap(r=>String(r||"").split(/[,;|]|�|•/g)).map(r=>r.trim()).filter(Boolean))]}function s(t){const n=i(t);return n.length>0?n.join(", "):null}export{i as p,s};

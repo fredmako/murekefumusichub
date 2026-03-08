@@ -73,7 +73,7 @@ export function ContactUs() {
                 return (
                   <div
                     key={item.title}
-                    className="rounded-2xl border border-white/40 bg-white/40 p-4 backdrop-blur-sm dark:border-white/10 dark:bg-white/5"
+                    className="rounded-2xl border border-white/40 bg-white/78 p-4 dark:border-white/10 dark:bg-[#0d1b31]/88"
                   >
                     <div className="flex items-start gap-3">
                       <div className="inline-flex size-10 items-center justify-center rounded-2xl bg-primary/12 text-primary">
@@ -95,7 +95,7 @@ export function ContactUs() {
           </section>
 
           <Card className="route-backdrop-panel texture-speckle motion-reveal overflow-hidden rounded-3xl border border-white/45 bg-card/35 shadow-[0_28px_60px_-38px_rgba(15,23,42,0.75)] dark:border-white/10 dark:bg-card/30">
-            <CardHeader className="border-b border-border/60 bg-white/20 backdrop-blur-sm dark:bg-white/5">
+            <CardHeader className="border-b border-border/60 bg-white/72 dark:bg-[#0d1b31]/86">
               <CardTitle className="text-2xl font-semibold text-foreground">
                 Send a Message
               </CardTitle>

@@ -14,11 +14,11 @@ import {
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { supabase } from "@/lib/supabase";
 import { API_BASE_URL } from "@/lib/apiBase";
+import { categoryService, mediaService } from "@/services/api";
 import {
-  categoryService,
-  compositionService,
-  mediaService,
-} from "@/services/api";
+  parseAccompanimentList,
+  stringifyAccompanimentList,
+} from "@/lib/compositionMeta";
 import { toast } from "sonner";
 
 interface UploadCompositionProps {
@@ -28,10 +28,9 @@ interface UploadCompositionProps {
 interface AnalyzedCompositionMetadata {
   title?: string;
   description?: string;
-  difficulty?: string;
   duration?: string;
   language?: string;
-  accompaniment?: string;
+  accompaniment?: string | string[];
   voiceParts?: string[];
 }
 
@@ -58,15 +57,6 @@ interface CompositionCategory {
 
 type MetadataMode = "ai" | "manual" | null;
 type SelectOrOther = string;
-
-const CURRENCY_OPTIONS = [
-  { value: "KES", label: "Kenyan Shilling (KES)" },
-  { value: "USD", label: "US Dollar (USD)" },
-  { value: "EUR", label: "Euro (EUR)" },
-  { value: "Other", label: "Other (Specify)" },
-];
-
-const DIFFICULTY_OPTIONS = ["Easy", "Intermediate", "Advanced", "Other"];
 const LANGUAGE_OPTIONS = [
   "English",
   "Latin",
@@ -82,7 +72,6 @@ const ACCOMPANIMENT_OPTIONS = [
   "Organ",
   "String Quartet",
   "Orchestra",
-  "Other",
 ];
 
 export function UploadComposition({ onClose }: UploadCompositionProps) {
@@ -90,15 +79,11 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     title: "",
     categoryId: "",
     price: "",
-    currency: "USD" as SelectOrOther,
-    customCurrency: "",
     description: "",
-    difficulty: "" as SelectOrOther,
-    customDifficulty: "",
     duration: "",
     language: "" as SelectOrOther,
     customLanguage: "",
-    accompaniment: "" as SelectOrOther,
+    accompaniments: [] as string[],
     customAccompaniment: "",
     voiceParts: [] as string[],
     customVoicePart: "",
@@ -118,14 +103,6 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
   >([]);
   const [selectedBackgroundUrl, setSelectedBackgroundUrl] = useState("");
   const [isGeneratingBackground, setIsGeneratingBackground] = useState(false);
-  const [isConvertingPrice, setIsConvertingPrice] = useState(false);
-  const [priceConversion, setPriceConversion] = useState<{
-    originalAmount: number;
-    originalCurrency: string;
-    usdAmount: number;
-    rateToUsd: number;
-    detectedBy: "ai" | "heuristic";
-  } | null>(null);
   const [categories, setCategories] = useState<CompositionCategory[]>([]);
 
   const voicePartOptions = [
@@ -164,22 +141,14 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     return selectedValue.trim();
   };
 
-  const resolvedCurrency = resolveCustomOrPreset(
-    formData.currency,
-    formData.customCurrency,
-  ).toUpperCase();
-  const resolvedDifficulty = resolveCustomOrPreset(
-    formData.difficulty,
-    formData.customDifficulty,
-  );
   const resolvedLanguage = resolveCustomOrPreset(
     formData.language,
     formData.customLanguage,
   );
-  const resolvedAccompaniment = resolveCustomOrPreset(
-    formData.accompaniment,
+  const resolvedAccompaniment = stringifyAccompanimentList([
+    ...formData.accompaniments,
     formData.customAccompaniment,
-  );
+  ]);
   const isAiMode = metadataMode === "ai";
   const isManualMode = metadataMode === "manual";
   const shouldShowMetadataFields =
@@ -197,8 +166,6 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
   if (!formData.title.trim()) missingRequiredFields.push("Title");
   if (!formData.description.trim()) missingRequiredFields.push("Description");
   if (!formData.price.trim()) missingRequiredFields.push("Price");
-  if (!resolvedCurrency) missingRequiredFields.push("Currency");
-  if (!resolvedDifficulty) missingRequiredFields.push("Difficulty");
   if (!formData.duration.trim()) missingRequiredFields.push("Duration");
   if (!resolvedLanguage) missingRequiredFields.push("Language");
   if (!resolvedAccompaniment) missingRequiredFields.push("Accompaniment");
@@ -242,34 +209,53 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     }));
   };
 
+  const handleAccompanimentToggle = (part: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      accompaniments: prev.accompaniments.includes(part)
+        ? prev.accompaniments.filter((item) => item !== part)
+        : [...prev.accompaniments, part],
+    }));
+  };
+
+  const handleAddCustomAccompaniment = () => {
+    const nextValue = formData.customAccompaniment.trim();
+    if (!nextValue) return;
+
+    const existing = stringifyAccompanimentList([
+      ...formData.accompaniments,
+      nextValue,
+    ]);
+    if (!existing) return;
+
+    setFormData((prev) => ({
+      ...prev,
+      accompaniments: parseAccompanimentList([
+        ...prev.accompaniments,
+        prev.customAccompaniment,
+      ]),
+      customAccompaniment: "",
+    }));
+  };
+
+  const handleRemoveAccompaniment = (value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      accompaniments: prev.accompaniments.filter((item) => item !== value),
+    }));
+  };
+
   const applyAnalyzedMetadata = (metadata: AnalyzedCompositionMetadata) => {
-    const detectedDifficulty = metadata.difficulty || "";
     const detectedLanguage = metadata.language || "";
-    const detectedAccompaniment = metadata.accompaniment || "";
-    const isKnownDifficulty = DIFFICULTY_OPTIONS
-      .filter((item) => item !== "Other")
-      .some((item) => item.toLowerCase() === detectedDifficulty.toLowerCase());
+    const detectedAccompaniments = parseAccompanimentList(metadata.accompaniment);
     const isKnownLanguage = LANGUAGE_OPTIONS
       .filter((item) => item !== "Other")
       .some((item) => item.toLowerCase() === detectedLanguage.toLowerCase());
-    const isKnownAccompaniment = ACCOMPANIMENT_OPTIONS
-      .filter((item) => item !== "Other")
-      .some((item) => item.toLowerCase() === detectedAccompaniment.toLowerCase());
 
     setFormData((prev) => ({
       ...prev,
       title: prev.title || metadata.title || "",
       description: prev.description || metadata.description || "",
-      difficulty: prev.difficulty
-        ? prev.difficulty
-        : detectedDifficulty
-          ? isKnownDifficulty
-            ? detectedDifficulty
-            : "Other"
-          : "",
-      customDifficulty:
-        prev.customDifficulty ||
-        (detectedDifficulty && !isKnownDifficulty ? detectedDifficulty : ""),
       duration: prev.duration || metadata.duration || "",
       language: prev.language
         ? prev.language
@@ -281,18 +267,10 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
       customLanguage:
         prev.customLanguage ||
         (detectedLanguage && !isKnownLanguage ? detectedLanguage : ""),
-      accompaniment: prev.accompaniment
-        ? prev.accompaniment
-        : detectedAccompaniment
-          ? isKnownAccompaniment
-            ? detectedAccompaniment
-            : "Other"
-          : "",
-      customAccompaniment:
-        prev.customAccompaniment ||
-        (detectedAccompaniment && !isKnownAccompaniment
-          ? detectedAccompaniment
-          : ""),
+      accompaniments:
+        prev.accompaniments.length > 0
+          ? prev.accompaniments
+          : detectedAccompaniments,
       voiceParts:
         prev.voiceParts.length > 0
           ? prev.voiceParts
@@ -434,63 +412,6 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     }
   };
 
-  const convertCurrentPriceToUsd = async (options?: { silent?: boolean }) => {
-    const rawPriceInput = formData.price.trim();
-    const currencyHint = resolveCustomOrPreset(
-      formData.currency,
-      formData.customCurrency,
-    );
-
-    if (!rawPriceInput && !currencyHint) {
-      if (!options?.silent) {
-        toast.error("Enter a price first");
-      }
-      return null;
-    }
-
-    try {
-      setIsConvertingPrice(true);
-      const converted = await compositionService.convertPriceToUsd({
-        priceInput: rawPriceInput,
-        currencyHint: currencyHint || undefined,
-      });
-
-      setPriceConversion({
-        originalAmount: Number(converted.originalAmount || 0),
-        originalCurrency: String(converted.originalCurrency || "USD"),
-        usdAmount: Number(converted.usdAmount || 0),
-        rateToUsd: Number(converted.rateToUsd || 1),
-        detectedBy: converted.detectedBy || "heuristic",
-      });
-
-      setFormData((prev) => ({
-        ...prev,
-        price: Number(converted.usdAmount || 0).toFixed(2),
-        currency: "USD",
-        customCurrency: "",
-      }));
-
-      if (!options?.silent) {
-        toast.success(
-          `Converted to USD $${Number(converted.usdAmount || 0).toFixed(2)}`,
-        );
-      }
-      return converted;
-    } catch (error) {
-      console.error("[UploadComposition] price conversion failed:", error);
-      if (!options?.silent) {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : "Failed to detect/convert price to USD",
-        );
-      }
-      return null;
-    } finally {
-      setIsConvertingPrice(false);
-    }
-  };
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && file.type === "application/pdf") {
@@ -524,21 +445,8 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
         return;
       }
 
-      // Validate and normalize price to USD
       let parsedPrice = Number.parseFloat(formData.price);
-      let finalCurrency = resolvedCurrency || "USD";
-      if (!Number.isFinite(parsedPrice) || parsedPrice <= 0 || finalCurrency !== "USD") {
-        const converted = await convertCurrentPriceToUsd({ silent: true });
-        if (!converted) {
-          toast.error(
-            "Could not detect and convert the entered price to USD. Use a format like 'KES 3500', '€25', or select currency then convert.",
-          );
-          setIsSubmitting(false);
-          return;
-        }
-        parsedPrice = Number(converted.usdAmount || 0);
-        finalCurrency = "USD";
-      }
+      const finalCurrency = "KES";
 
       if (!formData.title || !formData.description.trim()) {
         toast.error("Please fill in title and description");
@@ -552,12 +460,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
         return;
       }
 
-      if (
-        !resolvedCurrency ||
-        !resolvedDifficulty ||
-        !resolvedLanguage ||
-        !resolvedAccompaniment
-      ) {
+      if (!resolvedLanguage || !resolvedAccompaniment) {
         toast.error("Please fill in all required fields");
         setIsSubmitting(false);
         return;
@@ -658,10 +561,13 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
             : null,
           price: parsedPrice,
           price_currency: finalCurrency,
-          difficulty: resolvedDifficulty,
+          difficulty: null,
           duration: formData.duration || null,
           language: resolvedLanguage,
-          accompaniment: resolvedAccompaniment,
+          accompaniment: parseAccompanimentList([
+            ...formData.accompaniments,
+            formData.customAccompaniment,
+          ]),
           voice_parts:
             formData.voiceParts.length > 0 ? formData.voiceParts : null,
           pdf_url: pdfUrl,
@@ -688,9 +594,12 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
             category_id: formData.categoryId || null,
             price: formData.price,
             price_currency: finalCurrency,
-            difficulty: resolvedDifficulty,
+            difficulty: null,
             language: resolvedLanguage,
-            accompaniment: resolvedAccompaniment,
+            accompaniment: parseAccompanimentList([
+              ...formData.accompaniments,
+              formData.customAccompaniment,
+            ]),
             hasPdfUrl: Boolean(pdfUrl),
           },
         });
@@ -742,7 +651,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
               Analyzing your PDF...
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Extracting title, difficulty, language, accompaniment, and voice parts.
+              Extracting title, language, accompaniment, and voice parts.
             </p>
           </div>
         )}
@@ -990,92 +899,26 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
       {/* Price */}
       <div>
         <Label>Price *</Label>
-        <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="sm:col-span-1">
-            <Select
-              value={formData.currency}
-              onValueChange={(value) =>
-                {
-                  setPriceConversion(null);
-                  setFormData((prev) => ({
-                    ...prev,
-                    currency: value,
-                    customCurrency: value === "Other" ? prev.customCurrency : "",
-                  }));
-                }
-              }
-              required
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Currency" />
-              </SelectTrigger>
-              <SelectContent>
-                {CURRENCY_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
+          <div className="flex items-center rounded-md border border-border/70 bg-muted/30 px-3 text-sm font-medium text-foreground">
+            Kenyan Shilling (KES)
           </div>
-          <div className="sm:col-span-2">
-            <Input
-              id="price"
-              type="text"
-              value={formData.price}
-              onChange={(e) => {
-                setPriceConversion(null);
-                setFormData((prev) => ({ ...prev, price: e.target.value }));
-              }}
-              placeholder={
-                formData.currency === "KES"
-                  ? "e.g., 3500 or KES 3500"
-                  : formData.currency === "EUR"
-                    ? "e.g., 25.00 or EUR 25"
-                    : "e.g., 29.99 or USD 29.99"
-              }
-              required
-            />
-          </div>
-        </div>
-        {formData.currency === "Other" && (
           <Input
-            className="mt-3"
-            value={formData.customCurrency}
+            id="price"
+            type="number"
+            min="0"
+            step="0.01"
+            value={formData.price}
             onChange={(e) =>
-              {
-                setPriceConversion(null);
-                setFormData((prev) => ({
-                  ...prev,
-                  customCurrency: e.target.value.toUpperCase(),
-                }));
-              }
+              setFormData((prev) => ({ ...prev, price: e.target.value }))
             }
-            placeholder="Enter currency code or name (e.g., GBP)"
+            placeholder="e.g., 3500"
             required
           />
-        )}
-        <p className="mt-2 text-xs text-gray-600">
-          Enter amount with or without currency code. Example: KES 3500, €25,
-          USD 29.99.
-        </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => void convertCurrentPriceToUsd({ silent: false })}
-            disabled={isSubmitting || isConvertingPrice || !formData.price.trim()}
-          >
-            {isConvertingPrice ? "Converting..." : "AI Detect & Convert to USD"}
-          </Button>
-          {priceConversion && (
-            <span className="text-xs text-muted-foreground">
-              {priceConversion.detectedBy === "ai" ? "AI" : "Rule"} detected{" "}
-              {priceConversion.originalCurrency} {priceConversion.originalAmount.toFixed(2)}{" "}
-              {"->"} USD {priceConversion.usdAmount.toFixed(2)}
-            </span>
-          )}
         </div>
+        <p className="mt-2 text-xs text-gray-600">
+          All composition prices are entered and stored in Kenyan Shilling (KES).
+        </p>
       </div>
 
       {/* Voice Parts */}
@@ -1135,47 +978,6 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
         </p>
       </div>
 
-      {/* Difficulty */}
-      <div>
-        <Label htmlFor="difficulty">Difficulty Level *</Label>
-        <Select
-          value={formData.difficulty}
-          onValueChange={(value) =>
-            setFormData((prev) => ({
-              ...prev,
-              difficulty: value,
-              customDifficulty: value === "Other" ? prev.customDifficulty : "",
-            }))
-          }
-          required
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select difficulty" />
-          </SelectTrigger>
-          <SelectContent>
-            {DIFFICULTY_OPTIONS.map((option) => (
-              <SelectItem key={option} value={option}>
-                {option}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {formData.difficulty === "Other" && (
-          <Input
-            className="mt-3"
-            value={formData.customDifficulty}
-            onChange={(e) =>
-              setFormData((prev) => ({
-                ...prev,
-                customDifficulty: e.target.value,
-              }))
-            }
-            placeholder="Specify custom difficulty"
-            required
-          />
-        )}
-      </div>
-
       {/* Duration */}
       <div>
         <Label htmlFor="duration">Duration *</Label>
@@ -1233,33 +1035,26 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
 
       {/* Accompaniment */}
       <div>
-        <Label htmlFor="accompaniment">Accompaniment *</Label>
-        <Select
-          value={formData.accompaniment}
-          onValueChange={(value) =>
-            setFormData((prev) => ({
-              ...prev,
-              accompaniment: value,
-              customAccompaniment:
-                value === "Other" ? prev.customAccompaniment : "",
-            }))
-          }
-          required
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select accompaniment" />
-          </SelectTrigger>
-          <SelectContent>
-            {ACCOMPANIMENT_OPTIONS.map((option) => (
-              <SelectItem key={option} value={option}>
-                {option}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {formData.accompaniment === "Other" && (
+        <Label>Accompaniment *</Label>
+        <div className="mt-2 grid grid-cols-2 gap-3">
+          {ACCOMPANIMENT_OPTIONS.map((part) => (
+            <div key={part} className="flex items-center space-x-2">
+              <Checkbox
+                id={`accompaniment-${part}`}
+                checked={formData.accompaniments.includes(part)}
+                onCheckedChange={() => handleAccompanimentToggle(part)}
+              />
+              <label
+                htmlFor={`accompaniment-${part}`}
+                className="cursor-pointer text-sm"
+              >
+                {part}
+              </label>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 flex gap-2">
           <Input
-            className="mt-3"
             value={formData.customAccompaniment}
             onChange={(e) =>
               setFormData((prev) => ({
@@ -1267,9 +1062,30 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
                 customAccompaniment: e.target.value,
               }))
             }
-            placeholder="Specify accompaniment"
-            required
+            placeholder="Add custom accompaniment"
           />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleAddCustomAccompaniment}
+            disabled={!formData.customAccompaniment.trim()}
+          >
+            Add
+          </Button>
+        </div>
+        {formData.accompaniments.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {formData.accompaniments.map((part) => (
+              <button
+                key={part}
+                type="button"
+                className="rounded-full border border-border bg-muted px-3 py-1 text-xs hover:bg-muted/80"
+                onClick={() => handleRemoveAccompaniment(part)}
+              >
+                {part} x
+              </button>
+            ))}
+          </div>
         )}
       </div>
         </>
@@ -1311,3 +1127,4 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     </form>
   );
 }
+

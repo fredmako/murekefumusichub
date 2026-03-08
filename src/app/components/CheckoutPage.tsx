@@ -24,6 +24,7 @@ import { Label } from "@/app/components/ui/label";
 import { Separator } from "@/app/components/ui/separator";
 import { CartItem } from "../types";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
+import { formatKesAmount } from "@/lib/currency";
 
 const MPESA_BUSINESS_NUMBER = "400200";
 const MPESA_ACCOUNT_NUMBER = "11317282";
@@ -364,7 +365,7 @@ export function CheckoutPage({
                       </div>
                       <div className="text-right">
                         <p className="font-semibold">
-                          ${(item.composition.price * item.quantity).toFixed(2)}
+                          {formatKesAmount(item.composition.price * item.quantity)}
                         </p>
                         <Button
                           variant="ghost"
@@ -381,7 +382,7 @@ export function CheckoutPage({
                   <div className="flex items-center justify-between">
                     <span className="font-semibold">Total</span>
                     <span className="text-lg font-bold">
-                      ${totalAmount.toFixed(2)}
+                      {formatKesAmount(totalAmount)}
                     </span>
                   </div>
                 </>

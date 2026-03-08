@@ -45,6 +45,7 @@ import { API_BASE_URL } from "@/lib/apiBase";
 import { useTheme } from "@/context/ThemeContext";
 import { getOptimizedProfileImageUrl } from "@/services/profileImageService";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
+import { formatKesAmount } from "@/lib/currency";
 
 type RoleRequestState = "none" | "pending" | "approved" | "rejected";
 type InviteAvailability = {
@@ -1176,7 +1177,7 @@ export function ManageAccount() {
                             <p className="mt-2 text-sm">
                               Fee:{" "}
                               <span className="font-semibold">
-                                ${composerRegistrationFee.toFixed(2)}
+                                {formatKesAmount(composerRegistrationFee)}
                               </span>
                             </p>
                             <p className="text-xs text-muted-foreground mt-1">

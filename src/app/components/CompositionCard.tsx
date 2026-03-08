@@ -8,16 +8,18 @@ import {
   CardHeader,
   CardTitle,
 } from "@/app/components/ui/card";
+import { parseAccompanimentList } from "@/lib/compositionMeta";
+import { formatKesAmount } from "@/lib/currency";
 
 interface Composition {
   title: string;
   composerName: string;
-  difficulty: string;
+  difficulty?: string;
   description?: string;
   voiceParts?: string[];
   duration?: string;
   language?: string;
-  accompaniment?: string;
+  accompaniment?: string | string[];
   price: number;
 }
 
@@ -33,6 +35,9 @@ export function CompositionCard({
   showActions = true,
 }: CompositionCardProps) {
   const canAddToCart = typeof onAddToCart === "function";
+  const accompanimentLabel = parseAccompanimentList(
+    composition.accompaniment,
+  ).join(", ");
 
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
@@ -53,12 +58,16 @@ export function CompositionCard({
       <CardHeader>
         <div className="mb-2 flex items-start justify-between">
           <Music2 className="size-8 text-primary" />
-          <Badge className={getDifficultyColor(composition.difficulty)}>
-            {composition.difficulty}
-          </Badge>
+          {composition.difficulty ? (
+            <Badge className={getDifficultyColor(composition.difficulty)}>
+              {composition.difficulty}
+            </Badge>
+          ) : null}
         </div>
         <CardTitle className="text-2xl">{composition.title}</CardTitle>
-        <p className="text-sm text-muted-foreground">by {composition.composerName}</p>
+        <p className="text-sm text-muted-foreground">
+          by {composition.composerName}
+        </p>
       </CardHeader>
 
       <CardContent className="space-y-3">
@@ -67,39 +76,39 @@ export function CompositionCard({
         </p>
 
         <div className="space-y-2">
-          {composition.voiceParts && composition.voiceParts.length > 0 && (
+          {composition.voiceParts && composition.voiceParts.length > 0 ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Users className="size-4" />
               <span>{composition.voiceParts.join(", ")}</span>
             </div>
-          )}
+          ) : null}
 
-          {composition.duration && (
+          {composition.duration ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Clock className="size-4" />
               <span>{composition.duration}</span>
             </div>
-          )}
+          ) : null}
 
-          {(composition.language || composition.accompaniment) && (
+          {composition.language || accompanimentLabel ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Languages className="size-4" />
               <span>
-                {composition.language || "Unknown"} •{" "}
-                {composition.accompaniment || "Unknown"}
+                {composition.language || "Unknown"} -{" "}
+                {accompanimentLabel || "Unknown"}
               </span>
             </div>
-          )}
+          ) : null}
         </div>
       </CardContent>
 
       <CardFooter className="flex items-center justify-between">
         <div>
           <p className="text-2xl font-bold text-primary">
-            ${composition.price.toFixed(2)}
+            {formatKesAmount(composition.price)}
           </p>
         </div>
-        {showActions && (
+        {showActions ? (
           <Button
             onClick={() => onAddToCart?.(composition)}
             disabled={!canAddToCart}
@@ -107,10 +116,11 @@ export function CompositionCard({
             <ShoppingCart className="mr-2 size-4" />
             Add to Cart
           </Button>
-        )}
+        ) : null}
       </CardFooter>
     </Card>
   );
 }
 
 export default CompositionCard;
+

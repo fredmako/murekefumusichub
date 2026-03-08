@@ -78,6 +78,7 @@ import { getOptimizedProfileImageUrl } from "@/services/profileImageService";
 import { supabase } from "@/lib/supabase";
 import { ensureArray } from "@/lib/ensureArray";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
+import { formatKesAmount } from "@/lib/currency";
 import loadingStringsDark from "./images/bg_9.jpg";
 import loadingStringsLight from "./images/bg_11.jpg";
 
@@ -2017,7 +2018,7 @@ export function AdminPanel() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold">
-                      ${Number(totalRevenue || 0).toFixed(2)}
+                      {formatKesAmount(Number(totalRevenue || 0))}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">Platform earnings</p>
                   </CardContent>
@@ -2164,7 +2165,7 @@ export function AdminPanel() {
                           </TableCell>
                           <TableCell className="text-right">{c.salesCount}</TableCell>
                           <TableCell className="text-right font-semibold">
-                            ${Number(c.revenue || 0).toFixed(2)}
+                            {formatKesAmount(Number(c.revenue || 0))}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -2173,8 +2174,8 @@ export function AdminPanel() {
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
+              <Card className="bg-card/98">
+                <CardHeader className="border-b border-border/60 bg-card/92">
                   <CardTitle>Recent Transactions</CardTitle>
                   <CardDescription>
                     Latest purchases on the platform
@@ -2182,8 +2183,8 @@ export function AdminPanel() {
                 </CardHeader>
                 <CardContent>
                   <Table className="min-w-[760px]">
-                    <TableHeader>
-                      <TableRow>
+                    <TableHeader className="bg-card/88">
+                      <TableRow className="bg-card/88 hover:bg-card/88">
                         <TableHead>Date</TableHead>
                         <TableHead>Buyer</TableHead>
                         <TableHead>Composition</TableHead>
@@ -2191,7 +2192,7 @@ export function AdminPanel() {
                         <TableHead className="text-right">Amount</TableHead>
                       </TableRow>
                     </TableHeader>
-                    <TableBody>
+                    <TableBody className="[&_tr]:bg-card/72 [&_tr:hover]:bg-muted/55">
                       {transactionsLoading && transactions.length === 0 && (
                         <LoadingTableRow
                           colSpan={5}
@@ -2227,7 +2228,7 @@ export function AdminPanel() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right font-semibold">
-                            ${Number(t.price_paid || 0).toFixed(2)}
+                            {formatKesAmount(Number(t.price_paid || 0))}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -2699,7 +2700,7 @@ export function AdminPanel() {
                       <TableCell>
                         {c.composers?.users?.display_name || "Unknown"}
                       </TableCell>
-                      <TableCell>${Number(c.price || 0).toFixed(2)}</TableCell>
+                      <TableCell>{formatKesAmount(Number(c.price || 0))}</TableCell>
                       <TableCell>
                         {new Date(
                           c.created_at || c.createdAt || "",
@@ -2781,15 +2782,15 @@ export function AdminPanel() {
 
         {/* Transactions */}
         <TabsContent value="transactions" className="mt-6">
-          <Card>
-            <CardHeader>
+          <Card className="bg-card/98">
+            <CardHeader className="border-b border-border/60 bg-card/92">
               <CardTitle>All Transactions</CardTitle>
               <CardDescription>Complete transaction history</CardDescription>
             </CardHeader>
             <CardContent>
               <Table className="min-w-[1260px]">
-                <TableHeader>
-                  <TableRow>
+                <TableHeader className="bg-card/88">
+                  <TableRow className="bg-card/88 hover:bg-card/88">
                     <TableHead>Transaction ID</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Buyer</TableHead>
@@ -2800,7 +2801,7 @@ export function AdminPanel() {
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                <TableBody className="[&_tr]:bg-card/72 [&_tr:hover]:bg-muted/55">
                   {transactionsLoading && transactions.length === 0 && (
                     <LoadingTableRow
                       colSpan={8}
@@ -2842,7 +2843,7 @@ export function AdminPanel() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right font-semibold">
-                        ${Number(p.price_paid || 0).toFixed(2)}
+                        {formatKesAmount(Number(p.price_paid || 0))}
                       </TableCell>
                       <TableCell className="text-right">
                         {p.source === "payment_submission" &&

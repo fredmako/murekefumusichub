@@ -34,6 +34,7 @@ import {
   User,
 } from "lucide-react";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
+import { formatKesAmount } from "@/lib/currency";
 
 const musicClasses = [
   "Piano",
@@ -331,7 +332,7 @@ export const MusicEnrollmentPage: React.FC = () => {
                     </p>
                     <p className="mt-2 text-2xl font-semibold">
                       {enrollmentPaymentRequired
-                        ? `$${enrollmentFee.toFixed(2)}`
+                        ? formatKesAmount(enrollmentFee)
                         : "No fee"}
                     </p>
                   </div>

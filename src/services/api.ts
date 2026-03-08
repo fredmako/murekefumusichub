@@ -597,7 +597,7 @@ export const compositionService = {
     pdf_url: string;
     thumbnail_url?: string;
     duration?: string;
-    accompaniment?: string;
+    accompaniment?: string | string[];
     voice_parts?: string[];
     composer_id: string;
   }) {
@@ -619,7 +619,7 @@ export const compositionService = {
       difficulty: string | null;
       duration: string | null;
       language: string | null;
-      accompaniment: string | null;
+      accompaniment: string | string[] | null;
       voice_parts: string[] | null;
       pdf_url: string | null;
       thumbnail_url: string | null;

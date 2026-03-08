@@ -39,6 +39,7 @@ import { SupportIssueButton } from "@/app/components/SupportIssueButton";
 import { toast } from "sonner";
 import { purchaseService } from "@/services/api";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
+import { formatKesAmount } from "@/lib/currency";
 import { CartItem } from "../types";
 import { ensureArray } from "@/lib/ensureArray";
 
@@ -259,7 +260,7 @@ export function BuyerDashboard({
             </CardHeader>
             <CardContent>
               <div className="text-4xl font-bold">
-                ${loading ? "..." : totalSpent.toFixed(2)}
+                {loading ? "..." : formatKesAmount(totalSpent)}
               </div>
               <p className="text-xs text-emerald-100 mt-1">All-time purchases</p>
             </CardContent>
@@ -391,7 +392,7 @@ export function BuyerDashboard({
                                 </div>
                               </TableCell>
                               <TableCell className="font-semibold text-primary">
-                                ${(price_paid || 0).toFixed(2)}
+                                {formatKesAmount(price_paid || 0)}
                               </TableCell>
                               <TableCell className="text-right">
                                 <Button
@@ -470,14 +471,16 @@ export function BuyerDashboard({
                               <p className="text-sm font-medium text-muted-foreground">
                                 {item.composition.composerName}
                               </p>
-                              <p className="mt-1 text-sm text-muted-foreground">
-                                {item.composition.voiceParts.join(", ")} -{" "}
-                                {item.composition.difficulty}
-                              </p>
+                              {Array.isArray(item.composition.voiceParts) &&
+                              item.composition.voiceParts.length > 0 ? (
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                  {item.composition.voiceParts.join(", ")}
+                                </p>
+                              ) : null}
                             </div>
                             <div className="text-right flex flex-col items-end gap-2">
                               <p className="text-xl font-bold text-primary">
-                                ${item.composition.price.toFixed(2)}
+                                {formatKesAmount(item.composition.price)}
                               </p>
                               {onRemoveFromCart && (
                                 <Button
@@ -515,7 +518,7 @@ export function BuyerDashboard({
                           {cart.length === 1 ? "item" : "items"})
                         </span>
                         <span className="font-semibold">
-                          ${cartTotal.toFixed(2)}
+                          {formatKesAmount(cartTotal)}
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
@@ -528,7 +531,7 @@ export function BuyerDashboard({
                       <div className="flex justify-between font-bold text-xl">
                         <span>Total</span>
                         <span className="text-primary">
-                          ${cartTotal.toFixed(2)}
+                          {formatKesAmount(cartTotal)}
                         </span>
                       </div>
                     </div>
