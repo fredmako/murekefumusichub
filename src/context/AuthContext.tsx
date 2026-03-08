@@ -108,6 +108,39 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     );
   };
 
+  const isMissingComposerActivationColumnError = (err: any): boolean => {
+    const code = String(err?.code || "").toUpperCase();
+    const message = String(err?.message || "").toLowerCase();
+    return (
+      code === "42703" ||
+      code === "PGRST204" ||
+      code === "PGRST205" ||
+      message.includes("is_active")
+    );
+  };
+
+  const hasActiveComposerProfile = async (userId: string): Promise<boolean> => {
+    const activeQuery = await supabase
+      .from("composers")
+      .select("id, is_active")
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (activeQuery.error && isMissingComposerActivationColumnError(activeQuery.error)) {
+      const fallback = await supabase
+        .from("composers")
+        .select("id")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (fallback.error) throw fallback.error;
+      return Boolean(fallback.data);
+    }
+
+    if (activeQuery.error) throw activeQuery.error;
+    return Boolean(activeQuery.data);
+  };
+
   const withTimeout = async <T,>(
     promise: Promise<T>,
     timeoutMs: number,
@@ -147,12 +180,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const roles = ["buyer"];
 
     try {
-      const { data: composerData } = await supabase
-        .from("composers")
-        .select("id")
-        .eq("user_id", userId)
-        .maybeSingle();
-      if (composerData && !roles.includes("composer")) roles.push("composer");
+      const composerActive = await hasActiveComposerProfile(userId);
+      if (composerActive && !roles.includes("composer")) roles.push("composer");
     } catch (err) {
       console.warn("[resolveFallbackRoles] composer lookup failed:", err);
     }
