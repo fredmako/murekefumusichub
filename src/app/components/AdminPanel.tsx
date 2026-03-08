@@ -1415,7 +1415,7 @@ export function AdminPanel() {
             Manage platform operations and monitor activity
           </p>
         </div>
-        <SupportIssueButton context="admin-dashboard" />
+        <SupportIssueButton context="admin-dashboard" triggerLabel="Talk to Us" />
       </div>
       <Card className="border-border/70 bg-card/95 xl:hidden">
         <CardContent className="space-y-3 p-3">

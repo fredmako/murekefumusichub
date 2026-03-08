@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
-import { mediaService } from "@/services/api";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +24,16 @@ import {
 } from "./ui/dialog";
 import ShowBanner from "../utils/privacyBanner";
 import { useTheme } from "@/context/ThemeContext";
+import bg1 from "@/app/components/images/bg_1.jpg";
+import bg2 from "@/app/components/images/bg_2.jpg";
+import bg3 from "@/app/components/images/bg_3.jpg";
+import bg4 from "@/app/components/images/bg_4.jpg";
+import bg5 from "@/app/components/images/bg_5.jpg";
+import bg6 from "@/app/components/images/bg_6.jpg";
+import bg7 from "@/app/components/images/bg_7.jpg";
+import bg9 from "@/app/components/images/bg_9.jpg";
+import bg10 from "@/app/components/images/bg_10.jpg";
+import bg11 from "@/app/components/images/bg_11.jpg";
 
 interface MusicClass {
   id: string;
@@ -35,12 +44,9 @@ interface MusicClass {
 }
 
 interface LandingImage {
-  id: number;
+  id: string;
   url: string;
   alt: string;
-  photographer: string;
-  width: number;
-  height: number;
 }
 
 const testimonials = [
@@ -142,22 +148,34 @@ const highlights = [
   },
 ];
 
-const LANDING_LIGHT_IMAGE_QUERIES = [
-  "piano keys close up",
-  "guitar strings close up",
-  "drum kit studio",
-  "violin on sheet music",
-  "trumpet saxophone instruments",
-  "music instruments flat lay",
+const LANDING_LIGHT_IMAGES: LandingImage[] = [
+  { id: "light-hero", url: bg1, alt: "Grand piano keys and rehearsal lighting" },
+  { id: "light-stage", url: bg3, alt: "Music studio instruments prepared for performance" },
+  { id: "light-card", url: bg4, alt: "Sheet music and keyboard practice surface" },
+  { id: "light-highlight-1", url: bg2, alt: "Conductor-led choir training session" },
+  { id: "light-highlight-2", url: bg6, alt: "Strings and notation for ensemble practice" },
+  { id: "light-highlight-3", url: bg7, alt: "Instrument detail for performance preparation" },
+  { id: "light-program-1", url: bg11, alt: "Keyboard lesson background" },
+  { id: "light-program-2", url: bg4, alt: "Guitar and rhythm practice background" },
+  { id: "light-program-3", url: bg6, alt: "Vocal rehearsal score background" },
+  { id: "light-program-4", url: bg3, alt: "Brass and ensemble coordination background" },
+  { id: "light-program-5", url: bg1, alt: "Composition and notation study background" },
+  { id: "light-program-6", url: bg2, alt: "Choir collaboration background" },
 ];
 
-const LANDING_DARK_IMAGE_QUERIES = [
-  "piano keys low light stage",
-  "guitar strings dark background",
-  "drum kit concert dark",
-  "violin moody light",
-  "saxophone night jazz stage",
-  "music studio blue light",
+const LANDING_DARK_IMAGES: LandingImage[] = [
+  { id: "dark-hero", url: bg9, alt: "Stage-lit piano keys in blue night tones" },
+  { id: "dark-stage", url: bg10, alt: "Night rehearsal hall with instrument lighting" },
+  { id: "dark-card", url: bg5, alt: "Dark studio score and instrument composition" },
+  { id: "dark-highlight-1", url: bg9, alt: "Blue-hour choir direction scene" },
+  { id: "dark-highlight-2", url: bg10, alt: "Moody strings and notation study" },
+  { id: "dark-highlight-3", url: bg5, alt: "Performance stage instrument detail" },
+  { id: "dark-program-1", url: bg10, alt: "Keyboard lesson at night" },
+  { id: "dark-program-2", url: bg5, alt: "Guitar and rhythm studio lighting" },
+  { id: "dark-program-3", url: bg9, alt: "Vocal rehearsal in low light" },
+  { id: "dark-program-4", url: bg10, alt: "Brass rehearsal night session" },
+  { id: "dark-program-5", url: bg5, alt: "Composition desk in dark theme" },
+  { id: "dark-program-6", url: bg9, alt: "Choir collaboration in blue lighting" },
 ];
 
 export const LandingPage = () => {
@@ -166,65 +184,15 @@ export const LandingPage = () => {
   const isDarkMode = mode === "dark";
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
-  const [landingImages, setLandingImages] = useState<LandingImage[]>([]);
-  const [pexelsCredit, setPexelsCredit] = useState<string>("Pexels");
   const [expandedTestimonials, setExpandedTestimonials] = useState<
     Record<string, boolean>
   >({});
+  const landingImages = isDarkMode ? LANDING_DARK_IMAGES : LANDING_LIGHT_IMAGES;
 
   useEffect(() => {
     const accepted = localStorage.getItem("privacyAccepted");
     setIsPrivacyOpen(accepted !== "true");
   }, []);
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadLandingImages() {
-      try {
-        const queries = isDarkMode
-          ? LANDING_DARK_IMAGE_QUERIES
-          : LANDING_LIGHT_IMAGE_QUERIES;
-        const data = await mediaService.getLandingImages({
-          mode: "instruments",
-          perPage: 18,
-          queries,
-        });
-        if (!mounted) return;
-        const images: LandingImage[] = (data?.items || [])
-          .map((item) => {
-            const imageUrl =
-              item?.src?.large2x ||
-              item?.src?.landscape ||
-              item?.src?.large ||
-              item?.src?.medium ||
-              null;
-            if (!imageUrl) return null;
-            return {
-              id: item.id,
-              url: imageUrl,
-              alt: item.alt || "Musical instrument",
-              photographer: item.photographer || "",
-              width: Number(item.width || 1600),
-              height: Number(item.height || 900),
-            };
-          })
-          .filter(Boolean) as LandingImage[];
-        if (images.length > 0) {
-          setLandingImages(images);
-          const firstPhotographer = data?.items?.[0]?.photographer;
-          if (firstPhotographer) setPexelsCredit(`${firstPhotographer} / Pexels`);
-        }
-      } catch (err) {
-        console.warn("[LandingPage] failed to load Pexels images:", err);
-      }
-    }
-
-    loadLandingImages();
-    return () => {
-      mounted = false;
-    };
-  }, [isDarkMode]);
 
   const pickImage = (index: number): LandingImage | null =>
     landingImages.length > 0
@@ -242,12 +210,12 @@ export const LandingPage = () => {
       {pickImageUrl(0) ? (
         <div
           className={`pointer-events-none fixed inset-0 -z-20 ${
-            isDarkMode ? "opacity-[0.16]" : "opacity-[0.07]"
+            isDarkMode ? "opacity-[0.26]" : "opacity-[0.16]"
           }`}
           style={{
             backgroundImage: `url(${pickImageUrl(0)})`,
             backgroundRepeat: "repeat",
-            backgroundSize: "560px auto",
+            backgroundSize: "620px auto",
             backgroundPosition: "center",
           }}
           aria-hidden="true"
@@ -274,12 +242,12 @@ export const LandingPage = () => {
       <section className="section-shell texture-fabric texture-speckle motion-reveal relative overflow-hidden rounded-3xl border border-border/60 bg-card/60">
         {pickImageUrl(1) ? (
           <div
-            className="pointer-events-none absolute inset-0 opacity-15"
+            className="pointer-events-none absolute inset-0"
             style={{
               backgroundImage: `${
                 isDarkMode
-                  ? "linear-gradient(to right, rgba(6,18,34,0.94), rgba(10,31,54,0.82))"
-                  : "linear-gradient(to right, rgba(255,255,255,0.95), rgba(255,255,255,0.78))"
+                  ? "linear-gradient(to right, rgba(6,18,34,0.74), rgba(10,31,54,0.54))"
+                  : "linear-gradient(to right, rgba(255,255,255,0.74), rgba(255,255,255,0.44))"
               }, url(${pickImageUrl(1)})`,
               backgroundPosition: "center",
               backgroundSize: "cover",
@@ -328,8 +296,8 @@ export const LandingPage = () => {
             style={{
               backgroundImage: `${
                 isDarkMode
-                  ? "linear-gradient(to bottom right, rgba(6,23,43,0.93), rgba(13,45,78,0.86))"
-                  : "linear-gradient(to bottom right, rgba(11,63,69,0.92), rgba(15,118,110,0.88))"
+                  ? "linear-gradient(to bottom right, rgba(6,23,43,0.84), rgba(13,45,78,0.7))"
+                  : "linear-gradient(to bottom right, rgba(11,63,69,0.78), rgba(15,118,110,0.62))"
               }, ${pickImageUrl(2) ? `url(${pickImageUrl(2)})` : "none"}`,
               backgroundPosition: "center",
               backgroundSize: "cover",
@@ -385,8 +353,6 @@ export const LandingPage = () => {
                     <img
                       src={image.url}
                       alt={image.alt || "Musical instrument"}
-                      width={image.width}
-                      height={image.height}
                       className={`h-full w-full object-cover ${
                         isDarkMode
                           ? "brightness-[0.72] contrast-[1.08] saturate-90"
@@ -398,7 +364,7 @@ export const LandingPage = () => {
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                      Loading instrument image...
+                      Curated music visual
                     </div>
                   )}
                 </div>
@@ -415,7 +381,7 @@ export const LandingPage = () => {
         {pickImageUrl(5) ? (
           <div
             className={`pointer-events-none absolute right-8 top-10 hidden h-40 w-40 rounded-full bg-cover bg-center blur-[1px] md:block ${
-              isDarkMode ? "opacity-30" : "opacity-20"
+              isDarkMode ? "opacity-45" : "opacity-35"
             }`}
             style={{ backgroundImage: `url(${pickImageUrl(5)})` }}
             aria-hidden="true"
@@ -440,8 +406,8 @@ export const LandingPage = () => {
                     ? {
                         backgroundImage: `${
                           isDarkMode
-                            ? "linear-gradient(to bottom right, rgba(8,24,42,0.94), rgba(12,34,58,0.9))"
-                            : "linear-gradient(to bottom right, rgba(255,255,255,0.95), rgba(255,255,255,0.9))"
+                            ? "linear-gradient(to bottom right, rgba(8,24,42,0.84), rgba(12,34,58,0.72))"
+                            : "linear-gradient(to bottom right, rgba(255,255,255,0.78), rgba(255,255,255,0.58))"
                         }, url(${pickImageUrl(index + 3)})`,
                         backgroundSize: "cover",
                         backgroundPosition: "center",
@@ -488,8 +454,8 @@ export const LandingPage = () => {
                     ? {
                         backgroundImage: `${
                           isDarkMode
-                            ? "linear-gradient(to bottom, rgba(8,24,42,0.95), rgba(12,34,58,0.9))"
-                            : "linear-gradient(to bottom, rgba(255,255,255,0.95), rgba(255,255,255,0.9))"
+                            ? "linear-gradient(to bottom, rgba(8,24,42,0.84), rgba(12,34,58,0.72))"
+                            : "linear-gradient(to bottom, rgba(255,255,255,0.8), rgba(255,255,255,0.6))"
                         }, url(${pickImageUrl(index + 7)})`,
                         backgroundSize: "cover",
                         backgroundPosition: "center",
@@ -679,18 +645,16 @@ export const LandingPage = () => {
 
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Credits
+                Visual Direction
               </p>
               <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-                <p>Instrument imagery powered by curated external sources.</p>
-                <a
-                  href="https://www.pexels.com/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center font-medium text-foreground hover:text-primary"
-                >
-                  Images: {pexelsCredit}
-                </a>
+                <p>
+                  Curated built-in music imagery matched to training,
+                  composition, and performance workflows.
+                </p>
+                <p className="font-medium text-foreground">
+                  Visuals switch instantly with the active theme.
+                </p>
               </div>
             </div>
           </div>
