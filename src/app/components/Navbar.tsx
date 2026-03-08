@@ -1,5 +1,5 @@
 // src/app/components/Navbar.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { navbarService } from "@/services/navbarService";
 import { SupportIssueButton } from "@/app/components/SupportIssueButton";
 import { buildProfileImageSrcSet, getOptimizedProfileImageUrl } from "@/services/profileImageService";
@@ -80,6 +80,22 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
 
   // Polling interval (ms) for navbar notifications
   const NOTIF_POLL_INTERVAL = 15000;
+
+  const refreshNavbarNotifications = useCallback(async () => {
+    if (!isAuthenticated) {
+      setNotifications([]);
+      setMessengerUnreadCount(0);
+      return;
+    }
+
+    const result = await navbarService.fetchNotifications({ isAdmin });
+    setNotifications(
+      ensureArray<any>(result?.notificationItems, ["notifications"]),
+    );
+    setMessengerUnreadCount(
+      Math.max(0, Number(result?.messengerUnreadCount || 0)),
+    );
+  }, [isAdmin, isAuthenticated]);
 
   // Fetch notifications for all authenticated users.
   useEffect(() => {
@@ -398,24 +414,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                 triggerIcon="message"
                 triggerVariant="outline"
                 unreadCount={messengerUnreadCount}
-                onInboxRefresh={() => {
-                  void navbarService
-                    .fetchNotifications({ isAdmin })
-                    .then((result) => {
-                      setNotifications(
-                        ensureArray<any>(
-                          result?.notificationItems,
-                          ["notifications"],
-                        ),
-                      );
-                      setMessengerUnreadCount(
-                        Math.max(0, Number(result?.messengerUnreadCount || 0)),
-                      );
-                    })
-                    .catch((error) => {
-                      console.warn("Navbar messenger refresh error:", error);
-                    });
-                }}
+                onInboxRefresh={refreshNavbarNotifications}
                 className="rounded-full border-border/80 bg-secondary/40 text-xs font-semibold tracking-[0.06em]"
               />
             )}

@@ -88,7 +88,9 @@ export function SupportIssueButton({
         const inbox = await supportService.getInbox();
         const nextThreads = inbox?.threads || [];
         setThreads(nextThreads);
-        onInboxRefresh?.();
+        Promise.resolve(onInboxRefresh?.()).catch((error) => {
+          console.warn("[support-chat] inbox refresh callback failed:", error);
+        });
 
         setSelectedThreadId((currentSelected) => {
           if (!preserveSelection) return currentSelected;
