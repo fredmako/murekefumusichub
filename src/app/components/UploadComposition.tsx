@@ -55,6 +55,12 @@ interface CompositionCategory {
   description?: string | null;
 }
 
+const ALLOWED_CATEGORY_NAMES = new Set(["arrangements", "compositions"]);
+
+function isAllowedCategory(category: Partial<CompositionCategory> | null | undefined) {
+  return ALLOWED_CATEGORY_NAMES.has(String(category?.name || "").trim().toLowerCase());
+}
+
 type MetadataMode = "ai" | "manual" | null;
 type SelectOrOther = string;
 const LANGUAGE_OPTIONS = [
@@ -121,7 +127,9 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
       try {
         const payload = await categoryService.getAll();
         if (!mounted) return;
-        setCategories(Array.isArray(payload) ? payload : []);
+        setCategories(
+          (Array.isArray(payload) ? payload : []).filter(isAllowedCategory),
+        );
       } catch (error) {
         console.error("[UploadComposition] failed to load categories:", error);
       }
@@ -818,8 +826,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
           </SelectContent>
         </Select>
         <p className="mt-2 text-xs text-gray-600">
-          Categories come from the backend so uploads can be organized and used
-          for discovery and recommendation features.
+          Choose whether this upload is an arrangement or an original composition.
         </p>
       </div>
 

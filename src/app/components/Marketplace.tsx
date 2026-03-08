@@ -48,6 +48,12 @@ interface CategoryOption {
   description?: string | null;
 }
 
+const ALLOWED_CATEGORY_NAMES = new Set(["arrangements", "compositions"]);
+
+function isAllowedCategory(category: Partial<CategoryOption> | null | undefined) {
+  return ALLOWED_CATEGORY_NAMES.has(String(category?.name || "").trim().toLowerCase());
+}
+
 interface MarketplaceProps {
   onAddToCart?: (composition: Composition) => void;
 }
@@ -83,7 +89,6 @@ function mapComposition(comp: any): Composition {
 export function Marketplace({ onAddToCart }: MarketplaceProps) {
   const { appUser } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
-  const [difficultyFilter, setDifficultyFilter] = useState<string>("all");
   const [languageFilter, setLanguageFilter] = useState<string>("all");
   const [accompanimentFilter, setAccompanimentFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -112,9 +117,12 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
           "compositions",
         ]);
         const mapped = compositionsData.map(mapComposition);
+        const normalizedCategories = ensureArray<CategoryOption>(categoriesPayload).filter(
+          isAllowedCategory,
+        );
 
         setCompositions(mapped);
-        setCategories(Array.isArray(categoriesPayload) ? categoriesPayload : []);
+        setCategories(normalizedCategories);
       } catch (error) {
         console.error("Error fetching compositions:", error);
         toast.error("Failed to load compositions");
@@ -156,8 +164,6 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         comp.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         false;
 
-      const matchesDifficulty =
-        difficultyFilter === "all" || comp.difficulty === difficultyFilter;
       const matchesLanguage =
         languageFilter === "all" || comp.language === languageFilter;
       const matchesAccompaniment =
@@ -169,7 +175,6 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
 
       return (
         matchesSearch &&
-        matchesDifficulty &&
         matchesLanguage &&
         matchesAccompaniment &&
         matchesCategory
@@ -179,7 +184,6 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
     accompanimentFilter,
     categoryFilter,
     compositions,
-    difficultyFilter,
     languageFilter,
     searchTerm,
   ]);
@@ -279,7 +283,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
       ) : null}
 
       <div className="mb-8 rounded-2xl border border-border/70 bg-card p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)]">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-6">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
           <div className="relative lg:col-span-2">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
             <Input
@@ -301,18 +305,6 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                   {category.name}
                 </SelectItem>
               ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={difficultyFilter} onValueChange={setDifficultyFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="Difficulty" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Difficulties</SelectItem>
-              <SelectItem value="Easy">Easy</SelectItem>
-              <SelectItem value="Intermediate">Intermediate</SelectItem>
-              <SelectItem value="Advanced">Advanced</SelectItem>
             </SelectContent>
           </Select>
 
@@ -348,7 +340,6 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
 
         {(searchTerm ||
           categoryFilter !== "all" ||
-          difficultyFilter !== "all" ||
           languageFilter !== "all" ||
           accompanimentFilter !== "all") && (
           <div className="mt-4">
@@ -358,7 +349,6 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
               onClick={() => {
                 setSearchTerm("");
                 setCategoryFilter("all");
-                setDifficultyFilter("all");
                 setLanguageFilter("all");
                 setAccompanimentFilter("all");
               }}
@@ -414,7 +404,6 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
               onClick={() => {
                 setSearchTerm("");
                 setCategoryFilter("all");
-                setDifficultyFilter("all");
                 setLanguageFilter("all");
                 setAccompanimentFilter("all");
               }}
