@@ -218,7 +218,7 @@ export function BuyerDashboard({
   return (
     <main className="texture-linen min-h-screen overflow-hidden py-12">
       <div className="mx-auto max-w-7xl space-y-6 px-4 sm:px-6 lg:px-8">
-        <div className="texture-fabric texture-speckle motion-reveal overflow-hidden rounded-3xl border border-border/70 bg-card/80 shadow-[0_24px_44px_-30px_rgba(15,23,42,0.85)]">
+        <div className="route-backdrop-panel texture-speckle motion-reveal overflow-hidden rounded-3xl border border-white/45 bg-card/35 shadow-[0_28px_60px_-38px_rgba(15,23,42,0.75)] dark:border-white/10 dark:bg-card/30">
           <div className="flex flex-col gap-5 p-6 sm:p-8 md:flex-row md:items-start md:justify-between">
             <div>
               <span className="soft-kicker">Buyer Workspace</span>

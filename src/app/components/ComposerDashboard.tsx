@@ -331,7 +331,7 @@ export function ComposerDashboard() {
   return (
     <section className="section-shell">
       <div className="space-y-8">
-        <div className="texture-fabric motion-reveal overflow-hidden rounded-3xl border border-border/70 bg-gradient-to-r from-[#0d3e47] via-[#0c5561] to-primary text-white shadow-[0_24px_44px_-30px_rgba(15,23,42,0.9)]">
+        <div className="route-backdrop-panel route-backdrop-panel-strong motion-reveal overflow-hidden rounded-3xl border border-white/15 bg-card/20 text-white shadow-[0_24px_44px_-30px_rgba(15,23,42,0.9)]">
           <div className="flex flex-col gap-6 p-6 sm:p-8 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-2xl">
               <span className="inline-flex rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-white/95">

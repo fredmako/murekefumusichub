@@ -1383,7 +1383,7 @@ export function AdminPanel() {
         />
         <section className="section-shell">
           <div className="mx-auto max-w-4xl">
-            <Card className="texture-fabric texture-speckle motion-reveal overflow-hidden rounded-3xl border border-border/70 bg-card/85 shadow-[0_24px_44px_-30px_rgba(15,23,42,0.85)]">
+            <Card className="route-backdrop-panel route-backdrop-panel-strong texture-speckle motion-reveal overflow-hidden rounded-3xl border border-white/15 bg-card/20 shadow-[0_24px_44px_-30px_rgba(15,23,42,0.85)] dark:border-white/10 dark:bg-card/25">
               <CardContent className="px-6 py-16 text-center sm:px-8">
                 <span className="soft-kicker">Admin Workspace</span>
                 <h2 className="mt-5 text-3xl font-semibold text-foreground sm:text-4xl">
@@ -1408,16 +1408,18 @@ export function AdminPanel() {
 
   return (
     <div className="space-y-4 overflow-x-hidden p-3 sm:space-y-6 sm:p-4 lg:p-6">
-      <div className="mb-2 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold sm:text-3xl">Admin Panel</h1>
-          <p className="text-sm text-muted-foreground sm:text-base">
-            Manage platform operations and monitor activity
-          </p>
+      <div className="route-backdrop-panel texture-speckle motion-reveal overflow-hidden rounded-3xl border border-white/15 bg-card/20 p-4 shadow-[0_28px_60px_-38px_rgba(15,23,42,0.82)] dark:border-white/10 dark:bg-card/25 sm:p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold sm:text-3xl">Admin Panel</h1>
+            <p className="text-sm text-muted-foreground sm:text-base">
+              Manage platform operations and monitor activity
+            </p>
+          </div>
+          <SupportIssueButton context="admin-dashboard" triggerLabel="Talk to Us" />
         </div>
-        <SupportIssueButton context="admin-dashboard" triggerLabel="Talk to Us" />
       </div>
-      <Card className="border-border/70 bg-card/95 xl:hidden">
+      <Card className="route-backdrop-panel border-white/15 bg-card/25 xl:hidden dark:border-white/10 dark:bg-card/25">
         <CardContent className="space-y-3 p-3">
           <div className="flex items-center justify-between gap-3">
             <div>

@@ -2,6 +2,11 @@
 
 :root {
   --font-size: 16px;
+  --route-backdrop-image: none;
+  --route-backdrop-overlay: linear-gradient(140deg, rgba(247, 252, 255, 0.58), rgba(242, 249, 255, 0.46), rgba(236, 245, 251, 0.56));
+  --route-backdrop-scrim: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(248, 251, 255, 0.2), rgba(244, 248, 252, 0.36));
+  --route-panel-overlay: linear-gradient(135deg, rgba(255, 255, 255, 0.44), rgba(248, 251, 255, 0.56), rgba(238, 246, 252, 0.34));
+  --route-panel-overlay-strong: linear-gradient(135deg, rgba(7, 56, 64, 0.76), rgba(9, 84, 96, 0.72), rgba(5, 150, 105, 0.64));
   --background: #ffffff;
   --foreground: #10243b;
   --card: #ffffff;
@@ -307,18 +312,18 @@
 
   .texture-linen {
     background-image:
-      radial-gradient(circle at 20% 10%, color-mix(in oklab, var(--accent) 28%, transparent), transparent 36%),
+      radial-gradient(circle at 20% 10%, color-mix(in oklab, var(--accent) 20%, transparent), transparent 36%),
       repeating-linear-gradient(
         115deg,
-        color-mix(in oklab, var(--border) 22%, transparent) 0px,
-        color-mix(in oklab, var(--border) 22%, transparent) 1px,
+        color-mix(in oklab, var(--border) 12%, transparent) 0px,
+        color-mix(in oklab, var(--border) 12%, transparent) 1px,
         transparent 1px,
         transparent 16px
       ),
       repeating-linear-gradient(
         -115deg,
-        color-mix(in oklab, var(--border) 14%, transparent) 0px,
-        color-mix(in oklab, var(--border) 14%, transparent) 1px,
+        color-mix(in oklab, var(--border) 8%, transparent) 0px,
+        color-mix(in oklab, var(--border) 8%, transparent) 1px,
         transparent 1px,
         transparent 18px
       );
@@ -330,20 +335,20 @@
     background-image:
       radial-gradient(
         circle at 30% 20%,
-        color-mix(in oklab, var(--primary) 10%, transparent),
+        color-mix(in oklab, var(--primary) 8%, transparent),
         transparent 55%
       ),
       repeating-linear-gradient(
         0deg,
-        color-mix(in oklab, var(--border) 20%, transparent) 0,
-        color-mix(in oklab, var(--border) 20%, transparent) 1px,
+        color-mix(in oklab, var(--border) 12%, transparent) 0,
+        color-mix(in oklab, var(--border) 12%, transparent) 1px,
         transparent 1px,
         transparent 11px
       ),
       repeating-linear-gradient(
         90deg,
-        color-mix(in oklab, var(--border) 12%, transparent) 0,
-        color-mix(in oklab, var(--border) 12%, transparent) 1px,
+        color-mix(in oklab, var(--border) 8%, transparent) 0,
+        color-mix(in oklab, var(--border) 8%, transparent) 1px,
         transparent 1px,
         transparent 11px
       );
@@ -351,19 +356,19 @@
 
   .dark .texture-linen {
     background-image:
-      radial-gradient(circle at 20% 12%, rgba(120, 80, 255, 0.18), transparent 38%),
-      radial-gradient(circle at 78% 10%, rgba(34, 197, 255, 0.14), transparent 46%),
+      radial-gradient(circle at 20% 12%, rgba(120, 80, 255, 0.14), transparent 38%),
+      radial-gradient(circle at 78% 10%, rgba(34, 197, 255, 0.12), transparent 46%),
       repeating-linear-gradient(
         115deg,
-        color-mix(in oklab, var(--border) 26%, transparent) 0px,
-        color-mix(in oklab, var(--border) 26%, transparent) 1px,
+        color-mix(in oklab, var(--border) 14%, transparent) 0px,
+        color-mix(in oklab, var(--border) 14%, transparent) 1px,
         transparent 1px,
         transparent 16px
       ),
       repeating-linear-gradient(
         -115deg,
-        color-mix(in oklab, var(--border) 18%, transparent) 0px,
-        color-mix(in oklab, var(--border) 18%, transparent) 1px,
+        color-mix(in oklab, var(--border) 10%, transparent) 0px,
+        color-mix(in oklab, var(--border) 10%, transparent) 1px,
         transparent 1px,
         transparent 18px
       );
@@ -371,22 +376,88 @@
 
   .dark .texture-fabric {
     background-image:
-      radial-gradient(circle at 22% 18%, rgba(139, 92, 246, 0.22), transparent 50%),
-      radial-gradient(circle at 80% 24%, rgba(56, 189, 248, 0.16), transparent 54%),
+      radial-gradient(circle at 22% 18%, rgba(139, 92, 246, 0.18), transparent 50%),
+      radial-gradient(circle at 80% 24%, rgba(56, 189, 248, 0.12), transparent 54%),
       repeating-linear-gradient(
         0deg,
-        color-mix(in oklab, var(--border) 24%, transparent) 0,
-        color-mix(in oklab, var(--border) 24%, transparent) 1px,
+        color-mix(in oklab, var(--border) 14%, transparent) 0,
+        color-mix(in oklab, var(--border) 14%, transparent) 1px,
         transparent 1px,
         transparent 11px
       ),
       repeating-linear-gradient(
         90deg,
-        color-mix(in oklab, var(--border) 16%, transparent) 0,
-        color-mix(in oklab, var(--border) 16%, transparent) 1px,
+        color-mix(in oklab, var(--border) 10%, transparent) 0,
+        color-mix(in oklab, var(--border) 10%, transparent) 1px,
         transparent 1px,
         transparent 11px
       );
+  }
+
+  .route-backdrop-panel {
+    position: relative;
+    isolation: isolate;
+    background-color: color-mix(in oklab, var(--card) 42%, transparent);
+    backdrop-filter: blur(16px);
+  }
+
+  .route-backdrop-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background-image: var(--route-panel-overlay), var(--route-backdrop-image);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-blend-mode: normal;
+    mix-blend-mode: normal;
+    opacity: 0.94;
+    transform: scale(1.03);
+  }
+
+  .route-backdrop-panel::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.16)),
+      radial-gradient(circle at top right, rgba(255, 255, 255, 0.24), transparent 40%);
+    mix-blend-mode: screen;
+    opacity: 0.6;
+  }
+
+  .route-backdrop-panel > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .route-backdrop-panel-strong::before {
+    background-image: var(--route-panel-overlay-strong), var(--route-backdrop-image);
+    opacity: 0.98;
+  }
+
+  .route-backdrop-panel-strong::after {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.12)),
+      radial-gradient(circle at top right, rgba(255, 255, 255, 0.18), transparent 42%);
+    opacity: 0.44;
+  }
+
+  .dark .route-backdrop-panel {
+    background-color: color-mix(in oklab, var(--card) 48%, transparent);
+  }
+
+  .dark .route-backdrop-panel::after {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(124, 58, 237, 0.08)),
+      radial-gradient(circle at top right, rgba(59, 130, 246, 0.16), transparent 42%);
+    opacity: 0.52;
   }
 
   .texture-speckle {

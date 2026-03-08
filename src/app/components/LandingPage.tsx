@@ -210,7 +210,7 @@ export const LandingPage = () => {
       {pickImageUrl(0) ? (
         <div
           className={`pointer-events-none fixed inset-0 -z-20 ${
-            isDarkMode ? "opacity-[0.26]" : "opacity-[0.16]"
+            isDarkMode ? "opacity-[0.36]" : "opacity-[0.24]"
           }`}
           style={{
             backgroundImage: `url(${pickImageUrl(0)})`,
@@ -239,15 +239,15 @@ export const LandingPage = () => {
         </DialogContent>
       </Dialog>
 
-      <section className="section-shell texture-fabric texture-speckle motion-reveal relative overflow-hidden rounded-3xl border border-border/60 bg-card/60">
+      <section className="section-shell route-backdrop-panel texture-speckle motion-reveal relative overflow-hidden rounded-3xl border border-white/45 bg-card/35 shadow-[0_28px_60px_-38px_rgba(15,23,42,0.72)] dark:border-white/10 dark:bg-card/30">
         {pickImageUrl(1) ? (
           <div
             className="pointer-events-none absolute inset-0"
             style={{
               backgroundImage: `${
                 isDarkMode
-                  ? "linear-gradient(to right, rgba(6,18,34,0.74), rgba(10,31,54,0.54))"
-                  : "linear-gradient(to right, rgba(255,255,255,0.74), rgba(255,255,255,0.44))"
+                  ? "linear-gradient(to right, rgba(6,18,34,0.66), rgba(10,31,54,0.34))"
+                  : "linear-gradient(to right, rgba(255,255,255,0.62), rgba(255,255,255,0.18))"
               }, url(${pickImageUrl(1)})`,
               backgroundPosition: "center",
               backgroundSize: "cover",

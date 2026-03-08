@@ -34,7 +34,7 @@ const team = [
 export const AboutPage: React.FC = () => {
   return (
     <main className="texture-linen relative min-h-screen overflow-hidden pb-20">
-      <section className="section-shell texture-fabric texture-speckle motion-reveal relative overflow-hidden rounded-3xl border border-border/60 bg-card/70">
+      <section className="section-shell route-backdrop-panel texture-speckle motion-reveal relative overflow-hidden rounded-3xl border border-white/45 bg-card/35 shadow-[0_28px_60px_-38px_rgba(15,23,42,0.7)] dark:border-white/10 dark:bg-card/30">
         <div
           className="pointer-events-none absolute inset-0 opacity-50"
           style={{

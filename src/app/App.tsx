@@ -150,6 +150,17 @@ function resolveRouteBackdrop(pathname: string): RouteBackdropConfig {
     };
   }
 
+  if (path.startsWith("/manage-account")) {
+    return {
+      light: bg6,
+      dark: bg10,
+      overlayLight:
+        "linear-gradient(140deg, rgba(248,253,255,0.44), rgba(245,250,255,0.34), rgba(239,247,253,0.44))",
+      overlayDark:
+        "linear-gradient(140deg, rgba(5,11,24,0.46), rgba(17,10,33,0.36), rgba(8,24,47,0.44))",
+    };
+  }
+
   if (path.startsWith("/composer") || path.startsWith("/upload")) {
     return {
       light: bg7,
@@ -307,6 +318,23 @@ export default function App() {
   const routeBackdropOverlay = isDarkMode
     ? routeBackdrop.overlayDark
     : routeBackdrop.overlayLight;
+  const routeBackdropVars = useMemo(
+    () =>
+      ({
+        "--route-backdrop-image": `url(${routeBackdropImage})`,
+        "--route-backdrop-overlay": routeBackdropOverlay,
+        "--route-backdrop-scrim": isDarkMode
+          ? "linear-gradient(180deg, rgba(5,10,19,0.18), rgba(7,13,24,0.5), rgba(6,12,22,0.72))"
+          : "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(248,251,255,0.2), rgba(244,248,252,0.36))",
+        "--route-panel-overlay": isDarkMode
+          ? "linear-gradient(135deg, rgba(8,14,28,0.5), rgba(16,16,42,0.58), rgba(9,28,56,0.48))"
+          : "linear-gradient(135deg, rgba(255,255,255,0.44), rgba(248,251,255,0.56), rgba(238,246,252,0.34))",
+        "--route-panel-overlay-strong": isDarkMode
+          ? "linear-gradient(135deg, rgba(7,12,26,0.78), rgba(22,13,52,0.76), rgba(9,66,82,0.72))"
+          : "linear-gradient(135deg, rgba(7,56,64,0.76), rgba(9,84,96,0.72), rgba(5,150,105,0.64))",
+      }) as React.CSSProperties,
+    [isDarkMode, routeBackdropImage, routeBackdropOverlay],
+  );
 
   useEffect(() => {
     const preset = appUser?.theme_settings?.preset;
@@ -463,6 +491,7 @@ export default function App() {
         className={`relative min-h-screen text-foreground ${
           isDarkMode ? "bg-black" : "bg-background"
         }`}
+        style={routeBackdropVars}
       >
         <div
           className="pointer-events-none fixed inset-0 -z-20 bg-background"
@@ -471,7 +500,20 @@ export default function App() {
         <div
           className="pointer-events-none fixed inset-0 -z-10 bg-cover bg-center bg-no-repeat"
           style={{
-            backgroundImage: `${routeBackdropOverlay}, url(${routeBackdropImage})`,
+            backgroundImage: "var(--route-backdrop-image)",
+            opacity: isDarkMode ? 0.4 : 0.28,
+            filter: isDarkMode
+              ? "saturate(1.14) contrast(1.08) brightness(0.88)"
+              : "saturate(1.12) contrast(1.04) brightness(1.04)",
+            transform: "scale(1.025)",
+          }}
+          aria-hidden="true"
+        />
+        <div
+          className="pointer-events-none fixed inset-0 -z-10"
+          style={{
+            backgroundImage:
+              "var(--route-backdrop-scrim), var(--route-backdrop-overlay)",
           }}
           aria-hidden="true"
         />
@@ -489,7 +531,8 @@ export default function App() {
               <div
                 className="pointer-events-none absolute inset-0 bg-cover bg-center"
                 style={{
-                  backgroundImage: `${routeBackdropOverlay}, url(${routeBackdropImage})`,
+                  backgroundImage:
+                    "var(--route-backdrop-scrim), var(--route-backdrop-overlay), var(--route-backdrop-image)",
                 }}
                 aria-hidden="true"
               />

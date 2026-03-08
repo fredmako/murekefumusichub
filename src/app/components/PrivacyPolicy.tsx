@@ -27,7 +27,7 @@ export function PrivacyPolicy() {
     <main className="texture-linen min-h-screen overflow-hidden pb-20">
       <section className="section-shell">
         <div className="mx-auto max-w-5xl space-y-6">
-          <div className="texture-fabric texture-speckle motion-reveal overflow-hidden rounded-3xl border border-border/70 bg-card/80 shadow-[0_24px_44px_-30px_rgba(15,23,42,0.85)]">
+          <div className="route-backdrop-panel texture-speckle motion-reveal overflow-hidden rounded-3xl border border-white/45 bg-card/35 shadow-[0_28px_60px_-38px_rgba(15,23,42,0.75)] dark:border-white/10 dark:bg-card/30">
             <div className="p-6 sm:p-8">
               <span className="soft-kicker">Privacy & Data Use</span>
               <h1 className="mt-5 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
@@ -144,4 +144,3 @@ export function PrivacyPolicy() {
     </main>
   );
 }
-

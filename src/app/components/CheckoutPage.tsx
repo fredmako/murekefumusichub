@@ -1,6 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2, Smartphone } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Clock3,
+  Loader2,
+  Smartphone,
+  XCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { checkoutService } from "@/services/api";
@@ -38,6 +45,8 @@ export function CheckoutPage({
   const { appUser, isLoading } = useAuth();
   const [mpesaCode, setMpesaCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [pendingSubmissions, setPendingSubmissions] = useState<any[]>([]);
 
   const totalAmount = useMemo(
     () =>
@@ -55,6 +64,28 @@ export function CheckoutPage({
       replace: true,
     });
   }, [appUser, isLoading, navigate]);
+
+  const loadCheckoutStatus = useCallback(async () => {
+    if (!appUser) {
+      setPendingSubmissions([]);
+      return;
+    }
+
+    setStatusLoading(true);
+    try {
+      const payload = await checkoutService.getMyCheckoutStatus();
+      setPendingSubmissions(Array.isArray(payload) ? payload : []);
+    } catch (err: any) {
+      console.error("[checkout-status] error:", err);
+    } finally {
+      setStatusLoading(false);
+    }
+  }, [appUser]);
+
+  useEffect(() => {
+    if (!appUser) return;
+    void loadCheckoutStatus();
+  }, [appUser, loadCheckoutStatus]);
 
   const handleSubmit = async () => {
     if (!appUser) {
@@ -97,6 +128,7 @@ export function CheckoutPage({
       }
 
       onClearCart();
+      await loadCheckoutStatus();
       navigate("/buyer", { replace: true });
     } catch (err: any) {
       console.error("[checkout] submit error:", err);
@@ -121,6 +153,29 @@ export function CheckoutPage({
     );
   }
 
+  const statusTone = (status: string) => {
+    const normalized = String(status || "").toLowerCase();
+    if (normalized === "approved") {
+      return {
+        className:
+          "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200",
+        Icon: CheckCircle2,
+      };
+    }
+    if (normalized === "rejected") {
+      return {
+        className:
+          "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200",
+        Icon: XCircle,
+      };
+    }
+    return {
+      className:
+        "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200",
+      Icon: Clock3,
+    };
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#f6fbff] via-white to-[#f5f1ff] p-6 dark:from-[#060f1f] dark:via-[#0a1830] dark:to-[#1b1232]">
       <div className="mx-auto max-w-5xl space-y-6">
@@ -136,6 +191,68 @@ export function CheckoutPage({
             admin approval.
           </p>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Current Checkout Status</CardTitle>
+            <CardDescription>
+              Backend payment submissions are tracked here so buyers can see what
+              is still pending admin review.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {statusLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                Loading your checkout submissions...
+              </div>
+            ) : pendingSubmissions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No checkout submissions yet.
+              </p>
+            ) : (
+              pendingSubmissions.slice(0, 5).map((submission) => {
+                const tone = statusTone(submission?.status);
+                const Icon = tone.Icon;
+                return (
+                  <div
+                    key={submission?.id}
+                    className={`rounded-xl border px-4 py-3 ${tone.className}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <Icon className="mt-0.5 size-4 shrink-0" />
+                        <div>
+                          <p className="font-medium">
+                            {submission?.compositions?.title || "Composition payment"}
+                          </p>
+                          <p className="text-xs opacity-80">
+                            Ref: {submission?.mpesa_code || "N/A"}
+                          </p>
+                          {submission?.admin_notes ? (
+                            <p className="mt-1 text-xs opacity-80">
+                              Admin notes: {submission.admin_notes}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="text-right text-xs opacity-80">
+                        <p className="font-semibold uppercase">
+                          {submission?.status || "pending"}
+                        </p>
+                        <p>
+                          {submission?.submitted_at
+                            ? new Date(submission.submitted_at).toLocaleString()
+                            : ""}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </CardContent>
+        </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Card className="lg:col-span-2">

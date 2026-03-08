@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle, Loader2 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -14,7 +14,11 @@ import {
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { supabase } from "@/lib/supabase";
 import { API_BASE_URL } from "@/lib/apiBase";
-import { compositionService, mediaService } from "@/services/api";
+import {
+  categoryService,
+  compositionService,
+  mediaService,
+} from "@/services/api";
 import { toast } from "sonner";
 
 interface UploadCompositionProps {
@@ -44,6 +48,12 @@ interface CompositionBackgroundItem {
     portrait?: string | null;
     small?: string | null;
   };
+}
+
+interface CompositionCategory {
+  id: number;
+  name: string;
+  description?: string | null;
 }
 
 type MetadataMode = "ai" | "manual" | null;
@@ -78,6 +88,7 @@ const ACCOMPANIMENT_OPTIONS = [
 export function UploadComposition({ onClose }: UploadCompositionProps) {
   const [formData, setFormData] = useState({
     title: "",
+    categoryId: "",
     price: "",
     currency: "USD" as SelectOrOther,
     customCurrency: "",
@@ -115,6 +126,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     rateToUsd: number;
     detectedBy: "ai" | "heuristic";
   } | null>(null);
+  const [categories, setCategories] = useState<CompositionCategory[]>([]);
 
   const voicePartOptions = [
     "Soprano",
@@ -124,6 +136,25 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     "Soprano I",
     "Soprano II",
   ];
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadCategories = async () => {
+      try {
+        const payload = await categoryService.getAll();
+        if (!mounted) return;
+        setCategories(Array.isArray(payload) ? payload : []);
+      } catch (error) {
+        console.error("[UploadComposition] failed to load categories:", error);
+      }
+    };
+
+    void loadCategories();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const resolveCustomOrPreset = (
     selectedValue: SelectOrOther,
@@ -622,6 +653,9 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
         body: JSON.stringify({
           title: formData.title,
           description: formData.description,
+          category_id: formData.categoryId
+            ? Number.parseInt(formData.categoryId, 10)
+            : null,
           price: parsedPrice,
           price_currency: finalCurrency,
           difficulty: resolvedDifficulty,
@@ -651,6 +685,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
           body: errorData,
           payload: {
             title: formData.title,
+            category_id: formData.categoryId || null,
             price: formData.price,
             price_currency: finalCurrency,
             difficulty: resolvedDifficulty,
@@ -852,6 +887,31 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
           rows={4}
           required
         />
+      </div>
+
+      <div>
+        <Label htmlFor="category">Category</Label>
+        <Select
+          value={formData.categoryId}
+          onValueChange={(value) =>
+            setFormData((prev) => ({ ...prev, categoryId: value }))
+          }
+        >
+          <SelectTrigger id="category">
+            <SelectValue placeholder="Select a category (optional)" />
+          </SelectTrigger>
+          <SelectContent>
+            {categories.map((category) => (
+              <SelectItem key={category.id} value={String(category.id)}>
+                {category.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="mt-2 text-xs text-gray-600">
+          Categories come from the backend so uploads can be organized and used
+          for discovery and recommendation features.
+        </p>
       </div>
 
       {/* Marketing Background */}
