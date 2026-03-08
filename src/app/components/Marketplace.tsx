@@ -48,6 +48,13 @@ interface CategoryOption {
   description?: string | null;
 }
 
+interface RecommendationMeta {
+  mode: "idle" | "cold_start" | "fallback" | "personalized" | "degraded";
+  purchaseCount: number;
+  minimumPurchasesForPersonalized: number;
+  message: string;
+}
+
 const ALLOWED_CATEGORY_NAMES = new Set(["arrangements", "compositions"]);
 
 function isAllowedCategory(category: Partial<CategoryOption> | null | undefined) {
@@ -102,6 +109,12 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
   const [preferenceSavingCategoryId, setPreferenceSavingCategoryId] = useState<
     number | null
   >(null);
+  const [recommendationMeta, setRecommendationMeta] = useState<RecommendationMeta>({
+    mode: "idle",
+    purchaseCount: 0,
+    minimumPurchasesForPersonalized: 3,
+    message: "",
+  });
 
   useEffect(() => {
     const fetchMarketplaceData = async () => {
@@ -137,17 +150,39 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
   useEffect(() => {
     if (!appUser?.id) {
       setRecommendedCompositions([]);
+      setRecommendationMeta({
+        mode: "idle",
+        purchaseCount: 0,
+        minimumPurchasesForPersonalized: 3,
+        message: "",
+      });
       return;
     }
 
     const fetchRecommendations = async () => {
       try {
         setRecommendationsLoading(true);
-        const payload = await fypService.getRecommendations(appUser.id, 6);
+        const payload = await fypService.getRecommendations(appUser.id, 6) as any;
         const rows = ensureArray<any>(payload, ["recommendations"]);
         setRecommendedCompositions(rows.map(mapComposition));
+        setRecommendationMeta({
+          mode: payload?.mode || "fallback",
+          purchaseCount: Number(payload?.purchaseCount || 0),
+          minimumPurchasesForPersonalized: Number(
+            payload?.minimumPurchasesForPersonalized || 3,
+          ),
+          message: String(payload?.message || ""),
+        });
       } catch (error) {
         console.error("[marketplace] recommendation fetch failed:", error);
+        setRecommendedCompositions([]);
+        setRecommendationMeta({
+          mode: "degraded",
+          purchaseCount: 0,
+          minimumPurchasesForPersonalized: 3,
+          message:
+            "Recommendations are temporarily unavailable. You can still browse the marketplace below.",
+        });
       } finally {
         setRecommendationsLoading(false);
       }
@@ -194,13 +229,32 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
       return;
     }
 
+    if (
+      recommendationMeta.mode === "cold_start" &&
+      recommendationMeta.purchaseCount < recommendationMeta.minimumPurchasesForPersonalized
+    ) {
+      toast.info(
+        recommendationMeta.message ||
+          `Make ${recommendationMeta.minimumPurchasesForPersonalized} purchases to unlock personalized recommendations.`,
+      );
+      return;
+    }
+
     setPreferenceSavingCategoryId(categoryId);
     try {
       await fypService.updatePreferences(appUser.id, categoryId, 1);
       toast.success("Preference saved. Recommendations updated.");
-      const payload = await fypService.getRecommendations(appUser.id, 6);
+      const payload = await fypService.getRecommendations(appUser.id, 6) as any;
       const rows = ensureArray<any>(payload, ["recommendations"]);
       setRecommendedCompositions(rows.map(mapComposition));
+      setRecommendationMeta({
+        mode: payload?.mode || "fallback",
+        purchaseCount: Number(payload?.purchaseCount || 0),
+        minimumPurchasesForPersonalized: Number(
+          payload?.minimumPurchasesForPersonalized || 3,
+        ),
+        message: String(payload?.message || ""),
+      });
     } catch (error: any) {
       console.error("[marketplace] preference update failed:", error);
       toast.error(error?.message || "Failed to update recommendation preference");
@@ -232,8 +286,8 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
               </div>
               <h2 className="mt-3 text-2xl font-semibold">Buyer suggestions</h2>
               <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                This section is now wired to the backend recommendation endpoint
-                and buyer preference updates.
+                {recommendationMeta.message ||
+                  "This section adapts once your purchase history is strong enough to personalize recommendations."}
               </p>
             </div>
 
@@ -244,7 +298,10 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                   type="button"
                   size="sm"
                   variant="outline"
-                  disabled={preferenceSavingCategoryId === category.id}
+                  disabled={
+                    preferenceSavingCategoryId === category.id ||
+                    recommendationMeta.mode === "cold_start"
+                  }
                   onClick={() => void handlePreferenceBoost(category.id)}
                 >
                   {preferenceSavingCategoryId === category.id ? (
@@ -262,6 +319,16 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                 <Loader2 className="size-4 animate-spin" />
                 Loading recommendations...
               </div>
+            ) : recommendationMeta.mode === "cold_start" ? (
+              <p className="text-sm text-muted-foreground">
+                {recommendationMeta.message ||
+                  "Make a few purchases to unlock personalized recommendations."}
+              </p>
+            ) : recommendationMeta.mode === "degraded" ? (
+              <p className="text-sm text-muted-foreground">
+                {recommendationMeta.message ||
+                  "Recommendations are temporarily unavailable."}
+              </p>
             ) : recommendedCompositions.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No personalized recommendations yet. Pick a preferred category to
