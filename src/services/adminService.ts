@@ -295,6 +295,39 @@ export const adminService = {
       throw err;
     }
   },
+  async demoteUserFromComposer(userId: string) {
+    try {
+      const result = await apiRequest<any>(
+        `/admin/users/${userId}/demote-composer`,
+        {
+          method: "POST",
+        },
+      );
+      toast.success("Composer role removed");
+      return result;
+    } catch (err: any) {
+      console.error("demoteUserFromComposer error:", err);
+      toast.error("Failed to remove composer role");
+      throw err;
+    }
+  },
+
+  async demoteUserFromAdmin(userId: string) {
+    try {
+      const result = await apiRequest<any>(
+        `/admin/users/${userId}/demote-admin`,
+        {
+          method: "POST",
+        },
+      );
+      toast.success("Admin role removed");
+      return result;
+    } catch (err: any) {
+      console.error("demoteUserFromAdmin error:", err);
+      toast.error("Failed to remove admin role");
+      throw err;
+    }
+  },
 
   async suspendUser(userId: string) {
     try {
@@ -443,3 +476,5 @@ export const adminService = {
     }
   },
 };
+
+

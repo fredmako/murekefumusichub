@@ -113,7 +113,7 @@ function LoadingTableRow({
   label: string;
 }) {
   return (
-    <TableRow>
+                    <TableRow>
       <TableCell colSpan={colSpan} className="py-8">
         <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
           <Loader className="size-4 animate-spin" />
@@ -879,6 +879,19 @@ export function AdminPanel() {
   async function promoteUserToAdmin(userId: string) {
     await runAction(`user:promote-admin:${userId}`, async () => {
       await adminService.promoteUserToAdmin(userId);
+      await refreshAfterRoleChange();
+    });
+  }
+  async function demoteUserFromComposer(userId: string) {
+    await runAction(`user:demote-composer:${userId}`, async () => {
+      await adminService.demoteUserFromComposer(userId);
+      await refreshAfterRoleChange();
+    });
+  }
+
+  async function demoteUserFromAdmin(userId: string) {
+    await runAction(`user:demote-admin:${userId}`, async () => {
+      await adminService.demoteUserFromAdmin(userId);
       await refreshAfterRoleChange();
     });
   }
@@ -2260,7 +2273,12 @@ export function AdminPanel() {
                   {usersLoading && users.length === 0 && (
                     <LoadingTableRow colSpan={5} label="Loading users..." />
                   )}
-                  {users.map((u) => (
+                  {users.map((u) => {
+                    const resolvedRoles = resolveUserRoles(u);
+                    const isAdmin = resolvedRoles.includes("admin");
+                    const isComposer = resolvedRoles.includes("composer");
+                    const isSuspended = u.is_active === false;
+                    return (
                     <TableRow key={u.id}>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-3">
@@ -2326,25 +2344,45 @@ export function AdminPanel() {
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
 
-                            <DropdownMenuItem
-                              onClick={() => promoteUserToComposer(u.id)}
-                              disabled={isProcessing}
-                            >
-                              Promote to Composer
-                            </DropdownMenuItem>
+                            {!isComposer ? (
+                              <DropdownMenuItem
+                                onClick={() => promoteUserToComposer(u.id)}
+                                disabled={isProcessing}
+                              >
+                                Promote to Composer
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem
+                                onClick={() => demoteUserFromComposer(u.id)}
+                                disabled={isProcessing}
+                                className="text-amber-600"
+                              >
+                                Remove Composer
+                              </DropdownMenuItem>
+                            )}
 
-                            <DropdownMenuItem
-                              onClick={() => promoteUserToAdmin(u.id)}
-                              disabled={isProcessing}
-                            >
-                              Promote to Admin
-                            </DropdownMenuItem>
+                            {!isAdmin ? (
+                              <DropdownMenuItem
+                                onClick={() => promoteUserToAdmin(u.id)}
+                                disabled={isProcessing}
+                              >
+                                Promote to Admin
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem
+                                onClick={() => demoteUserFromAdmin(u.id)}
+                                disabled={isProcessing}
+                                className="text-amber-600"
+                              >
+                                Remove Admin
+                              </DropdownMenuItem>
+                            )}
 
                             <DropdownMenuSeparator />
 
                             <DropdownMenuItem
                               onClick={() => openAdminChatComposer(u, "direct")}
-                              disabled={isProcessing || u.is_active === false}
+                              disabled={isProcessing || isSuspended}
                             >
                               <MessageCircleMore className="mr-2 size-4" />
                               Initiate Direct Chat
@@ -2352,7 +2390,7 @@ export function AdminPanel() {
 
                             <DropdownMenuItem
                               onClick={() => openAdminChatComposer(u, "notification")}
-                              disabled={isProcessing || u.is_active === false}
+                              disabled={isProcessing || isSuspended}
                             >
                               <Bell className="mr-2 size-4" />
                               Send Notification
@@ -2360,7 +2398,7 @@ export function AdminPanel() {
 
                             <DropdownMenuItem
                               onClick={() => openAdminChatComposer(u, "ticket")}
-                              disabled={isProcessing || u.is_active === false}
+                              disabled={isProcessing || isSuspended}
                             >
                               <MessageSquare className="mr-2 size-4" />
                               Open Ticket Chat
@@ -2371,15 +2409,17 @@ export function AdminPanel() {
                             <DropdownMenuItem
                               className="text-red-600"
                               onClick={() => suspendUser(u.id)}
-                              disabled={isProcessing}
+                              disabled={isProcessing || isSuspended}
                             >
-                              <Ban className="size-4 mr-2" /> Suspend User
+                              <Ban className="size-4 mr-2" />
+                              {isSuspended ? "User Suspended" : "Suspend User"}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </CardContent>
@@ -2773,7 +2813,8 @@ export function AdminPanel() {
                         </DropdownMenu>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </CardContent>
@@ -3459,3 +3500,7 @@ export function AdminPanel() {
     </div>
   );
 }
+
+
+
+
