@@ -902,6 +902,28 @@ export function AdminPanel() {
       await fetchUsers(true);
     });
   }
+  async function unsuspendUser(userId: string) {
+    await runAction(`user:unsuspend:${userId}`, async () => {
+      await adminService.unsuspendUser(userId);
+      await fetchUsers(true);
+    });
+  }
+
+  async function deleteUser(user: any) {
+    const userId = user?.id;
+    if (!userId) {
+      toast.error("User id missing");
+      return;
+    }
+    const confirmed = window.confirm(
+      `Permanently delete ${formatUserDisplay(user)}? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+    await runAction(`user:delete:${userId}`, async () => {
+      await adminService.deleteUser(userId);
+      await Promise.all([fetchUsers(true), fetchExactStats()]);
+    });
+  }
 
   function openAdminChatComposer(user: any, type: AdminThreadType) {
     const subject = defaultAdminChatSubject(type, user);
@@ -2278,6 +2300,7 @@ export function AdminPanel() {
                     const isAdmin = resolvedRoles.includes("admin");
                     const isComposer = resolvedRoles.includes("composer");
                     const isSuspended = u.is_active === false;
+                    const isSelf = appUser?.id === u.id;
                     return (
                     <TableRow key={u.id}>
                       <TableCell className="font-medium">
@@ -2406,13 +2429,32 @@ export function AdminPanel() {
 
                             <DropdownMenuSeparator />
 
+                            {isSuspended ? (
+                              <DropdownMenuItem
+                                onClick={() => unsuspendUser(u.id)}
+                                disabled={isProcessing}
+                              >
+                                <CheckCircle className="size-4 mr-2" />
+                                Unsuspend User
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem
+                                className="text-red-600"
+                                onClick={() => suspendUser(u.id)}
+                                disabled={isProcessing}
+                              >
+                                <Ban className="size-4 mr-2" /> Suspend User
+                              </DropdownMenuItem>
+                            )}
+
+                            <DropdownMenuSeparator />
+
                             <DropdownMenuItem
-                              className="text-red-600"
-                              onClick={() => suspendUser(u.id)}
-                              disabled={isProcessing || isSuspended}
+                              className="text-red-700"
+                              onClick={() => deleteUser(u)}
+                              disabled={isProcessing || isSelf}
                             >
-                              <Ban className="size-4 mr-2" />
-                              {isSuspended ? "User Suspended" : "Suspend User"}
+                              <Trash2 className="size-4 mr-2" /> Delete User
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -3499,6 +3541,7 @@ export function AdminPanel() {
     </div>
   );
 }
+
 
 
 

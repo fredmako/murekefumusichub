@@ -328,6 +328,36 @@ export const adminService = {
       throw err;
     }
   },
+  async unsuspendUser(userId: string) {
+    try {
+      const result = await apiRequest<any>(
+        `/admin/users/${userId}/unsuspend`,
+        {
+          method: "POST",
+        },
+      );
+      toast.success("User unsuspended");
+      return result;
+    } catch (err: any) {
+      console.error("unsuspendUser error:", err);
+      toast.error("Failed to unsuspend user");
+      throw err;
+    }
+  },
+
+  async deleteUser(userId: string) {
+    try {
+      const result = await apiRequest<any>(`/admin/users/${userId}`, {
+        method: "DELETE",
+      });
+      toast.success("User deleted");
+      return result;
+    } catch (err: any) {
+      console.error("deleteUser error:", err);
+      toast.error("Failed to delete user");
+      throw err;
+    }
+  },
 
   async suspendUser(userId: string) {
     try {
@@ -476,5 +506,7 @@ export const adminService = {
     }
   },
 };
+
+
 
 
