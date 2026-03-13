@@ -2813,8 +2813,7 @@ export function AdminPanel() {
                         </DropdownMenu>
                       </TableCell>
                     </TableRow>
-                    );
-                  })}
+                  ))}
                 </TableBody>
               </Table>
             </CardContent>
@@ -3500,6 +3499,7 @@ export function AdminPanel() {
     </div>
   );
 }
+
 
 
 
