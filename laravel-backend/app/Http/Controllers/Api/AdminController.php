@@ -7,6 +7,7 @@ use App\Services\RoleService;
 use App\Support\AvatarUrl;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
 class AdminController extends Controller
@@ -27,6 +28,57 @@ class AdminController extends Controller
     private function resolveDbUser(mixed $identifier): ?array
     {
         return $this->roleService->resolveDbUserByIdOrAuth(trim((string) $identifier));
+    }
+
+    private function isComposerActivationColumnMissing(): bool
+    {
+        try {
+            DB::table("composers")->select("is_active")->limit(1)->get();
+            return false;
+        } catch (\Throwable $e) {
+            $message = strtolower($e->getMessage());
+            return str_contains($message, "is_active");
+        }
+    }
+
+    private function isProtectedAdminIdentifier(?string $email): bool
+    {
+        $normalized = strtolower(trim((string) ($email ?? "")));
+        if ($normalized === "") {
+            return false;
+        }
+
+        $configured = collect(explode(",", (string) env("ADMIN_IDENTIFIERS", "")))
+            ->map(fn ($value) => strtolower(trim((string) $value)))
+            ->filter()
+            ->values()
+            ->all();
+
+        return in_array($normalized, $configured, true);
+    }
+
+    private function deleteSupabaseAuthUser(?string $authUid): void
+    {
+        $authUid = trim((string) ($authUid ?? ""));
+        if ($authUid === "") {
+            return;
+        }
+
+        $supabaseUrl = rtrim((string) env("SUPABASE_URL", ""), "/");
+        $serviceRole = (string) env("SUPABASE_SERVICE_ROLE_KEY", "");
+        if ($supabaseUrl === "" || $serviceRole === "") {
+            logger()->warning("Supabase auth deletion skipped: SUPABASE_URL or SERVICE_ROLE_KEY missing.");
+            return;
+        }
+
+        $response = Http::withHeaders([
+            "Authorization" => "Bearer {$serviceRole}",
+            "apikey" => $serviceRole,
+        ])->acceptJson()->delete("{$supabaseUrl}/auth/v1/admin/users/{$authUid}");
+
+        if (!$response->successful()) {
+            throw new \RuntimeException("Failed to delete Supabase auth user.");
+        }
     }
 
     private function insertPurchaseWithFallback(array $payload): array
@@ -491,13 +543,44 @@ class AdminController extends Controller
             );
         }
 
-        $composerExists = DB::table("composers")->where("user_id", $user["id"])->exists();
-        if (!$composerExists) {
-            DB::table("composers")->insert([
+        $composerProfile = null;
+        $activationColumnMissing = false;
+        try {
+            $composerProfile = DB::table("composers")
+                ->where("user_id", $user["id"])
+                ->select("id", "is_active")
+                ->first();
+        } catch (\Throwable $e) {
+            if ($this->isComposerActivationColumnMissing()) {
+                $activationColumnMissing = true;
+                $composerProfile = DB::table("composers")
+                    ->where("user_id", $user["id"])
+                    ->select("id")
+                    ->first();
+            } else {
+                throw $e;
+            }
+        }
+
+        if ($composerProfile && !$activationColumnMissing && (bool) ($composerProfile->is_active ?? true) === false) {
+            DB::table("composers")
+                ->where("id", $composerProfile->id)
+                ->update([
+                    "is_active" => true,
+                    "updated_at" => now(),
+                ]);
+        }
+
+        if (!$composerProfile) {
+            $payload = [
                 "id" => (string) Str::uuid(),
                 "user_id" => $user["id"],
                 "created_at" => now(),
-            ]);
+            ];
+            if (!$activationColumnMissing) {
+                $payload["is_active"] = true;
+            }
+            DB::table("composers")->insert($payload);
         }
 
         return response()->json(["success" => true, "message" => "User promoted to composer"]);
@@ -532,6 +615,98 @@ class AdminController extends Controller
         return response()->json(["success" => true, "message" => "User promoted to admin"]);
     }
 
+    public function demoteComposer(string $userIdentifier)
+    {
+        $user = $this->resolveDbUser($userIdentifier);
+        if (!$user) {
+            return response()->json(["error" => "User not found"], 404);
+        }
+
+        $activationColumnMissing = false;
+        $composerProfile = null;
+        try {
+            $composerProfile = DB::table("composers")
+                ->where("user_id", $user["id"])
+                ->select("id", "is_active")
+                ->first();
+        } catch (\Throwable $e) {
+            if ($this->isComposerActivationColumnMissing()) {
+                $activationColumnMissing = true;
+                $composerProfile = DB::table("composers")
+                    ->where("user_id", $user["id"])
+                    ->select("id")
+                    ->first();
+            } else {
+                throw $e;
+            }
+        }
+
+        if ($composerProfile && $activationColumnMissing) {
+            return response()->json([
+                "message" => "Composer activation column is missing. Run migration 027_add_composers_is_active.sql, then retry.",
+            ], 500);
+        }
+
+        $composerRole = DB::table("roles")->where("name", "composer")->first();
+        if ($composerRole) {
+            DB::table("user_roles")
+                ->where("user_id", $user["id"])
+                ->where("role_id", $composerRole->id)
+                ->delete();
+        }
+
+        if ($composerProfile && !$activationColumnMissing) {
+            DB::table("composers")
+                ->where("id", $composerProfile->id)
+                ->update([
+                    "is_active" => false,
+                    "updated_at" => now(),
+                ]);
+        }
+
+        return response()->json([
+            "success" => true,
+            "message" => "Composer access removed",
+            "userId" => $user["id"],
+        ]);
+    }
+
+    public function demoteAdmin(string $userIdentifier)
+    {
+        $user = $this->resolveDbUser($userIdentifier);
+        if (!$user) {
+            return response()->json(["error" => "User not found"], 404);
+        }
+
+        $normalizedEmail = strtolower(trim((string) ($user["email"] ?? "")));
+        if ($this->isProtectedAdminIdentifier($normalizedEmail)) {
+            return response()->json([
+                "error" => "This admin is protected by the server allowlist and cannot be depromoted here.",
+            ], 403);
+        }
+
+        $adminRole = DB::table("roles")->where("name", "admin")->first();
+        if ($adminRole) {
+            DB::table("user_roles")
+                ->where("user_id", $user["id"])
+                ->where("role_id", $adminRole->id)
+                ->delete();
+        }
+
+        if ($normalizedEmail !== "") {
+            DB::table("admin_emails")
+                ->whereRaw("LOWER(email) = ?", [$normalizedEmail])
+                ->where("is_active", true)
+                ->update(["is_active" => false]);
+        }
+
+        return response()->json([
+            "success" => true,
+            "message" => "Admin access removed",
+            "userId" => $user["id"],
+        ]);
+    }
+
     public function suspend(string $userIdentifier)
     {
         $user = $this->resolveDbUser($userIdentifier);
@@ -545,6 +720,52 @@ class AdminController extends Controller
         ]);
 
         return response()->json(["success" => true, "message" => "User suspended"]);
+    }
+
+    public function unsuspend(string $userIdentifier)
+    {
+        $user = $this->resolveDbUser($userIdentifier);
+        if (!$user) {
+            return response()->json(["error" => "User not found"], 404);
+        }
+
+        DB::table("users")->where("id", $user["id"])->update([
+            "is_active" => true,
+            "updated_at" => now(),
+        ]);
+
+        return response()->json(["success" => true, "message" => "User unsuspended"]);
+    }
+
+    public function deleteUser(string $userIdentifier)
+    {
+        $user = $this->resolveDbUser($userIdentifier);
+        if (!$user) {
+            return response()->json(["error" => "User not found"], 404);
+        }
+
+        $normalizedEmail = strtolower(trim((string) ($user["email"] ?? "")));
+
+        DB::table("composers")->where("user_id", $user["id"])->delete();
+        DB::table("user_roles")->where("user_id", $user["id"])->delete();
+        DB::table("role_requests")->where("user_id", $user["id"])->delete();
+
+        if ($normalizedEmail !== "") {
+            DB::table("admin_emails")
+                ->whereRaw("LOWER(email) = ?", [$normalizedEmail])
+                ->where("is_active", true)
+                ->update(["is_active" => false]);
+        }
+
+        DB::table("users")->where("id", $user["id"])->delete();
+
+        $this->deleteSupabaseAuthUser($user["auth_uid"] ?? null);
+
+        return response()->json([
+            "success" => true,
+            "message" => "User deleted",
+            "userId" => $user["id"],
+        ]);
     }
 
     public function rejectComposerRequest(string $userIdentifier)
@@ -818,3 +1039,14 @@ class AdminController extends Controller
         return response()->json($items);
     }
 }
+
+
+
+
+
+
+
+
+
+
+

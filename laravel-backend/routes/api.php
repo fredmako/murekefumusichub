@@ -110,11 +110,16 @@ Route::prefix("admin")->middleware(["auth.supabase", "admin.only"])->group(funct
     Route::post("/invites", [AdminController::class, "createInvite"]);
     Route::delete("/invites/{email}", [AdminController::class, "revokeInvite"]);
     Route::post("/users/{userId}/promote-composer", [AdminController::class, "promoteComposer"]);
+    Route::post("/users/{userId}/demote-composer", [AdminController::class, "demoteComposer"]);
     Route::post("/users/{userId}/promote-admin", [AdminController::class, "promoteAdmin"]);
+    Route::post("/users/{userId}/demote-admin", [AdminController::class, "demoteAdmin"]);
     Route::post("/users/{userId}/suspend", [AdminController::class, "suspend"]);
+    Route::post("/users/{userId}/unsuspend", [AdminController::class, "unsuspend"]);
+    Route::delete("/users/{userId}", [AdminController::class, "deleteUser"]);
     Route::post("/composer-requests/{userId}/reject", [AdminController::class, "rejectComposerRequest"]);
     Route::post("/role-requests/{userId}/reject", [AdminController::class, "rejectRoleRequest"]);
     Route::post("/payment-submissions/{submissionId}/approve", [AdminController::class, "approvePaymentSubmission"]);
     Route::post("/payment-submissions/{submissionId}/reject", [AdminController::class, "rejectPaymentSubmission"]);
     Route::get("/notifications", [AdminController::class, "notifications"]);
 });
+

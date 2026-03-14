@@ -66,13 +66,18 @@ class RoleService
         try {
             $composerRow = DB::table("composers")
                 ->where("user_id", $userId)
-                ->select("id")
+                ->select("id", "is_active")
                 ->first();
-            if ($composerRow && !in_array("composer", $roles, true)) {
-                $roles[] = "composer";
+            if ($composerRow) {
+                $isActive = !property_exists($composerRow, "is_active")
+                    ? true
+                    : (bool) ($composerRow->is_active ?? true);
+                if ($isActive && !in_array("composer", $roles, true)) {
+                    $roles[] = "composer";
+                }
             }
         } catch (\Throwable) {
-            // Ignore missing composer table in partially migrated environments.
+            // Ignore missing composer table/column in partially migrated environments.
         }
 
         $normalizedEmail = strtolower(trim((string) ($email ?? "")));
@@ -150,3 +155,5 @@ class RoleService
         }
     }
 }
+
+

@@ -2435,7 +2435,7 @@ export function AdminPanel() {
                                 disabled={isProcessing}
                               >
                                 <CheckCircle className="size-4 mr-2" />
-                                Unsuspend User
+                                Activate User
                               </DropdownMenuItem>
                             ) : (
                               <DropdownMenuItem
