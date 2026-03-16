@@ -236,7 +236,7 @@ export function BuyerDashboard({
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card className="texture-speckle lift-card border-0 bg-gradient-to-br from-[#0f766e] to-[#0b4a52] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)]">
+          <Card role="button" tabIndex={0} onClick={() => handleTabChange("library")} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleTabChange("library"); } }} className="texture-speckle lift-card border-0 bg-gradient-to-br from-[#0f766e] to-[#0b4a52] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)] cursor-pointer">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-emerald-50">
                 My Library
@@ -251,7 +251,7 @@ export function BuyerDashboard({
             </CardContent>
           </Card>
 
-          <Card className="texture-speckle lift-card border-0 bg-gradient-to-br from-[#174f3b] to-[#1f7a59] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)]">
+          <Card role="button" tabIndex={0} onClick={() => handleTabChange("library")} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleTabChange("library"); } }} className="texture-speckle lift-card border-0 bg-gradient-to-br from-[#174f3b] to-[#1f7a59] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)] cursor-pointer">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-emerald-50">
                 Total Spent
@@ -266,7 +266,7 @@ export function BuyerDashboard({
             </CardContent>
           </Card>
 
-          <Card className="texture-speckle lift-card border-0 bg-gradient-to-br from-[#7c4a03] to-[#b45309] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)]">
+          <Card role="button" tabIndex={0} onClick={() => handleTabChange("checkout")} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleTabChange("checkout"); } }} className="texture-speckle lift-card border-0 bg-gradient-to-br from-[#7c4a03] to-[#b45309] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)] cursor-pointer">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-amber-50">
                 Cart Items

@@ -2020,7 +2020,7 @@ export function AdminPanel() {
             {/* Overview */}
             <TabsContent value="overview" className="mt-6 space-y-6">
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
-                <Card>
+                <Card role="button" tabIndex={0} onClick={() => setActiveTab("users")} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setActiveTab("users"); } }} className="cursor-pointer transition hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60">
                   <CardHeader className="flex items-center justify-between">
                     <CardTitle className="text-sm text-muted-foreground">Total Users</CardTitle>
                     <Users className="size-5 text-blue-600" />
@@ -2033,7 +2033,7 @@ export function AdminPanel() {
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card role="button" tabIndex={0} onClick={() => setActiveTab("compositions")} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setActiveTab("compositions"); } }} className="cursor-pointer transition hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60">
                   <CardHeader className="flex items-center justify-between">
                     <CardTitle className="text-sm text-muted-foreground">
                       Total Compositions
@@ -2046,7 +2046,7 @@ export function AdminPanel() {
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card role="button" tabIndex={0} onClick={() => setActiveTab("transactions")} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setActiveTab("transactions"); } }} className="cursor-pointer transition hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60">
                   <CardHeader className="flex items-center justify-between">
                     <CardTitle className="text-sm text-muted-foreground">Total Revenue</CardTitle>
                     <DollarSign className="size-5 text-green-600" />
@@ -2059,7 +2059,7 @@ export function AdminPanel() {
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card role="button" tabIndex={0} onClick={() => setActiveTab("transactions")} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setActiveTab("transactions"); } }} className="cursor-pointer transition hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60">
                   <CardHeader className="flex items-center justify-between">
                     <CardTitle className="text-sm text-muted-foreground">Transactions</CardTitle>
                     <TrendingUp className="size-5 text-orange-600" />

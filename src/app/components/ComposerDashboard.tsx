@@ -82,6 +82,7 @@ export function ComposerDashboard() {
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const previousUploadOpen = useRef(false);
+  const compositionsSectionRef = useRef<HTMLDivElement | null>(null);
   const [selectedComposition, setSelectedComposition] =
     useState<CompositionWithStats | null>(null);
   const [saveLoading, setSaveLoading] = useState(false);
@@ -221,7 +222,12 @@ export function ComposerDashboard() {
       ? composerCompositions.reduce((sum, composition) => sum + composition.price, 0) /
         composerCompositions.length
       : 0;
-
+  const scrollToCompositions = () => {
+    compositionsSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
   const handleViewComposition = (composition: CompositionWithStats) => {
     setSelectedComposition(composition);
     setIsViewOpen(true);
@@ -594,7 +600,7 @@ export function ComposerDashboard() {
         </Dialog>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <Card className="texture-speckle lift-card border-0 bg-gradient-to-br from-[#0f766e] to-[#0b4a52] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)]">
+          <Card role="button" tabIndex={0} onClick={scrollToCompositions} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); scrollToCompositions(); } }} className="texture-speckle lift-card cursor-pointer border-0 bg-gradient-to-br from-[#0f766e] to-[#0b4a52] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)]">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-white/90">
                 Total Revenue
@@ -609,7 +615,7 @@ export function ComposerDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="texture-speckle lift-card border-0 bg-gradient-to-br from-[#174f3b] to-[#1f7a59] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)]">
+          <Card role="button" tabIndex={0} onClick={scrollToCompositions} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); scrollToCompositions(); } }} className="texture-speckle lift-card cursor-pointer border-0 bg-gradient-to-br from-[#174f3b] to-[#1f7a59] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)]">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-white/90">
                 Published Works
@@ -627,7 +633,7 @@ export function ComposerDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="texture-speckle lift-card border-0 bg-gradient-to-br from-[#7c4a03] to-[#b45309] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)] sm:col-span-2 xl:col-span-1">
+          <Card role="button" tabIndex={0} onClick={scrollToCompositions} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); scrollToCompositions(); } }} className="texture-speckle lift-card cursor-pointer border-0 bg-gradient-to-br from-[#7c4a03] to-[#b45309] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)] sm:col-span-2 xl:col-span-1">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-white/90">
                 Average Price
@@ -646,7 +652,7 @@ export function ComposerDashboard() {
           </Card>
         </div>
 
-        <Card className="lift-card overflow-hidden border border-border/70 bg-card/95 shadow-[0_24px_38px_-32px_rgba(15,23,42,0.85)]">
+        <Card ref={compositionsSectionRef} className="lift-card overflow-hidden border border-border/70 bg-card/95 shadow-[0_24px_38px_-32px_rgba(15,23,42,0.85)]">
           <CardHeader className="border-b border-border/60 bg-gradient-to-r from-primary/12 via-secondary/20 to-transparent">
             <CardTitle>My Compositions</CardTitle>
             <CardDescription>
