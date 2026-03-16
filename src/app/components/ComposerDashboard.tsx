@@ -600,7 +600,7 @@ export function ComposerDashboard() {
         </Dialog>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <Card role="button" tabIndex={0} onClick={scrollToCompositions} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); scrollToCompositions(); } }} className="texture-speckle lift-card cursor-pointer border-0 bg-gradient-to-br from-[#0f766e] to-[#0b4a52] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)]">
+          <Card role="button" tabIndex={0} onClick={scrollToCompositions} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); scrollToCompositions(); } }} className="texture-speckle lift-card hover:cursor-pointer border-0 bg-gradient-to-br from-[#0f766e] to-[#0b4a52] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)]">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-white/90">
                 Total Revenue
@@ -615,7 +615,7 @@ export function ComposerDashboard() {
             </CardContent>
           </Card>
 
-          <Card role="button" tabIndex={0} onClick={scrollToCompositions} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); scrollToCompositions(); } }} className="texture-speckle lift-card cursor-pointer border-0 bg-gradient-to-br from-[#174f3b] to-[#1f7a59] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)]">
+          <Card role="button" tabIndex={0} onClick={scrollToCompositions} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); scrollToCompositions(); } }} className="texture-speckle lift-card hover:cursor-pointer border-0 bg-gradient-to-br from-[#174f3b] to-[#1f7a59] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)]">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-white/90">
                 Published Works
@@ -633,7 +633,7 @@ export function ComposerDashboard() {
             </CardContent>
           </Card>
 
-          <Card role="button" tabIndex={0} onClick={scrollToCompositions} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); scrollToCompositions(); } }} className="texture-speckle lift-card cursor-pointer border-0 bg-gradient-to-br from-[#7c4a03] to-[#b45309] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)] sm:col-span-2 xl:col-span-1">
+          <Card role="button" tabIndex={0} onClick={scrollToCompositions} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); scrollToCompositions(); } }} className="texture-speckle lift-card hover:cursor-pointer border-0 bg-gradient-to-br from-[#7c4a03] to-[#b45309] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)] sm:col-span-2 xl:col-span-1">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-white/90">
                 Average Price
@@ -788,3 +788,4 @@ export function ComposerDashboard() {
     </section>
   );
 }
+
