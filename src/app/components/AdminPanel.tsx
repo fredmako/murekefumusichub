@@ -26,6 +26,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Sparkles,
+  Search,
+  FileDown,
 } from "lucide-react";
 import {
   Card,
@@ -50,6 +52,14 @@ import {
 } from "@/app/components/ui/tabs";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
+import { Input } from "@/app/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/app/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -91,6 +101,7 @@ const rolePriority: Record<string, number> = {
 };
 const ADMIN_TRANSACTIONS_READ_CUTOFF_KEY = "admin.transactionsReadCutoffMs";
 const ADMIN_TRANSACTIONS_RESET_BASELINE_KEY = "admin.transactionsResetBaseline";
+const ADMIN_REVENUE_RESET_BASELINE_KEY = "admin.revenueResetBaseline";
 
 function getInitials(displayName?: string | null, email?: string | null) {
   const source = (displayName || email || "U").trim();
@@ -124,6 +135,85 @@ function getLatestTransactionTimestampMs(transactions: any[]): number {
     const ms = getTransactionTimestampMs(row);
     return ms > max ? ms : max;
   }, 0);
+}
+
+function escapeHtml(value: any) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function openPrintReport({
+  title,
+  subtitle,
+  columns,
+  rows,
+}: {
+  title: string;
+  subtitle?: string;
+  columns: string[];
+  rows: Array<Array<string | number | null | undefined>>;
+}) {
+  const printWindow = window.open("", "_blank", "noopener,noreferrer");
+  if (!printWindow) return false;
+
+  const generatedAt = new Date().toLocaleString();
+  const tableHead = columns
+    .map((label) => `<th>${escapeHtml(label)}</th>`)
+    .join("");
+  const tableRows = rows
+    .map(
+      (row) =>
+        `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`,
+    )
+    .join("");
+
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      :root { color-scheme: light; }
+      body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; padding: 24px; color: #0f172a; }
+      h1 { font-size: 18px; margin: 0; }
+      .meta { margin-top: 6px; color: #475569; font-size: 12px; }
+      .hint { margin-top: 10px; color: #64748b; font-size: 12px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+      th, td { border: 1px solid #e2e8f0; padding: 8px; font-size: 12px; vertical-align: top; text-align: left; word-break: break-word; }
+      th { background: #f8fafc; }
+      @page { size: A4; margin: 12mm; }
+    </style>
+  </head>
+  <body>
+    <h1>${escapeHtml(title)}</h1>
+    <div class="meta">${escapeHtml(subtitle || "")}</div>
+    <div class="meta">Generated: ${escapeHtml(generatedAt)}</div>
+    <div class="hint">Tip: In the print dialog, choose "Save as PDF" to download.</div>
+    <table>
+      <thead><tr>${tableHead}</tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+  </body>
+</html>`;
+
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => {
+    try {
+      printWindow.print();
+    } catch {
+      // ignore print failures
+    }
+  }, 350);
+
+  return true;
 }
 
 function LoadingTableRow({
@@ -272,6 +362,28 @@ export function AdminPanel() {
   ]);
   const [announcementSubject, setAnnouncementSubject] = useState("");
   const [announcementMessage, setAnnouncementMessage] = useState("");
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState<
+    "all" | "buyer" | "composer" | "admin"
+  >("all");
+  const [userStatusFilter, setUserStatusFilter] = useState<
+    "all" | "active" | "suspended"
+  >("all");
+  const [compositionSearchQuery, setCompositionSearchQuery] = useState("");
+  const [compositionVerificationFilter, setCompositionVerificationFilter] =
+    useState<"all" | "verified" | "unverified">("all");
+  const [transactionSearchQuery, setTransactionSearchQuery] = useState("");
+  const [transactionStatusFilter, setTransactionStatusFilter] = useState<
+    "all" | "approved" | "pending" | "rejected"
+  >("all");
+  const [transactionSourceFilter, setTransactionSourceFilter] = useState<
+    "all" | "purchase" | "payment_submission"
+  >("all");
+  const [requestSearchQuery, setRequestSearchQuery] = useState("");
+  const [requestRoleFilter, setRequestRoleFilter] = useState<
+    "all" | "composer" | "admin"
+  >("all");
+  const [enrollmentSearchQuery, setEnrollmentSearchQuery] = useState("");
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [compositionsLoadLevel, setCompositionsLoadLevel] =
     useState<DataLoadLevel>("none");
@@ -299,6 +411,15 @@ export function AdminPanel() {
         return 0;
       }
     });
+  const [revenueResetBaseline, setRevenueResetBaseline] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem(ADMIN_REVENUE_RESET_BASELINE_KEY);
+      const parsed = Number(stored);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+    } catch {
+      return 0;
+    }
+  });
   const [selectedUserProfile, setSelectedUserProfile] = useState<any | null>(
     null,
   );
@@ -336,6 +457,17 @@ export function AdminPanel() {
       // ignore storage failures
     }
   }, [transactionsResetBaseline]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        ADMIN_REVENUE_RESET_BASELINE_KEY,
+        String(revenueResetBaseline || 0),
+      );
+    } catch {
+      // ignore storage failures
+    }
+  }, [revenueResetBaseline]);
 
   /* ---------------- guard admin access & initial load ---------------- */
   useEffect(() => {
@@ -733,6 +865,54 @@ export function AdminPanel() {
     );
   }, [requests]);
 
+  const filteredRequests = useMemo(() => {
+    const query = requestSearchQuery.trim().toLowerCase();
+    return (pendingRequests || []).filter((request: any) => {
+      const requestedRole = String(
+        request?.requested_role || request?.requestedRole || "composer",
+      )
+        .trim()
+        .toLowerCase();
+      if (requestRoleFilter !== "all" && requestedRole !== requestRoleFilter) {
+        return false;
+      }
+
+      if (!query) return true;
+      const haystack = [
+        request?.email,
+        request?.user_id,
+        request?.id,
+        requestedRole,
+        Array.isArray(request?.roles) ? request.roles.join(" ") : request?.roles,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [pendingRequests, requestSearchQuery, requestRoleFilter]);
+
+  const filteredEnrollments = useMemo(() => {
+    const query = enrollmentSearchQuery.trim().toLowerCase();
+    if (!query) return enrollments || [];
+
+    return (enrollments || []).filter((enrollment: any) => {
+      const haystack = [
+        enrollment?.full_name,
+        enrollment?.requester?.display_name,
+        enrollment?.email,
+        enrollment?.requester?.email,
+        enrollment?.music_class,
+        enrollment?.skill_level,
+        enrollment?.status,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [enrollments, enrollmentSearchQuery]);
+
   const selectedSupportThread = useMemo(
     () =>
       supportThreads.find((thread: any) => thread.id === selectedSupportThreadId) ||
@@ -772,6 +952,11 @@ export function AdminPanel() {
   const transactionsSinceReset = useMemo(
     () => Math.max(0, totalTransactions - transactionsResetBaseline),
     [totalTransactions, transactionsResetBaseline],
+  );
+
+  const revenueSinceReset = useMemo(
+    () => Math.max(0, totalRevenue - revenueResetBaseline),
+    [totalRevenue, revenueResetBaseline],
   );
 
   const pendingEnrollmentCount = useMemo(
@@ -839,9 +1024,10 @@ export function AdminPanel() {
 
   const resetTransactionsToZero = () => {
     setTransactionsResetBaseline(totalTransactions);
+    setRevenueResetBaseline(totalRevenue);
     const latestMs = getLatestTransactionTimestampMs(transactions);
     if (latestMs) setTransactionsReadCutoffMs(latestMs);
-    toast.success("Transactions reset to zero");
+    toast.success("Revenue and transactions reset to zero");
   };
 
   const formatUserDisplay = (user: any) =>
@@ -868,6 +1054,212 @@ export function AdminPanel() {
     return [...roleSet].sort(
       (a, b) => (rolePriority[b] || 0) - (rolePriority[a] || 0),
     );
+  };
+
+  const filteredUsers = useMemo(() => {
+    const query = userSearchQuery.trim().toLowerCase();
+    return (users || []).filter((user: any) => {
+      if (userStatusFilter === "active" && user?.is_active === false) return false;
+      if (userStatusFilter === "suspended" && user?.is_active !== false) {
+        return false;
+      }
+
+      const roles = resolveUserRoles(user);
+      if (userRoleFilter !== "all" && !roles.includes(userRoleFilter)) {
+        return false;
+      }
+
+      if (!query) return true;
+      const haystack = [
+        user?.display_name,
+        user?.email,
+        user?.phone,
+        user?.id,
+        user?.auth_uid,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [
+    users,
+    userSearchQuery,
+    userRoleFilter,
+    userStatusFilter,
+    userRoles,
+    userIdToRole,
+  ]);
+
+  const filteredCompositions = useMemo(() => {
+    const query = compositionSearchQuery.trim().toLowerCase();
+    return (compositions || []).filter((composition: any) => {
+      const isVerified = Boolean(composition?.is_verified);
+      if (compositionVerificationFilter === "verified" && !isVerified) return false;
+      if (compositionVerificationFilter === "unverified" && isVerified) return false;
+
+      if (!query) return true;
+      const composerDisplay =
+        composition?.composers?.users?.display_name ||
+        composition?.composers?.users?.email ||
+        "";
+      const haystack = `${composition?.title || ""} ${composition?.description || ""} ${composerDisplay}`
+        .toLowerCase()
+        .trim();
+      return haystack.includes(query);
+    });
+  }, [compositions, compositionSearchQuery, compositionVerificationFilter]);
+
+  const filteredTransactions = useMemo(() => {
+    const query = transactionSearchQuery.trim().toLowerCase();
+    return (transactions || []).filter((transaction: any) => {
+      const status = String(transaction?.status || "approved").toLowerCase();
+      const source = String(transaction?.source || "purchase").toLowerCase();
+      if (transactionStatusFilter !== "all" && status !== transactionStatusFilter) {
+        return false;
+      }
+      if (transactionSourceFilter !== "all" && source !== transactionSourceFilter) {
+        return false;
+      }
+
+      if (!query) return true;
+      const buyerDisplay =
+        transaction?.buyers?.users?.display_name ||
+        transaction?.buyers?.users?.email ||
+        "";
+      const compositionTitle = transaction?.compositions?.title || "";
+      const haystack = [
+        transaction?.transaction_id,
+        transaction?.id,
+        transaction?.payment_ref,
+        status,
+        source,
+        buyerDisplay,
+        compositionTitle,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [
+    transactions,
+    transactionSearchQuery,
+    transactionStatusFilter,
+    transactionSourceFilter,
+  ]);
+
+  const exportUsersPdf = () => {
+    const ok = openPrintReport({
+      title: "Users Report",
+      subtitle: `${filteredUsers.length} users (role: ${userRoleFilter}, status: ${userStatusFilter})`,
+      columns: ["Name", "Email", "Phone", "Roles", "Status", "Created"],
+      rows: filteredUsers.map((user: any) => [
+        user?.display_name || "N/A",
+        user?.email || "N/A",
+        user?.phone || "-",
+        resolveUserRoles(user).join(", "),
+        user?.is_active === false ? "Suspended" : "Active",
+        formatDateTime(user?.created_at || null) || "-",
+      ]),
+    });
+    if (!ok) toast.error("Popup blocked. Allow popups to export PDF.");
+  };
+
+  const exportCompositionsPdf = () => {
+    const ok = openPrintReport({
+      title: "Compositions Report",
+      subtitle: `${filteredCompositions.length} compositions (verification: ${compositionVerificationFilter})`,
+      columns: ["Title", "Composer", "Price (KES)", "Verified", "Created"],
+      rows: filteredCompositions.map((composition: any) => [
+        composition?.title || "N/A",
+        composition?.composers?.users?.display_name ||
+          composition?.composers?.users?.email ||
+          "Unknown",
+        Number(composition?.price || 0),
+        composition?.is_verified ? "Yes" : "No",
+        formatDateTime(composition?.created_at || null) || "-",
+      ]),
+    });
+    if (!ok) toast.error("Popup blocked. Allow popups to export PDF.");
+  };
+
+  const exportTransactionsPdf = () => {
+    const ok = openPrintReport({
+      title: "Transactions Report",
+      subtitle: `${filteredTransactions.length} transactions (status: ${transactionStatusFilter}, source: ${transactionSourceFilter})`,
+      columns: [
+        "Transaction ID",
+        "Date",
+        "Buyer",
+        "Composition",
+        "Payment Ref",
+        "Status",
+        "Amount (KES)",
+        "Source",
+      ],
+      rows: filteredTransactions.map((t: any) => [
+        t?.transaction_id || t?.id || "-",
+        formatDateTime(t?.purchased_at || t?.purchasedAt || t?.submitted_at || t?.submittedAt || null) ||
+          "-",
+        t?.buyers?.users?.display_name || t?.buyers?.users?.email || "Unknown",
+        t?.compositions?.title || "Unknown",
+        t?.payment_ref || "-",
+        String(t?.status || "approved").toUpperCase(),
+        Number(t?.price_paid || 0),
+        t?.source || "purchase",
+      ]),
+    });
+    if (!ok) toast.error("Popup blocked. Allow popups to export PDF.");
+  };
+
+  const exportRequestsPdf = () => {
+    const ok = openPrintReport({
+      title: "Role Requests Report",
+      subtitle: `${filteredRequests.length} pending requests (role filter: ${requestRoleFilter})`,
+      columns: ["Email", "Requested At", "Requested Role", "Current Roles"],
+      rows: filteredRequests.map((request: any) => [
+        request?.email || "N/A",
+        formatDateTime(request?.created_at || request?.createdAt || null) || "-",
+        String(request?.requested_role || request?.requestedRole || "composer")
+          .toString()
+          .toLowerCase(),
+        Array.isArray(request?.roles)
+          ? request.roles.join(", ")
+          : request?.roles || userIdToRole[request?.user_id || request?.id] || "buyer",
+      ]),
+    });
+    if (!ok) toast.error("Popup blocked. Allow popups to export PDF.");
+  };
+
+  const exportEnrollmentsPdf = () => {
+    const ok = openPrintReport({
+      title: "Enrollments Report",
+      subtitle: `${filteredEnrollments.length} enrollments (status: ${enrollmentStatusFilter})`,
+      columns: [
+        "Name",
+        "Email",
+        "Class",
+        "Level",
+        "Notes",
+        "Submitted",
+        "Status",
+        "Admitted",
+      ],
+      rows: filteredEnrollments.map((enrollment: any) => [
+        enrollment?.full_name || enrollment?.requester?.display_name || "N/A",
+        enrollment?.email || enrollment?.requester?.email || "N/A",
+        enrollment?.music_class || "N/A",
+        String(enrollment?.skill_level || "N/A"),
+        enrollment?.notes || "-",
+        formatDateTime(enrollment?.created_at || null) || "-",
+        String(enrollment?.status || "pending").toUpperCase(),
+        enrollment?.admitted_at
+          ? `${enrollment?.admitted_admin?.display_name || enrollment?.admitted_admin?.email || "Admin"} - ${formatDateTime(enrollment?.admitted_at) || "-"}`
+          : "-",
+      ]),
+    });
+    if (!ok) toast.error("Popup blocked. Allow popups to export PDF.");
   };
 
   const selectedUserProfileRoles = useMemo(() => {
@@ -2149,14 +2541,18 @@ export function AdminPanel() {
 
                 <Card role="button" tabIndex={0} onClick={() => setActiveTab("transactions")} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setActiveTab("transactions"); } }} className="transition hover:cursor-pointer hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60">
                   <CardHeader className="flex items-center justify-between">
-                    <CardTitle className="text-sm text-muted-foreground">Total Revenue</CardTitle>
+                    <CardTitle className="text-sm text-muted-foreground">
+                      New Revenue
+                    </CardTitle>
                     <DollarSign className="size-5 text-green-600" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold">
-                      {formatKesAmount(Number(totalRevenue || 0))}
+                      {formatKesAmount(Number(revenueSinceReset || 0))}
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground">Platform earnings</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Since last reset
+                    </p>
                   </CardContent>
                 </Card>
 
@@ -2337,11 +2733,12 @@ export function AdminPanel() {
                       disabled={
                         isProcessing ||
                         (transactionsSinceReset === 0 &&
+                          revenueSinceReset === 0 &&
                           unreadRecentTransactions.length === 0)
                       }
                     >
                       <Trash2 className="mr-2 size-4" />
-                      Reset to 0
+                      Reset Sales to 0
                     </Button>
                   </div>
                 </CardHeader>
@@ -2421,8 +2818,63 @@ export function AdminPanel() {
         <TabsContent value="users" className="mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>All Users</CardTitle>
-              <CardDescription>Manage platform users and roles</CardDescription>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <CardTitle>All Users</CardTitle>
+                  <CardDescription>Manage platform users and roles</CardDescription>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="relative w-full sm:w-72">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={userSearchQuery}
+                      onChange={(event) => setUserSearchQuery(event.target.value)}
+                      placeholder="Search users..."
+                      className="pl-9"
+                    />
+                  </div>
+                  <Select
+                    value={userRoleFilter}
+                    onValueChange={(value) =>
+                      setUserRoleFilter(value as typeof userRoleFilter)
+                    }
+                  >
+                    <SelectTrigger size="sm" className="w-full sm:w-[150px]">
+                      <SelectValue placeholder="Role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All roles</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="composer">Composer</SelectItem>
+                      <SelectItem value="buyer">Buyer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={userStatusFilter}
+                    onValueChange={(value) =>
+                      setUserStatusFilter(value as typeof userStatusFilter)
+                    }
+                  >
+                    <SelectTrigger size="sm" className="w-full sm:w-[150px]">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All statuses</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="suspended">Suspended</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={exportUsersPdf}
+                    disabled={filteredUsers.length === 0}
+                  >
+                    <FileDown className="mr-2 size-4" />
+                    Export PDF
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <Table className="min-w-[760px]">
@@ -2439,7 +2891,16 @@ export function AdminPanel() {
                   {usersLoading && users.length === 0 && (
                     <LoadingTableRow colSpan={5} label="Loading users..." />
                   )}
-                  {users.map((u) => {
+                  {!usersLoading && filteredUsers.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="py-8 text-center">
+                        <p className="text-sm text-muted-foreground">
+                          No users match your search and filters.
+                        </p>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {filteredUsers.map((u) => {
                     const resolvedRoles = resolveUserRoles(u);
                     const isAdmin = resolvedRoles.includes("admin");
                     const isComposer = resolvedRoles.includes("composer");
@@ -2682,10 +3143,47 @@ export function AdminPanel() {
         <TabsContent value="requests" className="mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>Composer Requests</CardTitle>
-              <CardDescription>
-                Pending composer access requests
-              </CardDescription>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <CardTitle>Role Requests</CardTitle>
+                  <CardDescription>Pending composer/admin access requests</CardDescription>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="relative w-full sm:w-72">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={requestSearchQuery}
+                      onChange={(event) => setRequestSearchQuery(event.target.value)}
+                      placeholder="Search requests..."
+                      className="pl-9"
+                    />
+                  </div>
+                  <Select
+                    value={requestRoleFilter}
+                    onValueChange={(value) =>
+                      setRequestRoleFilter(value as typeof requestRoleFilter)
+                    }
+                  >
+                    <SelectTrigger size="sm" className="w-full sm:w-[170px]">
+                      <SelectValue placeholder="Requested role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All roles</SelectItem>
+                      <SelectItem value="composer">Composer</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={exportRequestsPdf}
+                    disabled={filteredRequests.length === 0}
+                  >
+                    <FileDown className="mr-2 size-4" />
+                    Export PDF
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               {pendingRequests.length === 0 ? (
@@ -2702,7 +3200,16 @@ export function AdminPanel() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {pendingRequests.map((r) => (
+                    {filteredRequests.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="py-8 text-center">
+                          <p className="text-sm text-muted-foreground">
+                            No requests match your search and filters.
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {filteredRequests.map((r) => (
                       <TableRow
                         key={`${r.request_id || r.id || r.user_id}:${r.requested_role || r.requestedRole || "composer"}`}
                       >
@@ -2758,43 +3265,65 @@ export function AdminPanel() {
         <TabsContent value="enrollments" className="mt-6">
           <Card>
             <CardHeader>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <GraduationCap className="size-5 text-primary" />
-                    Enrollment Requests
-                  </CardTitle>
-                  <CardDescription>
-                    Review new class enrollments and admit approved students.
-                  </CardDescription>
+              <div className="space-y-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <GraduationCap className="size-5 text-primary" />
+                      Enrollment Requests
+                    </CardTitle>
+                    <CardDescription>
+                      Review new class enrollments and admit approved students.
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant={
+                        enrollmentStatusFilter === "pending" ? "default" : "outline"
+                      }
+                      onClick={() => setEnrollmentStatusFilter("pending")}
+                    >
+                      Pending
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={
+                        enrollmentStatusFilter === "admitted" ? "default" : "outline"
+                      }
+                      onClick={() => setEnrollmentStatusFilter("admitted")}
+                    >
+                      Admitted
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={enrollmentStatusFilter === "all" ? "default" : "outline"}
+                      onClick={() => setEnrollmentStatusFilter("all")}
+                    >
+                      All
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="relative w-full sm:w-80">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={enrollmentSearchQuery}
+                      onChange={(event) =>
+                        setEnrollmentSearchQuery(event.target.value)
+                      }
+                      placeholder="Search enrollments..."
+                      className="pl-9"
+                    />
+                  </div>
                   <Button
                     size="sm"
-                    variant={
-                      enrollmentStatusFilter === "pending" ? "default" : "outline"
-                    }
-                    onClick={() => setEnrollmentStatusFilter("pending")}
+                    variant="outline"
+                    onClick={exportEnrollmentsPdf}
+                    disabled={filteredEnrollments.length === 0}
                   >
-                    Pending
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={
-                      enrollmentStatusFilter === "admitted" ? "default" : "outline"
-                    }
-                    onClick={() => setEnrollmentStatusFilter("admitted")}
-                  >
-                    Admitted
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={
-                      enrollmentStatusFilter === "all" ? "default" : "outline"
-                    }
-                    onClick={() => setEnrollmentStatusFilter("all")}
-                  >
-                    All
+                    <FileDown className="mr-2 size-4" />
+                    Export PDF
                   </Button>
                 </div>
               </div>
@@ -2825,7 +3354,18 @@ export function AdminPanel() {
                       </TableCell>
                     </TableRow>
                   )}
-                  {enrollments.map((enrollment: any) => (
+                  {!enrollmentsLoading &&
+                    enrollments.length > 0 &&
+                    filteredEnrollments.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={9} className="py-8 text-center">
+                          <p className="text-sm text-muted-foreground">
+                            No enrollments match your search.
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  {filteredEnrollments.map((enrollment: any) => (
                     <TableRow key={enrollment.id}>
                       <TableCell className="font-medium">
                         {enrollment.full_name ||
@@ -2889,10 +3429,53 @@ export function AdminPanel() {
         <TabsContent value="compositions" className="mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>All Compositions</CardTitle>
-              <CardDescription>
-                Manage and moderate published compositions
-              </CardDescription>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <CardTitle>All Compositions</CardTitle>
+                  <CardDescription>
+                    Manage and moderate published compositions
+                  </CardDescription>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="relative w-full sm:w-80">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={compositionSearchQuery}
+                      onChange={(event) =>
+                        setCompositionSearchQuery(event.target.value)
+                      }
+                      placeholder="Search compositions..."
+                      className="pl-9"
+                    />
+                  </div>
+                  <Select
+                    value={compositionVerificationFilter}
+                    onValueChange={(value) =>
+                      setCompositionVerificationFilter(
+                        value as typeof compositionVerificationFilter,
+                      )
+                    }
+                  >
+                    <SelectTrigger size="sm" className="w-full sm:w-[180px]">
+                      <SelectValue placeholder="Verification" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="verified">Verified</SelectItem>
+                      <SelectItem value="unverified">Unverified</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={exportCompositionsPdf}
+                    disabled={filteredCompositions.length === 0}
+                  >
+                    <FileDown className="mr-2 size-4" />
+                    Export PDF
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <Table className="min-w-[980px]">
@@ -2913,7 +3496,16 @@ export function AdminPanel() {
                       label="Loading compositions..."
                     />
                   )}
-                  {compositions.map((c) => (
+                  {!compositionsLoading && filteredCompositions.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="py-8 text-center">
+                        <p className="text-sm text-muted-foreground">
+                          No compositions match your search and filters.
+                        </p>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {filteredCompositions.map((c) => (
                     <TableRow key={c.id}>
                       <TableCell>
                         <div>
@@ -3010,8 +3602,77 @@ export function AdminPanel() {
         <TabsContent value="transactions" className="mt-6">
           <Card className="bg-card/98">
             <CardHeader className="border-b border-border/60 bg-card/92">
-              <CardTitle>All Transactions</CardTitle>
-              <CardDescription>Complete transaction history</CardDescription>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <CardTitle>All Transactions</CardTitle>
+                  <CardDescription>Complete transaction history</CardDescription>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="relative w-full sm:w-80">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={transactionSearchQuery}
+                      onChange={(event) =>
+                        setTransactionSearchQuery(event.target.value)
+                      }
+                      placeholder="Search transactions..."
+                      className="pl-9"
+                    />
+                  </div>
+                  <Select
+                    value={transactionStatusFilter}
+                    onValueChange={(value) =>
+                      setTransactionStatusFilter(value as typeof transactionStatusFilter)
+                    }
+                  >
+                    <SelectTrigger size="sm" className="w-full sm:w-[150px]">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All statuses</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={transactionSourceFilter}
+                    onValueChange={(value) =>
+                      setTransactionSourceFilter(value as typeof transactionSourceFilter)
+                    }
+                  >
+                    <SelectTrigger size="sm" className="w-full sm:w-[190px]">
+                      <SelectValue placeholder="Source" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All sources</SelectItem>
+                      <SelectItem value="purchase">Purchase</SelectItem>
+                      <SelectItem value="payment_submission">Payment submission</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={exportTransactionsPdf}
+                    disabled={filteredTransactions.length === 0}
+                  >
+                    <FileDown className="mr-2 size-4" />
+                    Export PDF
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={resetTransactionsToZero}
+                    disabled={
+                      isProcessing ||
+                      (transactionsSinceReset === 0 && revenueSinceReset === 0)
+                    }
+                  >
+                    <Trash2 className="mr-2 size-4" />
+                    Reset Sales
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <Table className="min-w-[1260px]">
@@ -3034,7 +3695,16 @@ export function AdminPanel() {
                       label="Loading transactions..."
                     />
                   )}
-                  {transactions.map((p) => (
+                  {!transactionsLoading && filteredTransactions.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="py-8 text-center">
+                        <p className="text-sm text-muted-foreground">
+                          No transactions match your search and filters.
+                        </p>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {filteredTransactions.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell className="font-mono text-sm">
                         {p.transaction_id || p.id}
