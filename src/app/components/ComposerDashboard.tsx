@@ -299,7 +299,7 @@ export function ComposerDashboard() {
 
   const handleDeleteComposition = async (composition: CompositionWithStats) => {
     const confirmed = window.confirm(
-      `Delete "${composition.title}"? This will remove it from the marketplace.`,
+      `Delete "${composition.title}"? This will remove it from the marketplace and revoke access for buyers who own it.`,
     );
     if (!confirmed) return;
 

@@ -89,6 +89,8 @@ const rolePriority: Record<string, number> = {
   composer: 2,
   admin: 3,
 };
+const ADMIN_TRANSACTIONS_READ_CUTOFF_KEY = "admin.transactionsReadCutoffMs";
+const ADMIN_TRANSACTIONS_RESET_BASELINE_KEY = "admin.transactionsResetBaseline";
 
 function getInitials(displayName?: string | null, email?: string | null) {
   const source = (displayName || email || "U").trim();
@@ -103,6 +105,25 @@ function formatDateTime(value?: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleString();
+}
+function getTransactionTimestampMs(transaction: any): number {
+  const value =
+    transaction?.purchased_at ||
+    transaction?.purchasedAt ||
+    transaction?.submitted_at ||
+    transaction?.submittedAt ||
+    transaction?.created_at ||
+    transaction?.createdAt ||
+    null;
+  const ms = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function getLatestTransactionTimestampMs(transactions: any[]): number {
+  return (transactions || []).reduce((max: number, row: any) => {
+    const ms = getTransactionTimestampMs(row);
+    return ms > max ? ms : max;
+  }, 0);
 }
 
 function LoadingTableRow({
@@ -256,6 +277,28 @@ export function AdminPanel() {
     useState<DataLoadLevel>("none");
   const [transactionsLoadLevel, setTransactionsLoadLevel] =
     useState<DataLoadLevel>("none");
+  const [transactionsReadCutoffMs, setTransactionsReadCutoffMs] =
+    useState<number>(() => {
+      try {
+        const stored = localStorage.getItem(ADMIN_TRANSACTIONS_READ_CUTOFF_KEY);
+        const parsed = Number(stored);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+      } catch {
+        return 0;
+      }
+    });
+  const [transactionsResetBaseline, setTransactionsResetBaseline] =
+    useState<number>(() => {
+      try {
+        const stored = localStorage.getItem(
+          ADMIN_TRANSACTIONS_RESET_BASELINE_KEY,
+        );
+        const parsed = Number(stored);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+      } catch {
+        return 0;
+      }
+    });
   const [selectedUserProfile, setSelectedUserProfile] = useState<any | null>(
     null,
   );
@@ -271,6 +314,28 @@ export function AdminPanel() {
       setProcessingAction(null);
     }
   };
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        ADMIN_TRANSACTIONS_READ_CUTOFF_KEY,
+        String(transactionsReadCutoffMs || 0),
+      );
+    } catch {
+      // ignore storage failures
+    }
+  }, [transactionsReadCutoffMs]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        ADMIN_TRANSACTIONS_RESET_BASELINE_KEY,
+        String(transactionsResetBaseline || 0),
+      );
+    } catch {
+      // ignore storage failures
+    }
+  }, [transactionsResetBaseline]);
 
   /* ---------------- guard admin access & initial load ---------------- */
   useEffect(() => {
@@ -692,6 +757,23 @@ export function AdminPanel() {
     [transactions],
   );
 
+  const unreadRecentTransactions = useMemo(() => {
+    return (transactions || [])
+      .filter(
+        (transaction: any) =>
+          getTransactionTimestampMs(transaction) > transactionsReadCutoffMs,
+      )
+      .sort(
+        (a: any, b: any) =>
+          getTransactionTimestampMs(b) - getTransactionTimestampMs(a),
+      );
+  }, [transactions, transactionsReadCutoffMs]);
+
+  const transactionsSinceReset = useMemo(
+    () => Math.max(0, totalTransactions - transactionsResetBaseline),
+    [totalTransactions, transactionsResetBaseline],
+  );
+
   const pendingEnrollmentCount = useMemo(
     () =>
       (enrollments || []).filter(
@@ -746,6 +828,20 @@ export function AdminPanel() {
       }
       return [...current, role];
     });
+  };
+
+  const markAllTransactionsRead = () => {
+    const latestMs = getLatestTransactionTimestampMs(transactions);
+    if (!latestMs) return;
+    setTransactionsReadCutoffMs(latestMs);
+    toast.success("Transactions marked as read");
+  };
+
+  const resetTransactionsToZero = () => {
+    setTransactionsResetBaseline(totalTransactions);
+    const latestMs = getLatestTransactionTimestampMs(transactions);
+    if (latestMs) setTransactionsReadCutoffMs(latestMs);
+    toast.success("Transactions reset to zero");
   };
 
   const formatUserDisplay = (user: any) =>
@@ -1161,6 +1257,11 @@ export function AdminPanel() {
       toast.error("Missing composition id");
       return;
     }
+
+    const confirmed = window.confirm(
+      `Delete "${composition?.title || "this composition"}"? This will remove it from the marketplace and revoke access for every buyer who owns it.`,
+    );
+    if (!confirmed) return;
 
     await runAction(`composition:remove:${compositionId}`, async () => {
       await adminService.removeComposition(compositionId);
@@ -2061,12 +2162,16 @@ export function AdminPanel() {
 
                 <Card role="button" tabIndex={0} onClick={() => setActiveTab("transactions")} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setActiveTab("transactions"); } }} className="transition hover:cursor-pointer hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60">
                   <CardHeader className="flex items-center justify-between">
-                    <CardTitle className="text-sm text-muted-foreground">Transactions</CardTitle>
+                    <CardTitle className="text-sm text-muted-foreground">
+                      New Transactions
+                    </CardTitle>
                     <TrendingUp className="size-5 text-orange-600" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold">{totalTransactions}</div>
-                    <p className="mt-1 text-xs text-muted-foreground">Total sales</p>
+                    <div className="text-3xl font-bold">{transactionsSinceReset}</div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Since last reset
+                    </p>
                   </CardContent>
                 </Card>
               </div>
@@ -2210,11 +2315,35 @@ export function AdminPanel() {
               </Card>
 
               <Card className="bg-card/98">
-                <CardHeader className="border-b border-border/60 bg-card/92">
-                  <CardTitle>Recent Transactions</CardTitle>
-                  <CardDescription>
-                    Latest purchases on the platform
-                  </CardDescription>
+                <CardHeader className="flex flex-col gap-3 border-b border-border/60 bg-card/92 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="space-y-1">
+                    <CardTitle>Recent Transactions</CardTitle>
+                    <CardDescription>Latest purchases on the platform</CardDescription>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={markAllTransactionsRead}
+                      disabled={isProcessing || unreadRecentTransactions.length === 0}
+                    >
+                      <Check className="mr-2 size-4" />
+                      Mark All Read
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={resetTransactionsToZero}
+                      disabled={
+                        isProcessing ||
+                        (transactionsSinceReset === 0 &&
+                          unreadRecentTransactions.length === 0)
+                      }
+                    >
+                      <Trash2 className="mr-2 size-4" />
+                      Reset to 0
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <Table className="min-w-[760px]">
@@ -2234,12 +2363,27 @@ export function AdminPanel() {
                           label="Loading recent transactions..."
                         />
                       )}
-                      {transactions.slice(0, 10).map((t) => (
+                      {!transactionsLoading && unreadRecentTransactions.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={5} className="py-8 text-center">
+                            <p className="text-sm text-muted-foreground">
+                              All caught up. No unread transactions.
+                            </p>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {unreadRecentTransactions.slice(0, 10).map((t) => (
                         <TableRow key={t.id}>
                           <TableCell>
-                            {new Date(
-                              t.purchased_at || t.purchasedAt || "",
-                            ).toLocaleString()}
+                            {formatDateTime(
+                              t.purchased_at ||
+                                t.purchasedAt ||
+                                t.submitted_at ||
+                                t.submittedAt ||
+                                t.created_at ||
+                                t.createdAt ||
+                                "",
+                            )}
                           </TableCell>
                           <TableCell>
                             {t.buyers?.users?.display_name ||
@@ -2849,7 +2993,7 @@ export function AdminPanel() {
                               onClick={() => removeComposition(c)}
                               disabled={isProcessing}
                             >
-                              <Ban className="size-4 mr-2" /> Remove Listing
+                              <Trash2 className="size-4 mr-2" /> Delete Composition
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -3541,6 +3685,8 @@ export function AdminPanel() {
     </div>
   );
 }
+
+
 
 
 
