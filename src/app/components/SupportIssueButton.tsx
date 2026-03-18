@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LifeBuoy,
   Loader,
@@ -69,6 +69,10 @@ export function SupportIssueButton({
 
   const [newSubject, setNewSubject] = useState("");
   const [draftMessage, setDraftMessage] = useState("");
+  const threadsLoadRef = useRef(false);
+  const messagesLoadRef = useRef(false);
+  const threadsRequestId = useRef(0);
+  const messagesRequestId = useRef(0);
 
   const selectedThread = useMemo(
     () => threads.find((thread) => thread.id === selectedThreadId) || null,
@@ -83,9 +87,18 @@ export function SupportIssueButton({
   const loadThreads = useCallback(
     async (preserveSelection = true) => {
       if (!appUser?.id) return;
+      if (threadsLoadRef.current) return;
+      const requestId = ++threadsRequestId.current;
+      threadsLoadRef.current = true;
       setLoadingThreads(true);
+      const timeoutHandle = window.setTimeout(() => {
+        if (requestId !== threadsRequestId.current) return;
+        threadsLoadRef.current = false;
+        setLoadingThreads(false);
+      }, 12000);
       try {
         const inbox = await supportService.getInbox();
+        if (requestId !== threadsRequestId.current) return;
         const nextThreads = inbox?.threads || [];
         setThreads(nextThreads);
         onInboxRefresh?.();
@@ -102,7 +115,11 @@ export function SupportIssueButton({
         console.error("[support-chat] load threads failed:", error);
         toast.error(error?.message || "Failed to load support chats");
       } finally {
-        setLoadingThreads(false);
+        window.clearTimeout(timeoutHandle);
+        if (requestId === threadsRequestId.current) {
+          threadsLoadRef.current = false;
+          setLoadingThreads(false);
+        }
       }
     },
     [appUser?.id, onInboxRefresh],
@@ -110,9 +127,18 @@ export function SupportIssueButton({
 
   const loadMessages = useCallback(
     async (threadId: string, markRead = true) => {
+      if (messagesLoadRef.current) return;
+      const requestId = ++messagesRequestId.current;
+      messagesLoadRef.current = true;
       setLoadingMessages(true);
+      const timeoutHandle = window.setTimeout(() => {
+        if (requestId !== messagesRequestId.current) return;
+        messagesLoadRef.current = false;
+        setLoadingMessages(false);
+      }, 12000);
       try {
         const response = await supportService.getThreadMessages(threadId);
+        if (requestId !== messagesRequestId.current) return;
         setMessages(response?.messages || []);
 
         if (markRead && response?.thread?.is_user_unread) {
@@ -123,7 +149,11 @@ export function SupportIssueButton({
         console.error("[support-chat] load messages failed:", error);
         toast.error(error?.message || "Failed to load thread messages");
       } finally {
-        setLoadingMessages(false);
+        window.clearTimeout(timeoutHandle);
+        if (requestId === messagesRequestId.current) {
+          messagesLoadRef.current = false;
+          setLoadingMessages(false);
+        }
       }
     },
     [loadThreads],
@@ -174,13 +204,13 @@ export function SupportIssueButton({
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "INSERT",
           schema: "public",
           table: "support_chat_messages",
           filter: `thread_id=eq.${selectedThreadId}`,
         },
         () => {
-          void loadMessages(selectedThreadId, true);
+          void loadMessages(selectedThreadId, false);
           void loadThreads(false);
         },
       )
