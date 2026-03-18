@@ -89,6 +89,7 @@ import { supabase } from "@/lib/supabase";
 import { ensureArray } from "@/lib/ensureArray";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 import { formatKesAmount } from "@/lib/currency";
+import { exportTableReportToPdf } from "@/lib/pdfReports";
 import loadingStringsDark from "./images/bg_9.jpg";
 import loadingStringsLight from "./images/bg_11.jpg";
 
@@ -135,85 +136,6 @@ function getLatestTransactionTimestampMs(transactions: any[]): number {
     const ms = getTransactionTimestampMs(row);
     return ms > max ? ms : max;
   }, 0);
-}
-
-function escapeHtml(value: any) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function openPrintReport({
-  title,
-  subtitle,
-  columns,
-  rows,
-}: {
-  title: string;
-  subtitle?: string;
-  columns: string[];
-  rows: Array<Array<string | number | null | undefined>>;
-}) {
-  const printWindow = window.open("", "_blank", "noopener,noreferrer");
-  if (!printWindow) return false;
-
-  const generatedAt = new Date().toLocaleString();
-  const tableHead = columns
-    .map((label) => `<th>${escapeHtml(label)}</th>`)
-    .join("");
-  const tableRows = rows
-    .map(
-      (row) =>
-        `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`,
-    )
-    .join("");
-
-  const html = `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${escapeHtml(title)}</title>
-    <style>
-      :root { color-scheme: light; }
-      body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; padding: 24px; color: #0f172a; }
-      h1 { font-size: 18px; margin: 0; }
-      .meta { margin-top: 6px; color: #475569; font-size: 12px; }
-      .hint { margin-top: 10px; color: #64748b; font-size: 12px; }
-      table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-      th, td { border: 1px solid #e2e8f0; padding: 8px; font-size: 12px; vertical-align: top; text-align: left; word-break: break-word; }
-      th { background: #f8fafc; }
-      @page { size: A4; margin: 12mm; }
-    </style>
-  </head>
-  <body>
-    <h1>${escapeHtml(title)}</h1>
-    <div class="meta">${escapeHtml(subtitle || "")}</div>
-    <div class="meta">Generated: ${escapeHtml(generatedAt)}</div>
-    <div class="hint">Tip: In the print dialog, choose "Save as PDF" to download.</div>
-    <table>
-      <thead><tr>${tableHead}</tr></thead>
-      <tbody>${tableRows}</tbody>
-    </table>
-  </body>
-</html>`;
-
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-  setTimeout(() => {
-    try {
-      printWindow.print();
-    } catch {
-      // ignore print failures
-    }
-  }, 350);
-
-  return true;
 }
 
 function LoadingTableRow({
@@ -1149,117 +1071,154 @@ export function AdminPanel() {
     transactionSourceFilter,
   ]);
 
-  const exportUsersPdf = () => {
-    const ok = openPrintReport({
-      title: "Users Report",
-      subtitle: `${filteredUsers.length} users (role: ${userRoleFilter}, status: ${userStatusFilter})`,
-      columns: ["Name", "Email", "Phone", "Roles", "Status", "Created"],
-      rows: filteredUsers.map((user: any) => [
-        user?.display_name || "N/A",
-        user?.email || "N/A",
-        user?.phone || "-",
-        resolveUserRoles(user).join(", "),
-        user?.is_active === false ? "Suspended" : "Active",
-        formatDateTime(user?.created_at || null) || "-",
-      ]),
-    });
-    if (!ok) toast.error("Popup blocked. Allow popups to export PDF.");
+  const exportUsersPdf = async () => {
+    try {
+      await exportTableReportToPdf({
+        title: "Users Report",
+        subtitle: `${filteredUsers.length} users (role: ${userRoleFilter}, status: ${userStatusFilter})`,
+        columns: ["Name", "Email", "Phone", "Roles", "Status", "Created"],
+        rows: filteredUsers.map((user: any) => [
+          user?.display_name || "N/A",
+          user?.email || "N/A",
+          user?.phone || "-",
+          resolveUserRoles(user).join(", "),
+          user?.is_active === false ? "Suspended" : "Active",
+          formatDateTime(user?.created_at || null) || "-",
+        ]),
+        generatedBy: appUser?.email || undefined,
+      });
+    } catch (error: any) {
+      console.error("[admin] export users pdf failed:", error);
+      toast.error(error?.message || "Failed to export users PDF");
+    }
   };
 
-  const exportCompositionsPdf = () => {
-    const ok = openPrintReport({
-      title: "Compositions Report",
-      subtitle: `${filteredCompositions.length} compositions (verification: ${compositionVerificationFilter})`,
-      columns: ["Title", "Composer", "Price (KES)", "Verified", "Created"],
-      rows: filteredCompositions.map((composition: any) => [
-        composition?.title || "N/A",
-        composition?.composers?.users?.display_name ||
-          composition?.composers?.users?.email ||
-          "Unknown",
-        Number(composition?.price || 0),
-        composition?.is_verified ? "Yes" : "No",
-        formatDateTime(composition?.created_at || null) || "-",
-      ]),
-    });
-    if (!ok) toast.error("Popup blocked. Allow popups to export PDF.");
+  const exportCompositionsPdf = async () => {
+    try {
+      await exportTableReportToPdf({
+        title: "Compositions Report",
+        subtitle: `${filteredCompositions.length} compositions (verification: ${compositionVerificationFilter})`,
+        columns: ["Title", "Composer", "Price (KES)", "Verified", "Created"],
+        rows: filteredCompositions.map((composition: any) => [
+          composition?.title || "N/A",
+          composition?.composers?.users?.display_name ||
+            composition?.composers?.users?.email ||
+            "Unknown",
+          Number(composition?.price || 0),
+          composition?.is_verified ? "Yes" : "No",
+          formatDateTime(composition?.created_at || null) || "-",
+        ]),
+        generatedBy: appUser?.email || undefined,
+      });
+    } catch (error: any) {
+      console.error("[admin] export compositions pdf failed:", error);
+      toast.error(error?.message || "Failed to export compositions PDF");
+    }
   };
 
-  const exportTransactionsPdf = () => {
-    const ok = openPrintReport({
-      title: "Transactions Report",
-      subtitle: `${filteredTransactions.length} transactions (status: ${transactionStatusFilter}, source: ${transactionSourceFilter})`,
-      columns: [
-        "Transaction ID",
-        "Date",
-        "Buyer",
-        "Composition",
-        "Payment Ref",
-        "Status",
-        "Amount (KES)",
-        "Source",
-      ],
-      rows: filteredTransactions.map((t: any) => [
-        t?.transaction_id || t?.id || "-",
-        formatDateTime(t?.purchased_at || t?.purchasedAt || t?.submitted_at || t?.submittedAt || null) ||
-          "-",
-        t?.buyers?.users?.display_name || t?.buyers?.users?.email || "Unknown",
-        t?.compositions?.title || "Unknown",
-        t?.payment_ref || "-",
-        String(t?.status || "approved").toUpperCase(),
-        Number(t?.price_paid || 0),
-        t?.source || "purchase",
-      ]),
-    });
-    if (!ok) toast.error("Popup blocked. Allow popups to export PDF.");
+  const exportTransactionsPdf = async () => {
+    try {
+      await exportTableReportToPdf({
+        title: "Transactions Report",
+        subtitle: `${filteredTransactions.length} transactions (status: ${transactionStatusFilter}, source: ${transactionSourceFilter})`,
+        columns: [
+          "Transaction ID",
+          "Date",
+          "Buyer",
+          "Composition",
+          "Payment Ref",
+          "Status",
+          "Amount (KES)",
+          "Source",
+        ],
+        rows: filteredTransactions.map((t: any) => [
+          t?.transaction_id || t?.id || "-",
+          formatDateTime(
+            t?.purchased_at ||
+              t?.purchasedAt ||
+              t?.submitted_at ||
+              t?.submittedAt ||
+              null,
+          ) || "-",
+          t?.buyers?.users?.display_name ||
+            t?.buyers?.users?.email ||
+            "Unknown",
+          t?.compositions?.title || "Unknown",
+          t?.payment_ref || "-",
+          String(t?.status || "approved").toUpperCase(),
+          Number(t?.price_paid || 0),
+          t?.source || "purchase",
+        ]),
+        generatedBy: appUser?.email || undefined,
+      });
+    } catch (error: any) {
+      console.error("[admin] export transactions pdf failed:", error);
+      toast.error(error?.message || "Failed to export transactions PDF");
+    }
   };
 
-  const exportRequestsPdf = () => {
-    const ok = openPrintReport({
-      title: "Role Requests Report",
-      subtitle: `${filteredRequests.length} pending requests (role filter: ${requestRoleFilter})`,
-      columns: ["Email", "Requested At", "Requested Role", "Current Roles"],
-      rows: filteredRequests.map((request: any) => [
-        request?.email || "N/A",
-        formatDateTime(request?.created_at || request?.createdAt || null) || "-",
-        String(request?.requested_role || request?.requestedRole || "composer")
-          .toString()
-          .toLowerCase(),
-        Array.isArray(request?.roles)
-          ? request.roles.join(", ")
-          : request?.roles || userIdToRole[request?.user_id || request?.id] || "buyer",
-      ]),
-    });
-    if (!ok) toast.error("Popup blocked. Allow popups to export PDF.");
+  const exportRequestsPdf = async () => {
+    try {
+      await exportTableReportToPdf({
+        title: "Role Requests Report",
+        subtitle: `${filteredRequests.length} pending requests (role filter: ${requestRoleFilter})`,
+        columns: ["Email", "Requested At", "Requested Role", "Current Roles"],
+        rows: filteredRequests.map((request: any) => [
+          request?.email || "N/A",
+          formatDateTime(request?.created_at || request?.createdAt || null) ||
+            "-",
+          String(
+            request?.requested_role || request?.requestedRole || "composer",
+          )
+            .toString()
+            .toLowerCase(),
+          Array.isArray(request?.roles)
+            ? request.roles.join(", ")
+            : request?.roles ||
+              userIdToRole[request?.user_id || request?.id] ||
+              "buyer",
+        ]),
+        generatedBy: appUser?.email || undefined,
+      });
+    } catch (error: any) {
+      console.error("[admin] export requests pdf failed:", error);
+      toast.error(error?.message || "Failed to export role requests PDF");
+    }
   };
 
-  const exportEnrollmentsPdf = () => {
-    const ok = openPrintReport({
-      title: "Enrollments Report",
-      subtitle: `${filteredEnrollments.length} enrollments (status: ${enrollmentStatusFilter})`,
-      columns: [
-        "Name",
-        "Email",
-        "Class",
-        "Level",
-        "Notes",
-        "Submitted",
-        "Status",
-        "Admitted",
-      ],
-      rows: filteredEnrollments.map((enrollment: any) => [
-        enrollment?.full_name || enrollment?.requester?.display_name || "N/A",
-        enrollment?.email || enrollment?.requester?.email || "N/A",
-        enrollment?.music_class || "N/A",
-        String(enrollment?.skill_level || "N/A"),
-        enrollment?.notes || "-",
-        formatDateTime(enrollment?.created_at || null) || "-",
-        String(enrollment?.status || "pending").toUpperCase(),
-        enrollment?.admitted_at
-          ? `${enrollment?.admitted_admin?.display_name || enrollment?.admitted_admin?.email || "Admin"} - ${formatDateTime(enrollment?.admitted_at) || "-"}`
-          : "-",
-      ]),
-    });
-    if (!ok) toast.error("Popup blocked. Allow popups to export PDF.");
+  const exportEnrollmentsPdf = async () => {
+    try {
+      await exportTableReportToPdf({
+        title: "Enrollments Report",
+        subtitle: `${filteredEnrollments.length} enrollments (status: ${enrollmentStatusFilter})`,
+        columns: [
+          "Name",
+          "Email",
+          "Class",
+          "Level",
+          "Notes",
+          "Submitted",
+          "Status",
+          "Admitted",
+        ],
+        rows: filteredEnrollments.map((enrollment: any) => [
+          enrollment?.full_name || enrollment?.requester?.display_name || "N/A",
+          enrollment?.email || enrollment?.requester?.email || "N/A",
+          enrollment?.music_class || "N/A",
+          String(enrollment?.skill_level || "N/A"),
+          enrollment?.notes || "-",
+          formatDateTime(enrollment?.created_at || null) || "-",
+          String(enrollment?.status || "pending").toUpperCase(),
+          enrollment?.admitted_at
+            ? `${enrollment?.admitted_admin?.display_name || enrollment?.admitted_admin?.email || "Admin"} - ${formatDateTime(enrollment?.admitted_at) || "-"}`
+            : "-",
+        ]),
+        generatedBy: appUser?.email || undefined,
+      });
+    } catch (error: any) {
+      console.error("[admin] export enrollments pdf failed:", error);
+      toast.error(error?.message || "Failed to export enrollments PDF");
+    }
   };
 
   const selectedUserProfileRoles = useMemo(() => {
