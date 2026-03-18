@@ -415,7 +415,7 @@ export function UploadComposition({
     const title = formData.title.trim();
     if (!title) {
       if (!options?.silent) {
-        toast.error("Enter a composition title first");
+        toast.error(`Enter a ${entryLabelLower} title first`);
       }
       return null;
     }
@@ -720,7 +720,7 @@ export function UploadComposition({
         throw new Error(errorMessage);
       }
 
-      toast.success("Composition uploaded successfully!");
+      toast.success(`${entryLabel} uploaded successfully!`);
       setIsSuccess(true);
 
       // Close after success
@@ -731,7 +731,9 @@ export function UploadComposition({
     } catch (error) {
       console.error("Error uploading composition:", error);
       toast.error(
-        error instanceof Error ? error.message : "Failed to upload composition",
+        error instanceof Error
+          ? error.message
+          : `Failed to upload ${entryLabelLower}`,
       );
       setIsSubmitting(false);
     }
@@ -929,7 +931,7 @@ export function UploadComposition({
           onChange={(e) =>
             setFormData((prev) => ({ ...prev, description: e.target.value }))
           }
-          placeholder="Describe your composition, its mood, suitable occasions..."
+          placeholder={`Describe your ${entryLabelLower}, its mood, suitable occasions...`}
           rows={4}
           required
         />
