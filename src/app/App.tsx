@@ -20,6 +20,10 @@ import { toast } from "sonner";
 import { SESSION_EXPIRED_EVENT } from "@/lib/sessionEvents";
 import { APP_ERROR_EVENT, type AppErrorAction, type AppErrorDetail, dispatchAppError } from "@/lib/appErrorEvents";
 import { AppErrorDialog } from "@/app/components/AppErrorDialog";
+import { Button } from "@/app/components/ui/button";
+import { buildErrorReportMessage, shouldOfferReport, simplifyErrorMessage } from "@/lib/errorMessages";
+import { supportService } from "@/services/supportService";
+import { supabase } from "@/lib/supabase";
 import { Guitar, Loader2 } from "lucide-react";
 import bg1 from "@/app/components/images/bg_1.jpg";
 import bg2 from "@/app/components/images/bg_2.jpg";
@@ -232,23 +236,78 @@ function resolveRouteBackdrop(pathname: string): RouteBackdropConfig {
 -------------------------------- */
 class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },
-  { hasError: boolean; error?: Error }
+  {
+    hasError: boolean;
+    error?: Error;
+    reportStatus: "idle" | "sending" | "sent" | "failed";
+    reportMessage?: string;
+  }
 > {
   constructor(props: { children: React.ReactNode }) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, reportStatus: "idle" };
   }
 
   static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
+    return { hasError: true, error, reportStatus: "idle", reportMessage: undefined };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error("App crashed:", error, info);
   }
 
+  handleRefresh = () => {
+    window.location.reload();
+  };
+
+  handleReport = async () => {
+    if (this.state.reportStatus === "sending" || this.state.reportStatus === "sent") {
+      return;
+    }
+    this.setState({ reportStatus: "sending", reportMessage: undefined });
+
+    try {
+      const session = await supabase.auth.getSession();
+      if (!session?.data?.session) {
+        this.setState({
+          reportStatus: "failed",
+          reportMessage: "Please sign in to report this error.",
+        });
+        return;
+      }
+
+      const reportMessage = buildErrorReportMessage({
+        title: "App crash",
+        message: this.state.error?.message,
+        source: "error-boundary",
+      });
+
+      await supportService.createThread({
+        subject: "Error report: App crash",
+        message: reportMessage,
+        context: "error-report",
+      });
+
+      this.setState({
+        reportStatus: "sent",
+        reportMessage: "Thanks. The report was sent to admin.",
+      });
+    } catch (error: any) {
+      this.setState({
+        reportStatus: "failed",
+        reportMessage: error?.message || "Failed to report the error.",
+      });
+    }
+  };
+
   render() {
     if (this.state.hasError) {
+      const safeMessage = simplifyErrorMessage(
+        this.state.error?.message || "An unexpected error occurred.",
+      );
+      const isReporting = this.state.reportStatus === "sending";
+      const reportSent = this.state.reportStatus === "sent";
+
       return (
         <div className="min-h-screen flex items-center justify-center bg-background p-6">
           <div className="max-w-md rounded-2xl border border-border/70 bg-card/90 p-6 text-center shadow-[0_24px_40px_-30px_rgba(15,23,42,0.6)]">
@@ -256,11 +315,26 @@ class AppErrorBoundary extends React.Component<
               Something went wrong
             </h1>
             <p className="mb-4 text-muted-foreground">
-              Please refresh the page or try again later.
+              We ran into a problem. You can refresh the page or report it.
             </p>
-            <pre className="rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-left text-xs text-foreground/90">
-              {this.state.error?.message}
-            </pre>
+            <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-left text-sm text-foreground/90 max-h-40 overflow-y-auto whitespace-pre-wrap break-words">
+              {safeMessage}
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+              <Button onClick={this.handleRefresh}>Refresh</Button>
+              <Button
+                variant="outline"
+                onClick={this.handleReport}
+                disabled={isReporting || reportSent}
+              >
+                {isReporting ? "Reporting..." : reportSent ? "Reported" : "Report Error"}
+              </Button>
+            </div>
+            {this.state.reportMessage ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                {this.state.reportMessage}
+              </p>
+            ) : null}
           </div>
         </div>
       );
@@ -354,6 +428,33 @@ export default function App() {
       window.location.reload();
       return;
     }
+    if (action === "report") {
+      if (!appUser?.id) {
+        toast.info("Please sign in to report this error.");
+        return;
+      }
+      const reportMessage = buildErrorReportMessage({
+        title: detail.title,
+        message: detail.rawMessage ?? detail.message,
+        status: detail.status,
+        source: detail.source,
+      });
+      supportService
+        .createThread({
+          subject: detail.title ? `Error report: ${detail.title}` : "Error report",
+          message: reportMessage,
+          context: "error-report",
+        })
+        .then(() => {
+          toast.success("Error reported to admin.");
+          setAppErrorOpen(false);
+        })
+        .catch((error: any) => {
+          console.error("[error-report] failed:", error);
+          toast.error(error?.message || "Failed to report the error.");
+        });
+      return;
+    }
     if (action === "exit") {
       if (detail.exitTo) {
         navigate(detail.exitTo, { replace: true });
@@ -371,6 +472,17 @@ export default function App() {
       if (!detail) return;
 
       const status = Number(detail.status || 0);
+      const rawMessage = detail.rawMessage ?? detail.message;
+      const normalizedMessage = simplifyErrorMessage(rawMessage, status);
+      const normalizedLower = normalizedMessage.toLowerCase();
+      const shouldSuggestRefresh =
+        status === 408 ||
+        status === 503 ||
+        status >= 500 ||
+        normalizedLower.includes("refresh") ||
+        normalizedLower.includes("connection") ||
+        normalizedLower.includes("server");
+
       if (!detail.actions || detail.actions.length === 0) {
         if (status === 401) {
           detail.actions = ["ok", "exit", "refresh"];
@@ -378,8 +490,21 @@ export default function App() {
           detail.actions = ["refresh", "ok"];
         } else if (status >= 500) {
           detail.actions = ["refresh", "exit", "ok"];
+        } else if (shouldSuggestRefresh) {
+          detail.actions = ["refresh", "ok"];
         } else {
           detail.actions = ["ok"];
+        }
+      } else if (shouldSuggestRefresh && !detail.actions.includes("refresh")) {
+        detail.actions = [...detail.actions, "refresh"];
+      }
+
+      detail.message = normalizedMessage;
+      detail.rawMessage = rawMessage;
+      if (shouldOfferReport(rawMessage, status)) {
+        detail.reportable = true;
+        if (!detail.actions.includes("report")) {
+          detail.actions = [...detail.actions, "report"];
         }
       }
 

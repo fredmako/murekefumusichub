@@ -1,14 +1,17 @@
 export const APP_ERROR_EVENT = "choral:app-error";
 
-export type AppErrorAction = "ok" | "refresh" | "exit";
+export type AppErrorAction = "ok" | "refresh" | "exit" | "report";
 
 export interface AppErrorDetail {
   id?: string;
   title?: string;
   message: string;
+  rawMessage?: string;
   status?: number;
   actions?: AppErrorAction[];
   exitTo?: string;
+  reportable?: boolean;
+  source?: string;
 }
 
 const APP_ERROR_DEDUP_MS = 4000;

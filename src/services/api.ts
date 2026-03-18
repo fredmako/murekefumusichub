@@ -3,6 +3,7 @@ import { buildApiUrl } from "@/lib/apiBase";
 import { dispatchSessionExpired } from "@/lib/sessionEvents";
 import { dispatchAppError } from "@/lib/appErrorEvents";
 import { ensureArray } from "@/lib/ensureArray";
+import { simplifyErrorMessage } from "@/lib/errorMessages";
 
 const ACCESS_TOKEN_SESSION_TIMEOUT_MS = 8000;
 const ACCESS_TOKEN_REFRESH_TIMEOUT_MS = 12000;
@@ -446,13 +447,13 @@ export async function apiRequest<T>(
     const errorBody: any =
       payload.json ?? { message: payload.text || response.statusText };
 
-    const message =
+    const rawMessage =
       errorBody?.message ||
       errorBody?.error ||
       errorBody?.details ||
       "API request failed";
 
-    const authMessage = String(message || "").toLowerCase();
+    const authMessage = String(rawMessage || "").toLowerCase();
     const looksLikeExpiredSession =
       authMessage.includes("expired") ||
       authMessage.includes("invalid token") ||
@@ -467,22 +468,26 @@ export async function apiRequest<T>(
       dispatchSessionExpired({
         endpoint,
         status: 401,
-        message,
+        message: rawMessage,
       });
     }
+
+    const safeMessage = simplifyErrorMessage(rawMessage, response.status);
 
     if ((response.status >= 500) || response.status === 503 || response.status === 408) {
       dispatchAppError({
         title: response.status >= 500 ? "Server error" : "Connection issue",
-        message: message || "A request failed.",
+        message: safeMessage || "A request failed.",
+        rawMessage,
         status: response.status,
         actions: response.status >= 500 ? ["refresh", "exit", "ok"] : ["refresh", "ok"],
       });
     }
 
-    const err = new Error(message);
+    const err = new Error(safeMessage);
     (err as any).status = response.status;
     (err as any).body = errorBody;
+    (err as any).rawMessage = rawMessage;
     throw err;
   }
 
