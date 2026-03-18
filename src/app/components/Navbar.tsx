@@ -72,6 +72,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [messengerUnreadCount, setMessengerUnreadCount] = useState(0);
   const [notifLoading, setNotifLoading] = useState(false);
+  const [messengerLoading, setMessengerLoading] = useState(false);
   const [markingAllRead, setMarkingAllRead] = useState(false);
   const [processingNotification, setProcessingNotification] = useState<
     string | null
@@ -85,16 +86,23 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     if (!isAuthenticated) {
       setNotifications([]);
       setMessengerUnreadCount(0);
+      setMessengerLoading(false);
       return;
     }
-
-    const result = await navbarService.fetchNotifications({ isAdmin });
-    setNotifications(
-      ensureArray<any>(result?.notificationItems, ["notifications"]),
-    );
-    setMessengerUnreadCount(
-      Math.max(0, Number(result?.messengerUnreadCount || 0)),
-    );
+    setMessengerLoading(true);
+    try {
+      const result = await navbarService.fetchNotifications({ isAdmin });
+      setNotifications(
+        ensureArray<any>(result?.notificationItems, ["notifications"]),
+      );
+      setMessengerUnreadCount(
+        Math.max(0, Number(result?.messengerUnreadCount || 0)),
+      );
+    } catch (error) {
+      console.warn("[navbar] notification refresh failed:", error);
+    } finally {
+      setMessengerLoading(false);
+    }
   }, [isAdmin, isAuthenticated]);
 
   // Fetch notifications for all authenticated users.
@@ -408,6 +416,12 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
 
           {/* ================= Right Actions ================= */}
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            {messengerLoading ? (
+              <div className="hidden items-center gap-2 rounded-full border border-border/70 bg-card/70 px-3 py-1 text-xs font-semibold text-muted-foreground sm:flex">
+                <Loader className="size-3 animate-spin" />
+                Connecting
+              </div>
+            ) : null}
             <Button
               type="button"
               variant="outline"
@@ -433,6 +447,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                 triggerVariant="outline"
                 unreadCount={messengerUnreadCount}
                 onInboxRefresh={refreshNavbarNotifications}
+                isLoading={messengerLoading}
                 className="rounded-full border-border/80 bg-secondary/40 text-xs font-semibold tracking-[0.06em]"
               />
             )}

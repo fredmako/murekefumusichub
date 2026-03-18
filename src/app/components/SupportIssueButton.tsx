@@ -34,6 +34,7 @@ interface SupportIssueButtonProps {
   triggerVariant?: "default" | "outline" | "secondary" | "ghost";
   unreadCount?: number;
   onInboxRefresh?: () => void;
+  isLoading?: boolean;
 }
 
 function formatThreadTime(value?: string | null) {
@@ -52,6 +53,7 @@ export function SupportIssueButton({
   triggerVariant = "outline",
   unreadCount = 0,
   onInboxRefresh,
+  isLoading = false,
 }: SupportIssueButtonProps) {
   const { appUser } = useAuth();
   const TriggerIcon = triggerIcon === "message" ? MessageSquare : LifeBuoy;
@@ -318,6 +320,11 @@ export function SupportIssueButton({
           <span className={hideLabelOnMobile ? "hidden sm:inline" : ""}>
             {triggerLabel}
           </span>
+          {isLoading ? (
+            <span className="absolute -top-2 -right-2 grid size-5 place-items-center rounded-full border border-border/70 bg-background/95 text-[10px] text-muted-foreground">
+              <Loader className="size-3 animate-spin" />
+            </span>
+          ) : null}
           {unreadCount > 0 ? (
             <Badge className="absolute -top-2 -right-2 size-5 min-w-5 px-1 text-[10px] leading-none">
               {unreadCount > 99 ? "99+" : unreadCount}
