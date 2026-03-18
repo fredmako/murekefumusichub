@@ -274,18 +274,6 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
       roles: [],
     },
     {
-      label: "My Library",
-      path: "/buyer",
-      showOn: ["any"],
-      roles: ["buyer"],
-    },
-    {
-      label: "Composer Dashboard",
-      path: "/composer",
-      showOn: ["any"],
-      roles: ["composer"],
-    },
-    {
       label: "My Arrangements",
       path: "/composer?tab=arrangements",
       showOn: ["any"],
