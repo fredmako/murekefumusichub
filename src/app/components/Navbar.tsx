@@ -307,12 +307,18 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
         path: "/admin",
         role: "admin",
       });
-    if (roles.includes("composer"))
+    if (roles.includes("composer")) {
       dashboards.push({
-        label: "Composer Dashboard",
-        path: "/composer",
-        role: "composer",
+        label: "My Arrangements",
+        path: "/composer?tab=arrangements",
+        role: "composer-arrangements",
       });
+      dashboards.push({
+        label: "My Compositions",
+        path: "/composer?tab=compositions",
+        role: "composer-compositions",
+      });
+    }
     if (roles.includes("buyer"))
       dashboards.push({
         label: "Buyer Dashboard",

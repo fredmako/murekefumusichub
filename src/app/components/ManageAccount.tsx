@@ -769,7 +769,18 @@ export function ManageAccount() {
       ? [{ key: "buyer", label: "Buyer Dashboard", path: "/buyer" }]
       : []),
     ...(userRoles.includes("composer")
-      ? [{ key: "composer", label: "Composer Dashboard", path: "/composer" }]
+      ? [
+          {
+            key: "composer-arrangements",
+            label: "My Arrangements",
+            path: "/composer?tab=arrangements",
+          },
+          {
+            key: "composer-compositions",
+            label: "My Compositions",
+            path: "/composer?tab=compositions",
+          },
+        ]
       : []),
     ...(userRoles.includes("admin")
       ? [{ key: "admin", label: "Admin Dashboard", path: "/admin" }]
@@ -1107,17 +1118,24 @@ export function ManageAccount() {
                       Upload and publish music compositions
                     </p>
                     {composerRequestStatus === "approved" ? (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <div className="flex items-center gap-2 font-medium text-emerald-700">
                           <CheckCircle className="w-5 h-5 flex-shrink-0" />
                           <span className="text-sm">Active</span>
                         </div>
                         <Button
-                          onClick={() => navigate("/composer")}
-                          className="ml-3"
+                          onClick={() => navigate("/composer?tab=arrangements")}
+                          className="sm:ml-3"
                           size="sm"
                         >
-                          Open Dashboard
+                          My Arrangements
+                        </Button>
+                        <Button
+                          onClick={() => navigate("/composer?tab=compositions")}
+                          variant="outline"
+                          size="sm"
+                        >
+                          My Compositions
                         </Button>
                       </div>
                     ) : composerRequestStatus === "pending" ? (

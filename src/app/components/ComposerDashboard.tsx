@@ -74,6 +74,7 @@ interface ComposerStats {
   composerCompositions: CompositionWithStats[];
   totalRevenue: number;
   totalSales: number;
+  purchases: Array<{ composition_id?: string | null; price_paid?: number | null }>;
   loading: boolean;
 }
 
@@ -105,6 +106,7 @@ export function ComposerDashboard() {
     composerCompositions: [],
     totalRevenue: 0,
     totalSales: 0,
+    purchases: [],
     loading: true,
   });
   const resolveCategoryTab = () => {
@@ -181,7 +183,7 @@ export function ComposerDashboard() {
       // Get total sales and revenue
       const { data: purchases, error: purchaseError } = await supabase
         .from("purchases")
-        .select("price_paid")
+        .select("price_paid, composition_id")
         .in("composition_id", compositions?.map((c) => c.id) || [])
         .eq("is_active", true);
 
@@ -195,6 +197,7 @@ export function ComposerDashboard() {
         composerCompositions: compositions || [],
         totalRevenue,
         totalSales,
+        purchases: purchases || [],
         loading: false,
       });
     } catch (error) {
@@ -230,15 +233,7 @@ export function ComposerDashboard() {
     }
   }, [appUser, authLoading, location.hash, location.pathname, location.search, navigate]);
 
-  const { composerCompositions, totalRevenue, totalSales, loading } = stats;
-  const publishedCount = composerCompositions.filter(
-    (composition) => composition.is_published,
-  ).length;
-  const averagePrice =
-    composerCompositions.length > 0
-      ? composerCompositions.reduce((sum, composition) => sum + composition.price, 0) /
-        composerCompositions.length
-      : 0;
+  const { composerCompositions, loading, purchases } = stats;
   const resolveCategoryName = (composition: CompositionWithStats) =>
     String(
       composition.categories?.name || composition.category_name || "",
@@ -247,6 +242,25 @@ export function ComposerDashboard() {
     if (activeCategory === "all") return true;
     return resolveCategoryName(composition) === activeCategory;
   });
+  const compositionIdSet = new Set(filteredCompositions.map((comp) => comp.id));
+  const scopedPurchases =
+    activeCategory === "all"
+      ? purchases
+      : purchases.filter((purchase) =>
+          compositionIdSet.has(String(purchase.composition_id || "")),
+        );
+  const totalRevenue =
+    scopedPurchases.reduce((sum, purchase) => sum + (purchase.price_paid || 0), 0) ||
+    0;
+  const totalSales = scopedPurchases.length;
+  const publishedCount = filteredCompositions.filter(
+    (composition) => composition.is_published,
+  ).length;
+  const averagePrice =
+    filteredCompositions.length > 0
+      ? filteredCompositions.reduce((sum, composition) => sum + composition.price, 0) /
+        filteredCompositions.length
+      : 0;
   const activeCategoryTitle =
     activeCategory === "arrangements"
       ? "My Arrangements"
@@ -259,6 +273,28 @@ export function ComposerDashboard() {
       : activeCategory === "compositions"
         ? "Manage and track your original compositions."
         : "Manage and track performance across all your works.";
+  const isArrangementsView = activeCategory === "arrangements";
+  const isCompositionsView = activeCategory === "compositions";
+  const heroBadge = isArrangementsView
+    ? "Arrangements Workspace"
+    : isCompositionsView
+      ? "Compositions Workspace"
+      : "Composer Workspace";
+  const heroTitle = isArrangementsView
+    ? "My Arrangements"
+    : isCompositionsView
+      ? "My Compositions"
+      : "Composer Dashboard";
+  const heroDescription = isArrangementsView
+    ? "Manage arrangement listings, update pricing, and monitor engagement."
+    : isCompositionsView
+      ? "Manage original compositions, update listings, and track performance."
+      : "Manage your score listings, monitor performance, and keep your catalog current.";
+  const entryLabel = isArrangementsView
+    ? "Arrangement"
+    : isCompositionsView
+      ? "Composition"
+      : "Work";
   const emptyStateMessage =
     activeCategory === "arrangements"
       ? "You have not uploaded any arrangements yet."
@@ -400,14 +436,13 @@ export function ComposerDashboard() {
           <div className="flex flex-col gap-6 p-6 sm:p-8 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-2xl">
               <span className="inline-flex rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-white/95">
-                Composer Workspace
+                {heroBadge}
               </span>
               <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-                Composer Dashboard
+                {heroTitle}
               </h1>
               <p className="mt-3 text-sm text-white/85 sm:text-base">
-                Manage your score listings, monitor performance, and keep your
-                catalog current.
+                {heroDescription}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -419,17 +454,28 @@ export function ComposerDashboard() {
                     className="bg-white text-[#0b4b56] shadow-[0_16px_30px_-20px_rgba(15,23,42,0.9)] hover:bg-white/90"
                   >
                     <Plus className="mr-2 size-5" />
-                    Upload New Composition
+                    Upload New {entryLabel}
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-h-[90vh] overflow-y-auto border-border/70 bg-card/95 sm:max-w-2xl">
                   <DialogHeader>
-                    <DialogTitle>Upload New Composition</DialogTitle>
+                    <DialogTitle>Upload New {entryLabel}</DialogTitle>
                     <DialogDescription>
-                      Add a new choral composition to the marketplace
+                      Add a new choral {entryLabel.toLowerCase()} to the
+                      marketplace
                     </DialogDescription>
                   </DialogHeader>
-                  <UploadComposition onClose={() => setIsUploadOpen(false)} />
+                  <UploadComposition
+                    onClose={() => setIsUploadOpen(false)}
+                    defaultCategoryName={
+                      isArrangementsView
+                        ? "arrangements"
+                        : isCompositionsView
+                          ? "compositions"
+                          : undefined
+                    }
+                    entryLabel={entryLabel}
+                  />
                 </DialogContent>
               </Dialog>
             </div>
@@ -684,8 +730,8 @@ export function ComposerDashboard() {
                 {publishedCount}
               </div>
               <p className="mt-1 text-xs text-white/80">
-                {composerCompositions.length - publishedCount} draft
-                {composerCompositions.length - publishedCount === 1 ? "" : "s"}
+                {filteredCompositions.length - publishedCount} draft
+                {filteredCompositions.length - publishedCount === 1 ? "" : "s"}
               </p>
             </CardContent>
           </Card>
@@ -702,8 +748,8 @@ export function ComposerDashboard() {
                 {formatKesAmount(averagePrice)}
               </div>
               <p className="mt-1 text-xs text-white/80">
-                Across {composerCompositions.length} listing
-                {composerCompositions.length === 1 ? "" : "s"}
+                Across {filteredCompositions.length} listing
+                {filteredCompositions.length === 1 ? "" : "s"}
               </p>
             </CardContent>
           </Card>
@@ -762,7 +808,7 @@ export function ComposerDashboard() {
                 </p>
                 <Button onClick={() => setIsUploadOpen(true)}>
                   <Plus className="mr-2 size-4" />
-                  Upload Your First Work
+                  Upload Your First {entryLabel}
                 </Button>
               </div>
             ) : (

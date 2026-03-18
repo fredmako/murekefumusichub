@@ -23,6 +23,8 @@ import { toast } from "sonner";
 
 interface UploadCompositionProps {
   onClose: () => void;
+  defaultCategoryName?: "arrangements" | "compositions";
+  entryLabel?: string;
 }
 
 interface AnalyzedCompositionMetadata {
@@ -88,7 +90,19 @@ const ACCOMPANIMENT_OPTIONS = [
   "Orchestra",
 ];
 
-export function UploadComposition({ onClose }: UploadCompositionProps) {
+export function UploadComposition({
+  onClose,
+  defaultCategoryName,
+  entryLabel: entryLabelProp,
+}: UploadCompositionProps) {
+  const normalizedDefaultCategory = (defaultCategoryName || "").toLowerCase();
+  const isArrangement = normalizedDefaultCategory === "arrangements";
+  const entryLabel = (defaultCategoryName
+    ? isArrangement
+      ? "Arrangement"
+      : "Composition"
+    : entryLabelProp || "Composition").trim();
+  const entryLabelLower = entryLabel.toLowerCase();
   const [formData, setFormData] = useState({
     title: "",
     categoryId: "",
@@ -119,6 +133,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
   const [selectedBackgroundUrl, setSelectedBackgroundUrl] = useState("");
   const [isGeneratingBackground, setIsGeneratingBackground] = useState(false);
   const [categories, setCategories] = useState<CompositionCategory[]>([]);
+  const [isCategoryLocked, setIsCategoryLocked] = useState(false);
 
   const voicePartOptions = [
     "Soprano",
@@ -136,9 +151,24 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
       try {
         const payload = await categoryService.getAll();
         if (!mounted) return;
-        setCategories(
-          (Array.isArray(payload) ? payload : []).filter(isAllowedCategory),
+        const filtered = (Array.isArray(payload) ? payload : []).filter(
+          isAllowedCategory,
         );
+        setCategories(filtered);
+
+        if (!normalizedDefaultCategory || formData.categoryId) return;
+        const match = filtered.find(
+          (category) =>
+            String(category?.name || "").trim().toLowerCase() ===
+            normalizedDefaultCategory,
+        );
+        if (match) {
+          setFormData((prev) => ({
+            ...prev,
+            categoryId: String(match.id),
+          }));
+          setIsCategoryLocked(true);
+        }
       } catch (error) {
         console.error("[UploadComposition] failed to load categories:", error);
       }
@@ -148,7 +178,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [formData.categoryId, normalizedDefaultCategory]);
 
   const resolveCustomOrPreset = (
     selectedValue: SelectOrOther,
@@ -798,7 +828,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
         <CheckCircle className="size-16 text-green-600 mb-4" />
         <h3 className="text-xl font-semibold mb-2">Upload Successful!</h3>
         <p className="text-gray-600">
-          Your composition has been added to the marketplace.
+          Your {entryLabelLower} has been added to the marketplace.
         </p>
       </div>
     );
@@ -878,7 +908,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
         <>
       {/* Title */}
       <div>
-        <Label htmlFor="title">Composition Title *</Label>
+      <Label htmlFor="title">{entryLabel} Title *</Label>
         <Input
           id="title"
           value={formData.title}
@@ -892,7 +922,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
 
       {/* Description */}
       <div>
-        <Label htmlFor="description">Description *</Label>
+      <Label htmlFor="description">{entryLabel} Description *</Label>
         <Textarea
           id="description"
           value={formData.description}
@@ -912,6 +942,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
           onValueChange={(value) =>
             setFormData((prev) => ({ ...prev, categoryId: value }))
           }
+          disabled={isCategoryLocked}
         >
           <SelectTrigger id="category">
             <SelectValue placeholder="Select a category (optional)" />
@@ -925,7 +956,9 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
           </SelectContent>
         </Select>
         <p className="mt-2 text-xs text-gray-600">
-          Choose whether this upload is an arrangement or an original composition.
+          {isCategoryLocked
+            ? `This upload is tagged as a ${entryLabelLower}.`
+            : "Choose whether this upload is an arrangement or an original composition."}
         </p>
       </div>
 
@@ -1228,7 +1261,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
           }
           className="flex-1"
         >
-          {isSubmitting ? "Uploading..." : "Upload Composition"}
+          {isSubmitting ? "Uploading..." : `Upload ${entryLabel}`}
         </Button>
       </div>
     </form>
