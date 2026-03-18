@@ -2668,90 +2668,72 @@ export function AdminPanel() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("enrollments")}
+                      className="rounded-xl border border-border/70 bg-muted/20 p-3 text-left transition hover:cursor-pointer hover:bg-muted/30 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                    >
                       <p className="text-xs text-muted-foreground">Pending Enrollments</p>
                       <p className="text-2xl font-semibold">{pendingEnrollmentCount}</p>
                       <p className="text-xs text-muted-foreground">
                         {admittedEnrollmentCount} admitted students
                       </p>
-                    </div>
-                    <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("transactions")}
+                      className="rounded-xl border border-border/70 bg-muted/20 p-3 text-left transition hover:cursor-pointer hover:bg-muted/30 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                    >
                       <p className="text-xs text-muted-foreground">Pending Payment Reviews</p>
                       <p className="text-2xl font-semibold">{pendingPaymentReviewCount}</p>
                       <p className="text-xs text-muted-foreground">
                         Awaiting manual confirmation
                       </p>
-                    </div>
-                    <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("compositions")}
+                      className="rounded-xl border border-border/70 bg-muted/20 p-3 text-left transition hover:cursor-pointer hover:bg-muted/30 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                    >
                       <p className="text-xs text-muted-foreground">Unverified Compositions</p>
                       <p className="text-2xl font-semibold">{unverifiedCompositionsCount}</p>
                       <p className="text-xs text-muted-foreground">
                         Needs review and verification
                       </p>
-                    </div>
-                    <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("support")}
+                      className="rounded-xl border border-border/70 bg-muted/20 p-3 text-left transition hover:cursor-pointer hover:bg-muted/30 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                    >
                       <p className="text-xs text-muted-foreground">Open Support Queue</p>
                       <p className="text-2xl font-semibold">{supportTickets.length}</p>
                       <p className="text-xs text-muted-foreground">
                         {supportUnreadCount} unread conversations
                       </p>
-                    </div>
-                    <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("requests")}
+                      className="rounded-xl border border-border/70 bg-muted/20 p-3 text-left transition hover:cursor-pointer hover:bg-muted/30 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                    >
                       <p className="text-xs text-muted-foreground">Role Requests</p>
                       <p className="text-2xl font-semibold">{pendingRequests.length}</p>
                       <p className="text-xs text-muted-foreground">
                         Composer/admin access approvals
                       </p>
-                    </div>
-                    <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("invites")}
+                      className="rounded-xl border border-border/70 bg-muted/20 p-3 text-left transition hover:cursor-pointer hover:bg-muted/30 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                    >
                       <p className="text-xs text-muted-foreground">Pending Invites</p>
                       <p className="text-2xl font-semibold">{pendingInviteCount}</p>
                       <p className="text-xs text-muted-foreground">
                         Unused composer invitation links
                       </p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setActiveTab("users")}>
-                      <Users className="mr-2 size-4" />
-                      Open Users
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setActiveTab("enrollments")}
-                    >
-                      <GraduationCap className="mr-2 size-4" />
-                      Open Enrollments
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setActiveTab("compositions")}
-                    >
-                      <Music className="mr-2 size-4" />
-                      Open Compositions
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setActiveTab("transactions")}
-                    >
-                      <DollarSign className="mr-2 size-4" />
-                      Open Transactions
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => setActiveTab("support")}>
-                      <MessageSquare className="mr-2 size-4" />
-                      Open Support
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setActiveTab("announcements")}
-                    >
-                      <Bell className="mr-2 size-4" />
-                      Open Announcements
-                    </Button>
+                    </button>
                   </div>
                 </CardContent>
               </Card>
