@@ -7,11 +7,12 @@ Murekefu Music Hub is a role-based web platform for choral music learning, compo
 The system combines:
 
 - a public-facing music platform and landing experience
-- a buyer marketplace and personal library
+- a buyer marketplace, checkout, and personal library
 - a composer upload and management workflow
-- an admin operations dashboard
+- an admin operations dashboard with state-aware actions
 - support chat, direct messaging, announcements, and notifications
 - enrollment and registration payment control
+- PDF reporting with field selection for admin exports
 
 Current deployment model:
 
@@ -60,18 +61,21 @@ This system consolidates those functions into one platform that supports student
 ### Composer
 
 - Upload compositions
-- Manage composition details
-- Track owned compositions and performance data
+- Edit composition details, pricing, and publishing status
+- Track composition performance data
+- Delete compositions (removes them from the marketplace)
 - Participate in composer request and invite flows
 
 ### Admin
 
 - View platform overview and operational metrics
 - Review users, role requests, composer invites, compositions, transactions, enrollments, and registration payments
-- Verify or unverify compositions
+- State-aware user actions (promote/demote roles, suspend/activate, delete)
+- Verify or unverify compositions and remove compositions platform-wide
 - Manage support tickets and direct communication
 - Send announcements by user role
 - Control registration regulations
+- Export PDF reports with field selection and profile photos
 
 ## 5. Current Architecture
 
@@ -240,8 +244,10 @@ Composer-side capabilities:
 - upload compositions
 - define title, category, accompaniment, and pricing details
 - AI-assisted upload support
-- category-limited publishing workflow
-- view and manage composer dashboard data
+- publish or unpublish compositions
+- edit existing composition details, pricing, and metadata
+- delete compositions from the composer dashboard
+- view and manage composer performance data
 
 Current business rules:
 
@@ -286,17 +292,17 @@ Relevant backend files:
 
 Admin capabilities include:
 
-- overview dashboard and metrics
-- user management
-- role request review
-- composer invite management
-- compositions moderation
-- composition verification
+- minimal overview dashboard with clickable KPI cards, action queue, and insights
+- user management with state-aware actions (promote/demote roles, suspend/activate, delete)
+- search and filter across users, requests, enrollments, compositions, and transactions
+- role request review and composer invite management
+- compositions moderation, verification, and removal (revokes buyer access)
 - transaction and payment submission review
 - enrollment review and admission
 - registration regulations control
-- support ticket operations
-- announcements and messaging
+- support ticket operations and admin messaging
+- announcements by role and messenger notifications
+- PDF reporting with selectable fields across admin tables
 
 Relevant frontend file:
 
@@ -339,7 +345,29 @@ Relevant files:
 - `server/routes/notifications.js`
 - `server/routes/admin.js`
 
-## 7.7 Error Handling and Resilience
+## 7.7 Reporting and PDF Exports
+
+Admin reports can be exported as PDF for:
+
+- users
+- role requests
+- enrollments
+- compositions
+- transactions
+
+Reporting behavior:
+
+- field selection menu with checkboxes and select-all options
+- selections persist locally per report type
+- exports include the platform logo, organization name, and a consistent template
+- user reports can include profile photos
+
+Relevant files:
+
+- `src/app/components/PdfFieldExportMenu.tsx`
+- `src/lib/pdfReports.ts`
+
+## 7.8 Error Handling and Resilience
 
 Implemented resilience features include:
 
@@ -443,8 +471,12 @@ Relevant files:
 - `POST /api/admin/invites`
 - `DELETE /api/admin/invites/:email`
 - `POST /api/admin/users/:userId/promote-composer`
+- `POST /api/admin/users/:userId/demote-composer`
 - `POST /api/admin/users/:userId/promote-admin`
+- `POST /api/admin/users/:userId/demote-admin`
 - `POST /api/admin/users/:userId/suspend`
+- `POST /api/admin/users/:userId/unsuspend`
+- `DELETE /api/admin/users/:userId`
 - `POST /api/admin/composer-requests/:userId/reject`
 - `POST /api/admin/role-requests/:userId/reject`
 - `POST /api/admin/payment-submissions/:submissionId/approve`
@@ -497,6 +529,7 @@ Recent important migrations:
 - `024_create_pending_checkout_submissions_table.sql`
 - `025_create_user_notification_reads_table.sql`
 - `026_normalize_categories_to_arrangements_and_compositions.sql`
+- `027_add_composers_is_active.sql`
 
 ## 10. Current Business Rules
 
@@ -506,6 +539,9 @@ Recent important migrations:
 - Session expiry should redirect users back through the login path and preserve intended destination where possible.
 - Notifications and messenger are separate system concepts.
 - Admins manage operational approvals for payments, enrollments, and content verification.
+- Admin role actions are state-aware (promote, demote, suspend, activate) and protect against self-demotion where applicable.
+- Admin "reset sales" only resets the local dashboard baseline (stored in local storage), not database totals.
+- PDF exports respect selected fields per report type and persist those selections locally.
 
 ## 11. Security and Access Control
 
@@ -550,6 +586,7 @@ Security practices that matter in deployment:
 - Some backend files are historical or partially superseded. For example, `server/routes/auth.js` exists in the repository but is not part of the active router mount set in `server/index.js`.
 - Some features depend on specific migrations being applied in Supabase before the UI behaves correctly.
 - Messaging, announcements, notifications, purchases, and registration control are tightly connected to database state; missing migrations can produce degraded behavior.
+- Composer activation uses the `composers.is_active` column; if missing, run `027_add_composers_is_active.sql`.
 - Recommendation logic is intentionally designed to degrade safely for new buyers and partial data states.
 
 ## 14. Suggested Next Documentation Steps
@@ -566,6 +603,8 @@ Use these files as the current primary implementation references:
 - `src/app/App.tsx`
 - `src/context/AuthContext.tsx`
 - `src/services/api.ts`
+- `src/lib/pdfReports.ts`
+- `src/app/components/PdfFieldExportMenu.tsx`
 - `server/index.js`
 - `server/routes/admin.js`
 - `server/routes/support.js`

@@ -2846,8 +2846,7 @@ export function AdminPanel() {
                                   <p className="mt-1 truncate text-xs text-muted-foreground">
                                     {t.buyers?.users?.display_name ||
                                       t.buyers?.users?.email ||
-                                      "Unknown"}{" "}
-                                    •{" "}
+                                      "Unknown"}{" - "}
                                     {formatDateTime(
                                       t.purchased_at ||
                                         t.purchasedAt ||
@@ -2961,7 +2960,7 @@ export function AdminPanel() {
                                     {c.display_name}
                                   </p>
                                   <p className="mt-1 text-xs text-muted-foreground">
-                                    {c.compositionCount} compositions •{" "}
+                                    {c.compositionCount} compositions -{" "}
                                     {c.salesCount} sales
                                   </p>
                                 </div>
@@ -3006,12 +3005,12 @@ export function AdminPanel() {
         <TabsContent value="users" className="mt-6">
           <Card>
             <CardHeader>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <CardTitle>All Users</CardTitle>
                   <CardDescription>Manage platform users and roles</CardDescription>
                 </div>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
                   <div className="relative w-full sm:w-72">
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -3027,9 +3026,9 @@ export function AdminPanel() {
                       setUserRoleFilter(value as typeof userRoleFilter)
                     }
                   >
-                    <SelectTrigger size="sm" className="w-full sm:w-[150px]">
-                      <SelectValue placeholder="Role" />
-                    </SelectTrigger>
+                  <SelectTrigger className="w-full sm:w-[150px]">
+                    <SelectValue placeholder="Role" />
+                  </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All roles</SelectItem>
                       <SelectItem value="admin">Admin</SelectItem>
@@ -3043,9 +3042,9 @@ export function AdminPanel() {
                       setUserStatusFilter(value as typeof userStatusFilter)
                     }
                   >
-                    <SelectTrigger size="sm" className="w-full sm:w-[150px]">
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
+                  <SelectTrigger className="w-full sm:w-[150px]">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All statuses</SelectItem>
                       <SelectItem value="active">Active</SelectItem>
@@ -3329,12 +3328,12 @@ export function AdminPanel() {
         <TabsContent value="requests" className="mt-6">
           <Card>
             <CardHeader>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <CardTitle>Role Requests</CardTitle>
                   <CardDescription>Pending composer/admin access requests</CardDescription>
                 </div>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
                   <div className="relative w-full sm:w-72">
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -3350,7 +3349,7 @@ export function AdminPanel() {
                       setRequestRoleFilter(value as typeof requestRoleFilter)
                     }
                   >
-                    <SelectTrigger size="sm" className="w-full sm:w-[170px]">
+                    <SelectTrigger className="w-full sm:w-[170px]">
                       <SelectValue placeholder="Requested role" />
                     </SelectTrigger>
                     <SelectContent>
@@ -3611,14 +3610,14 @@ export function AdminPanel() {
         <TabsContent value="compositions" className="mt-6">
           <Card>
             <CardHeader>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <CardTitle>All Compositions</CardTitle>
                   <CardDescription>
                     Manage and moderate published compositions
                   </CardDescription>
                 </div>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
                   <div className="relative w-full sm:w-80">
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -3638,7 +3637,7 @@ export function AdminPanel() {
                       )
                     }
                   >
-                    <SelectTrigger size="sm" className="w-full sm:w-[180px]">
+                    <SelectTrigger className="w-full sm:w-[180px]">
                       <SelectValue placeholder="Verification" />
                     </SelectTrigger>
                     <SelectContent>
@@ -3782,12 +3781,12 @@ export function AdminPanel() {
         <TabsContent value="transactions" className="mt-6">
           <Card className="bg-card/98">
             <CardHeader className="border-b border-border/60 bg-card/92">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <CardTitle>All Transactions</CardTitle>
                   <CardDescription>Complete transaction history</CardDescription>
                 </div>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
                   <div className="relative w-full sm:w-80">
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -3805,7 +3804,7 @@ export function AdminPanel() {
                       setTransactionStatusFilter(value as typeof transactionStatusFilter)
                     }
                   >
-                    <SelectTrigger size="sm" className="w-full sm:w-[150px]">
+                    <SelectTrigger className="w-full sm:w-[150px]">
                       <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -3821,7 +3820,7 @@ export function AdminPanel() {
                       setTransactionSourceFilter(value as typeof transactionSourceFilter)
                     }
                   >
-                    <SelectTrigger size="sm" className="w-full sm:w-[190px]">
+                    <SelectTrigger className="w-full sm:w-[190px]">
                       <SelectValue placeholder="Source" />
                     </SelectTrigger>
                     <SelectContent>
