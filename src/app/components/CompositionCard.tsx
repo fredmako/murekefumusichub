@@ -10,6 +10,7 @@ import {
 } from "@/app/components/ui/card";
 import { parseAccompanimentList } from "@/lib/compositionMeta";
 import { formatKesAmount } from "@/lib/currency";
+import { MidiPreviewPlayer } from "@/app/components/MidiPreviewPlayer";
 
 interface Composition {
   title: string;
@@ -21,6 +22,7 @@ interface Composition {
   language?: string;
   accompaniment?: string | string[];
   price: number;
+  midiUrl?: string;
 }
 
 interface CompositionCardProps {
@@ -100,6 +102,10 @@ export function CompositionCard({
             </div>
           ) : null}
         </div>
+
+        {composition.midiUrl ? (
+          <MidiPreviewPlayer midiUrl={composition.midiUrl} />
+        ) : null}
       </CardContent>
 
       <CardFooter className="flex items-center justify-between">

@@ -595,6 +595,7 @@ export const compositionService = {
     price: number;
     price_currency?: string;
     pdf_url: string;
+    midi_url?: string;
     thumbnail_url?: string;
     duration?: string;
     accompaniment?: string | string[];
@@ -622,6 +623,7 @@ export const compositionService = {
       accompaniment: string | string[] | null;
       voice_parts: string[] | null;
       pdf_url: string | null;
+      midi_url: string | null;
       thumbnail_url: string | null;
     }>,
   ) {
@@ -1077,11 +1079,31 @@ export const storageService = {
 
     if (
       bucket === "compositions" &&
-      !["application/pdf", "application/octet-stream"].includes(
-        String(file.type || "").toLowerCase(),
-      )
+      (() => {
+        const mime = String(file.type || "").toLowerCase();
+        const name = String(file.name || "").toLowerCase();
+        const hasMidiExtension = name.endsWith(".mid") || name.endsWith(".midi");
+        const hasPdfExtension = name.endsWith(".pdf");
+        if (
+          [
+            "application/pdf",
+            "audio/midi",
+            "audio/x-midi",
+            "audio/mid",
+            "application/x-midi",
+          ].includes(mime)
+        ) {
+          return false;
+        }
+        if (mime === "application/octet-stream") {
+          return !(hasMidiExtension || hasPdfExtension);
+        }
+        return !(hasMidiExtension || hasPdfExtension);
+      })()
     ) {
-      throw new Error("Only PDF files are allowed for composition uploads.");
+      throw new Error(
+        "Only PDF or MIDI files are allowed for composition uploads.",
+      );
     }
 
     const formData = new FormData();

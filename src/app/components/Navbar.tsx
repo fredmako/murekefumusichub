@@ -280,8 +280,20 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
       roles: ["buyer"],
     },
     {
-      label: "My Compositions",
+      label: "Composer Dashboard",
       path: "/composer",
+      showOn: ["any"],
+      roles: ["composer"],
+    },
+    {
+      label: "My Arrangements",
+      path: "/composer?tab=arrangements",
+      showOn: ["any"],
+      roles: ["composer"],
+    },
+    {
+      label: "My Compositions",
+      path: "/composer?tab=compositions",
       showOn: ["any"],
       roles: ["composer"],
     },

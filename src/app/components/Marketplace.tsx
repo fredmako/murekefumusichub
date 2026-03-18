@@ -33,6 +33,7 @@ interface Composition {
   accompaniment: string[];
   voiceParts: string[];
   pdfUrl?: string;
+  midiUrl?: string;
   createdAt: string;
   categoryId?: number | null;
   categoryName?: string;
@@ -82,6 +83,7 @@ function mapComposition(comp: any): Composition {
     accompaniment: parseAccompanimentList(comp.accompaniment),
     voiceParts: Array.isArray(comp.voice_parts) ? comp.voice_parts : [],
     pdfUrl: comp.pdf_url || undefined,
+    midiUrl: comp.midi_url || undefined,
     createdAt: comp.created_at || "",
     categoryId:
       typeof comp.category_id === "number" ? comp.category_id : null,

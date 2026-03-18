@@ -1,0 +1,2 @@
+ALTER TABLE compositions
+  ADD COLUMN IF NOT EXISTS midi_url TEXT;

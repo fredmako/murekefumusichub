@@ -61,6 +61,9 @@ interface CompositionWithStats {
   accompaniment?: string;
   voice_parts?: string[];
   pdf_url?: string;
+  category_id?: number | null;
+  categories?: { name?: string | null } | null;
+  category_name?: string | null;
   composition_stats: {
     views: number;
     purchases: number;
@@ -104,6 +107,14 @@ export function ComposerDashboard() {
     totalSales: 0,
     loading: true,
   });
+  const resolveCategoryTab = () => {
+    const tab = new URLSearchParams(location.search).get("tab");
+    if (tab === "arrangements" || tab === "compositions") return tab;
+    return "all";
+  };
+  const [activeCategory, setActiveCategory] = useState<
+    "all" | "arrangements" | "compositions"
+  >(resolveCategoryTab());
 
   // Function to fetch composer data
   const fetchComposerData = async () => {
@@ -157,6 +168,8 @@ export function ComposerDashboard() {
           accompaniment,
           voice_parts,
           pdf_url,
+          category_id,
+          categories(name),
           composition_stats(views, purchases)
         `,
         )
@@ -204,6 +217,10 @@ export function ComposerDashboard() {
     previousUploadOpen.current = isUploadOpen;
   }, [isUploadOpen]);
 
+  useEffect(() => {
+    setActiveCategory(resolveCategoryTab());
+  }, [location.search]);
+
   // Redirect unauthenticated users to login and preserve their original route.
   useEffect(() => {
     if (!authLoading && appUser === null) {
@@ -222,11 +239,51 @@ export function ComposerDashboard() {
       ? composerCompositions.reduce((sum, composition) => sum + composition.price, 0) /
         composerCompositions.length
       : 0;
+  const resolveCategoryName = (composition: CompositionWithStats) =>
+    String(
+      composition.categories?.name || composition.category_name || "",
+    ).trim().toLowerCase();
+  const filteredCompositions = composerCompositions.filter((composition) => {
+    if (activeCategory === "all") return true;
+    return resolveCategoryName(composition) === activeCategory;
+  });
+  const activeCategoryTitle =
+    activeCategory === "arrangements"
+      ? "My Arrangements"
+      : activeCategory === "compositions"
+        ? "My Compositions"
+        : "All Works";
+  const activeCategoryDescription =
+    activeCategory === "arrangements"
+      ? "Track your arrangement listings and performance."
+      : activeCategory === "compositions"
+        ? "Manage and track your original compositions."
+        : "Manage and track performance across all your works.";
+  const emptyStateMessage =
+    activeCategory === "arrangements"
+      ? "You have not uploaded any arrangements yet."
+      : activeCategory === "compositions"
+        ? "You have not uploaded any compositions yet."
+        : "You have not uploaded any works yet.";
   const scrollToCompositions = () => {
     compositionsSectionRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "start",
     });
+  };
+  const handleCategoryChange = (next: "all" | "arrangements" | "compositions") => {
+    setActiveCategory(next);
+    const params = new URLSearchParams(location.search);
+    if (next === "all") {
+      params.delete("tab");
+    } else {
+      params.set("tab", next);
+    }
+    const search = params.toString();
+    navigate(
+      { pathname: location.pathname, search: search ? `?${search}` : "" },
+      { replace: true },
+    );
   };
   const handleViewComposition = (composition: CompositionWithStats) => {
     setSelectedComposition(composition);
@@ -654,10 +711,38 @@ export function ComposerDashboard() {
 
         <Card ref={compositionsSectionRef} className="lift-card overflow-hidden border border-border/70 bg-card/95 shadow-[0_24px_38px_-32px_rgba(15,23,42,0.85)]">
           <CardHeader className="border-b border-border/60 bg-gradient-to-r from-primary/12 via-secondary/20 to-transparent">
-            <CardTitle>My Compositions</CardTitle>
-            <CardDescription>
-              Manage and track performance of your published works
-            </CardDescription>
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <CardTitle>{activeCategoryTitle}</CardTitle>
+                <CardDescription>{activeCategoryDescription}</CardDescription>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={activeCategory === "all" ? "default" : "outline"}
+                  onClick={() => handleCategoryChange("all")}
+                >
+                  All Works
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={activeCategory === "compositions" ? "default" : "outline"}
+                  onClick={() => handleCategoryChange("compositions")}
+                >
+                  My Compositions
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={activeCategory === "arrangements" ? "default" : "outline"}
+                  onClick={() => handleCategoryChange("arrangements")}
+                >
+                  My Arrangements
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             {loading ? (
@@ -667,17 +752,17 @@ export function ComposerDashboard() {
                   Loading your compositions...
                 </p>
               </div>
-            ) : composerCompositions.length === 0 ? (
+            ) : filteredCompositions.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <div className="mb-4 rounded-full border border-border/70 bg-muted/50 p-5">
                   <Music className="size-8 text-muted-foreground" />
                 </div>
                 <p className="mb-5 max-w-md text-sm text-muted-foreground">
-                  You have not uploaded any compositions yet.
+                  {emptyStateMessage}
                 </p>
                 <Button onClick={() => setIsUploadOpen(true)}>
                   <Plus className="mr-2 size-4" />
-                  Upload Your First Composition
+                  Upload Your First Work
                 </Button>
               </div>
             ) : (
@@ -695,7 +780,7 @@ export function ComposerDashboard() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {composerCompositions.map((comp) => {
+                    {filteredCompositions.map((comp) => {
                       const compStats = comp.composition_stats?.[0] || {
                         views: 0,
                         purchases: 0,

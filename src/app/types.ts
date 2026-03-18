@@ -18,6 +18,7 @@ export interface Composition {
   language?: string;
   accompaniment?: string | string[];
   pdfUrl?: string;
+  midiUrl?: string;
   createdAt?: string;
   stats?: {
     views: number;

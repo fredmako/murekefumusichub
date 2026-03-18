@@ -56,6 +56,14 @@ interface CompositionCategory {
 }
 
 const ALLOWED_CATEGORY_NAMES = new Set(["arrangements", "compositions"]);
+const MIDI_ACCEPT =
+  ".mid,.midi,audio/midi,audio/x-midi,audio/mid,application/x-midi";
+const MIDI_MIME_TYPES = new Set([
+  "audio/midi",
+  "audio/x-midi",
+  "audio/mid",
+  "application/x-midi",
+]);
 
 function isAllowedCategory(category: Partial<CompositionCategory> | null | undefined) {
   return ALLOWED_CATEGORY_NAMES.has(String(category?.name || "").trim().toLowerCase());
@@ -96,6 +104,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
   });
 
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [midiFile, setMidiFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -170,6 +179,15 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     item?.src?.original ||
     "";
 
+  const isMidiFile = (file: File) => {
+    const mime = String(file.type || "").toLowerCase();
+    const name = String(file.name || "").toLowerCase();
+    const hasMidiExtension = name.endsWith(".mid") || name.endsWith(".midi");
+    if (MIDI_MIME_TYPES.has(mime)) return true;
+    if (mime === "application/octet-stream") return hasMidiExtension;
+    return hasMidiExtension;
+  };
+
   const missingRequiredFields: string[] = [];
   if (!formData.title.trim()) missingRequiredFields.push("Title");
   if (!formData.description.trim()) missingRequiredFields.push("Description");
@@ -181,6 +199,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     missingRequiredFields.push("At least one voice part");
   }
   if (!pdfFile) missingRequiredFields.push("PDF score");
+  if (!midiFile) missingRequiredFields.push("MIDI preview file");
 
   const handleAddCustomVoicePart = () => {
     const value = formData.customVoicePart.trim();
@@ -436,6 +455,16 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     }
   };
 
+  const handleMidiChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && isMidiFile(file)) {
+      setMidiFile(file);
+      toast.success("MIDI file selected successfully");
+    } else {
+      toast.error("Please select a valid MIDI file (.mid or .midi)");
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -494,6 +523,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
       }
 
       let pdfUrl = "";
+      let midiUrl = "";
 
       // Step 1: Upload PDF to Supabase storage bucket
       if (pdfFile) {
@@ -535,9 +565,53 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
 
         const uploadData = await uploadResponse.json();
         pdfUrl = uploadData.url;
-        setUploadProgress(100);
+        setUploadProgress(55);
       } else {
         toast.error("Please select a PDF file");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Step 1b: Upload MIDI preview to Supabase storage bucket
+      if (midiFile) {
+        const midiFormData = new FormData();
+        midiFormData.append("file", midiFile);
+
+        const midiUploadResponse = await fetch(
+          `${API_BASE_URL}/upload/compositions`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            body: midiFormData,
+          },
+        );
+
+        if (!midiUploadResponse.ok) {
+          let errorData: any = {};
+          try {
+            errorData = await midiUploadResponse.json();
+          } catch {
+            // ignore parse errors
+          }
+          const uploadMessage =
+            errorData?.message ||
+            errorData?.error ||
+            errorData?.details ||
+            `Upload failed (${midiUploadResponse.status})`;
+          console.error("[UploadComposition] midi upload failed", {
+            status: midiUploadResponse.status,
+            body: errorData,
+          });
+          throw new Error(uploadMessage);
+        }
+
+        const midiUploadData = await midiUploadResponse.json();
+        midiUrl = midiUploadData.url;
+        setUploadProgress(100);
+      } else {
+        toast.error("Please select a MIDI file");
         setIsSubmitting(false);
         return;
       }
@@ -579,6 +653,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
           voice_parts:
             formData.voiceParts.length > 0 ? formData.voiceParts : null,
           pdf_url: pdfUrl,
+          midi_url: midiUrl,
           thumbnail_url: thumbnailUrl || null,
           is_published: true,
         }),
@@ -609,6 +684,7 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
               formData.customAccompaniment,
             ]),
             hasPdfUrl: Boolean(pdfUrl),
+            hasMidiUrl: Boolean(midiUrl),
           },
         });
         throw new Error(errorMessage);
@@ -694,6 +770,28 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
     </div>
   );
 
+  const renderMidiUploadSection = () => (
+    <div>
+      <Label htmlFor="midi-file">MIDI Preview File *</Label>
+      <div className="mt-2">
+        <Input
+          id="midi-file"
+          type="file"
+          accept={MIDI_ACCEPT}
+          onChange={handleMidiChange}
+          className="cursor-pointer"
+          disabled={isSubmitting}
+        />
+        {midiFile && (
+          <p className="mt-2 text-sm text-gray-600">Selected: {midiFile.name}</p>
+        )}
+        <p className="mt-2 text-xs text-gray-500">
+          Upload a MIDI file so buyers can preview a short sample before download.
+        </p>
+      </div>
+    </div>
+  );
+
   if (isSuccess) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
@@ -752,9 +850,10 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
       {isAiMode && (
         <>
           <div className="rounded-lg border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
-            Step 2: Upload your PDF score. AI analysis will run automatically.
+            Step 2: Upload your PDF score and MIDI preview file. AI analysis will run automatically.
           </div>
           {renderPdfUploadSection()}
+          {renderMidiUploadSection()}
 
           {analysisFailed && (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
@@ -1101,9 +1200,10 @@ export function UploadComposition({ onClose }: UploadCompositionProps) {
       {isManualMode && (
         <>
           <div className="rounded-lg border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
-            Step 2: Upload your PDF score.
+            Step 2: Upload your PDF score and MIDI preview file.
           </div>
           {renderPdfUploadSection()}
+          {renderMidiUploadSection()}
         </>
       )}
 
