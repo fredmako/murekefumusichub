@@ -190,7 +190,7 @@ class CheckoutController extends Controller
             "totalAmount" => $totalAmount,
             "mpesa" => [
                 "businessNumber" => env("MPESA_BUSINESS_NUMBER", "400200"),
-                "accountNo" => env("MPESA_ACCOUNT_NO", env("MPESA_ACCOUNT_NUMBER", "11317282")),
+                "accountNo" => env("MPESA_ACCOUNT_NO", env("MPESA_ACCOUNT_NUMBER", "1131723")),
                 "businessName" => env("MPESA_BUSINESS_NAME", "Murekefu Music Hub"),
                 "paymentUrl" => env("MPESA_PAYMENT_URL", "https://paynecta.co.ke/pay/music-hub"),
             ],

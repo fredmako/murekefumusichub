@@ -27,7 +27,7 @@ import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 import { formatKesAmount } from "@/lib/currency";
 
 const MPESA_BUSINESS_NUMBER = "400200";
-const MPESA_ACCOUNT_NUMBER = "11317282";
+const MPESA_ACCOUNT_NUMBER = "1131723";
 const MPESA_BUSINESS_NAME = "Murekefu Music Hub";
 const MPESA_PAYMENT_URL = "https://paynecta.co.ke/pay/music-hub";
 
