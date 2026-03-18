@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Filter, Loader2, Search, Sparkles } from "lucide-react";
+import { Filter, Loader2, Search, Sparkles, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Input } from "@/app/components/ui/input";
 import { Button } from "@/app/components/ui/button";
+import { Checkbox } from "@/app/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -62,6 +63,13 @@ function isAllowedCategory(category: Partial<CategoryOption> | null | undefined)
   return ALLOWED_CATEGORY_NAMES.has(String(category?.name || "").trim().toLowerCase());
 }
 
+function extractInitial(value?: string | null) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  const initial = trimmed[0]?.toUpperCase();
+  return /^[A-Z]$/.test(initial) ? initial : "";
+}
+
 interface MarketplaceProps {
   onAddToCart?: (composition: Composition) => void;
 }
@@ -101,6 +109,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
     "all",
   );
   const [searchTerm, setSearchTerm] = useState("");
+  const [initialFilters, setInitialFilters] = useState<string[]>([]);
   const [languageFilter, setLanguageFilter] = useState<string>("all");
   const [accompanimentFilter, setAccompanimentFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -204,6 +213,14 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         comp.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         false;
 
+      const matchesInitials =
+        initialFilters.length === 0 ||
+        initialFilters.some((initial) => {
+          const titleInitial = extractInitial(comp.title);
+          const composerInitial = extractInitial(comp.composerName);
+          return titleInitial === initial || composerInitial === initial;
+        });
+
       const matchesLanguage =
         languageFilter === "all" || comp.language === languageFilter;
       const matchesAccompaniment =
@@ -215,6 +232,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
 
       return (
         matchesSearch &&
+        matchesInitials &&
         matchesLanguage &&
         matchesAccompaniment &&
         matchesCategory
@@ -225,8 +243,20 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
     categoryFilter,
     compositions,
     languageFilter,
+    initialFilters,
     searchTerm,
   ]);
+
+  const availableInitials = useMemo(() => {
+    const initials = new Set<string>();
+    compositions.forEach((comp) => {
+      const titleInitial = extractInitial(comp.title);
+      const composerInitial = extractInitial(comp.composerName);
+      if (titleInitial) initials.add(titleInitial);
+      if (composerInitial) initials.add(composerInitial);
+    });
+    return Array.from(initials).sort((a, b) => a.localeCompare(b));
+  }, [compositions]);
 
   const handlePreferenceBoost = async (categoryId: number) => {
     if (!appUser?.id) {
@@ -435,13 +465,34 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
       <div className="mb-8 rounded-2xl border border-border/70 bg-card p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)]">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
           <div className="relative lg:col-span-2">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
+            {searchTerm ? (
+              <button
+                type="button"
+                onClick={() => setSearchTerm("")}
+                className="absolute left-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full border border-border/70 bg-background/90 text-muted-foreground transition hover:text-foreground"
+                aria-label="Clear search"
+              >
+                <X className="size-3.5" />
+              </button>
+            ) : (
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
+            )}
             <Input
               placeholder="Search compositions..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="bg-white pl-10"
+              className="bg-white pl-11 pr-11"
             />
+            {searchTerm ? (
+              <button
+                type="button"
+                onClick={() => setSearchTerm("")}
+                className="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full border border-border/70 bg-background/90 text-muted-foreground transition hover:text-foreground"
+                aria-label="Clear search"
+              >
+                <X className="size-3.5" />
+              </button>
+            ) : null}
           </div>
 
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
@@ -488,7 +539,43 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
           </Select>
         </div>
 
+        {availableInitials.length > 0 && (
+          <div className="mt-4 rounded-xl border border-border/60 bg-muted/20 p-3">
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Quick initials
+            </div>
+            <div className="mt-3 flex flex-wrap gap-3">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox
+                  checked={initialFilters.length === 0}
+                  onCheckedChange={() => setInitialFilters([])}
+                />
+                All
+              </label>
+              {availableInitials.map((initial) => (
+                <label
+                  key={initial}
+                  className="flex items-center gap-2 text-sm text-foreground"
+                >
+                  <Checkbox
+                    checked={initialFilters.includes(initial)}
+                    onCheckedChange={() =>
+                      setInitialFilters((prev) =>
+                        prev.includes(initial)
+                          ? prev.filter((value) => value !== initial)
+                          : [...prev, initial],
+                      )
+                    }
+                  />
+                  {initial}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
         {(searchTerm ||
+          initialFilters.length > 0 ||
           categoryFilter !== "all" ||
           languageFilter !== "all" ||
           accompanimentFilter !== "all") && (
@@ -498,6 +585,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
               size="sm"
               onClick={() => {
                 setSearchTerm("");
+                setInitialFilters([]);
                 setCategoryFilter("all");
                 setLanguageFilter("all");
                 setAccompanimentFilter("all");
