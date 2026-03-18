@@ -76,6 +76,11 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/app/components/ui/sheet";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/app/components/ui/collapsible";
 import { Textarea } from "@/app/components/ui/textarea";
 import { toast } from "sonner";
 import { useAuth } from "../../context/AuthContext";
@@ -298,6 +303,9 @@ export function AdminPanel() {
   const [newInviteEmail, setNewInviteEmail] = useState("");
   const [isServiceMenuCollapsed, setIsServiceMenuCollapsed] = useState(false);
   const [isMobileServiceMenuOpen, setIsMobileServiceMenuOpen] = useState(false);
+  const [overviewMoreOpen, setOverviewMoreOpen] = useState(false);
+  const [overviewActivityOpen, setOverviewActivityOpen] = useState(false);
+  const [overviewLeaderboardOpen, setOverviewLeaderboardOpen] = useState(false);
   const [expandedServiceMenuGroups, setExpandedServiceMenuGroups] = useState<
     Record<ServiceMenuGroup, boolean>
   >({
@@ -2023,7 +2031,7 @@ export function AdminPanel() {
   }
 
   return (
-    <div className="space-y-4 overflow-x-hidden p-3 sm:space-y-6 sm:p-4 lg:p-6">
+    <div className="space-y-4 overflow-x-hidden p-3 sm:space-y-6 sm:p-4 lg:p-6 xl:flex xl:h-screen xl:flex-col xl:overflow-hidden">
       <div className="route-backdrop-panel texture-speckle motion-reveal overflow-hidden rounded-3xl border border-white/15 bg-card/20 p-4 shadow-[0_28px_60px_-38px_rgba(15,23,42,0.82)] dark:border-white/10 dark:bg-card/25 sm:p-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
@@ -2325,7 +2333,7 @@ export function AdminPanel() {
         </SheetContent>
       </Sheet>
       <Tabs
-        className="min-w-0"
+        className="min-w-0 xl:flex-1 xl:min-h-0 xl:overflow-hidden"
         value={activeTab}
         onValueChange={(value) => setActiveTab(value as AdminTab)}
       >
@@ -2334,10 +2342,10 @@ export function AdminPanel() {
             isServiceMenuCollapsed
               ? "xl:grid-cols-[88px_minmax(0,1fr)]"
               : "xl:grid-cols-[280px_minmax(0,1fr)]"
-          } min-w-0`}
+          } min-w-0 xl:flex-1 xl:min-h-0 xl:items-stretch xl:overflow-hidden`}
         >
-          <aside className="hidden space-y-4 xl:sticky xl:top-24 xl:block xl:self-start">
-            <Card className="texture-speckle border-border/70 bg-card/95">
+          <aside className="hidden xl:block xl:min-h-0 xl:overflow-hidden">
+            <Card className="texture-speckle border-border/70 bg-card/95 h-full flex flex-col">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className={isServiceMenuCollapsed ? "hidden" : "block"}>
@@ -2367,7 +2375,7 @@ export function AdminPanel() {
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 flex-1 min-h-0 overflow-y-auto">
                 <div>
                   <button
                     type="button"
@@ -2559,7 +2567,7 @@ export function AdminPanel() {
             </Card>
           </aside>
 
-          <div className="min-w-0">
+          <div className="min-w-0 xl:flex xl:min-h-0 xl:flex-col xl:overflow-hidden">
             <div className="w-full overflow-x-auto xl:hidden">
               <TabsList className="h-auto min-w-max gap-2 rounded-xl border border-border/70 bg-card/90 p-1">
                 <TabsTrigger value="users" className="flex-none px-3">
@@ -2597,8 +2605,9 @@ export function AdminPanel() {
               </TabsList>
             </div>
 
-            {/* Overview */}
-            <TabsContent value="overview" className="mt-6 space-y-6">
+            <div className="xl:flex-1 xl:min-h-0 xl:overflow-y-auto xl:pr-1">
+              {/* Overview */}
+              <TabsContent value="overview" className="mt-6 space-y-6">
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
                 <Card role="button" tabIndex={0} onClick={() => setActiveTab("users")} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setActiveTab("users"); } }} className="transition hover:cursor-pointer hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60">
                   <CardHeader className="flex items-center justify-between">
@@ -2659,228 +2668,338 @@ export function AdminPanel() {
                 </Card>
               </div>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Operations Snapshot</CardTitle>
-                  <CardDescription>
-                    Live admin workload across users, enrollments, commerce, and support.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("enrollments")}
-                      className="rounded-xl border border-border/70 bg-muted/20 p-3 text-left transition hover:cursor-pointer hover:bg-muted/30 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-                    >
-                      <p className="text-xs text-muted-foreground">Pending Enrollments</p>
-                      <p className="text-2xl font-semibold">{pendingEnrollmentCount}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {admittedEnrollmentCount} admitted students
-                      </p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("transactions")}
-                      className="rounded-xl border border-border/70 bg-muted/20 p-3 text-left transition hover:cursor-pointer hover:bg-muted/30 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-                    >
-                      <p className="text-xs text-muted-foreground">Pending Payment Reviews</p>
-                      <p className="text-2xl font-semibold">{pendingPaymentReviewCount}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Awaiting manual confirmation
-                      </p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("compositions")}
-                      className="rounded-xl border border-border/70 bg-muted/20 p-3 text-left transition hover:cursor-pointer hover:bg-muted/30 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-                    >
-                      <p className="text-xs text-muted-foreground">Unverified Compositions</p>
-                      <p className="text-2xl font-semibold">{unverifiedCompositionsCount}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Needs review and verification
-                      </p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("support")}
-                      className="rounded-xl border border-border/70 bg-muted/20 p-3 text-left transition hover:cursor-pointer hover:bg-muted/30 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-                    >
-                      <p className="text-xs text-muted-foreground">Open Support Queue</p>
-                      <p className="text-2xl font-semibold">{supportTickets.length}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {supportUnreadCount} unread conversations
-                      </p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("requests")}
-                      className="rounded-xl border border-border/70 bg-muted/20 p-3 text-left transition hover:cursor-pointer hover:bg-muted/30 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-                    >
-                      <p className="text-xs text-muted-foreground">Role Requests</p>
-                      <p className="text-2xl font-semibold">{pendingRequests.length}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Composer/admin access approvals
-                      </p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("invites")}
-                      className="rounded-xl border border-border/70 bg-muted/20 p-3 text-left transition hover:cursor-pointer hover:bg-muted/30 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-                    >
-                      <p className="text-xs text-muted-foreground">Pending Invites</p>
-                      <p className="text-2xl font-semibold">{pendingInviteCount}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Unused composer invitation links
-                      </p>
-                    </button>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <Card className="bg-card/95">
+                  <CardHeader className="pb-3">
+                    <CardTitle>Action Queue</CardTitle>
+                    <CardDescription>
+                      Quick jumps to the work that needs attention.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("enrollments")}
+                        className="rounded-xl border border-border/70 bg-muted/20 p-3 text-left transition hover:cursor-pointer hover:bg-muted/30 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                      >
+                        <p className="text-xs text-muted-foreground">
+                          Pending enrollments
+                        </p>
+                        <p className="text-2xl font-semibold">
+                          {pendingEnrollmentCount}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {admittedEnrollmentCount} admitted
+                        </p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("transactions")}
+                        className="rounded-xl border border-border/70 bg-muted/20 p-3 text-left transition hover:cursor-pointer hover:bg-muted/30 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                      >
+                        <p className="text-xs text-muted-foreground">
+                          Payment reviews
+                        </p>
+                        <p className="text-2xl font-semibold">
+                          {pendingPaymentReviewCount}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Awaiting review</p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("compositions")}
+                        className="rounded-xl border border-border/70 bg-muted/20 p-3 text-left transition hover:cursor-pointer hover:bg-muted/30 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                      >
+                        <p className="text-xs text-muted-foreground">
+                          Unverified compositions
+                        </p>
+                        <p className="text-2xl font-semibold">
+                          {unverifiedCompositionsCount}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Needs approval</p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => goToOpenTickets()}
+                        className="rounded-xl border border-border/70 bg-muted/20 p-3 text-left transition hover:cursor-pointer hover:bg-muted/30 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                      >
+                        <p className="text-xs text-muted-foreground">Support queue</p>
+                        <p className="text-2xl font-semibold">
+                          {supportUnreadCount}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Unread chats</p>
+                      </button>
+                    </div>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Top Composers</CardTitle>
-                  <CardDescription>Highest earning composers</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Table className="min-w-[640px]">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Composer</TableHead>
-                        <TableHead className="text-right">Compositions</TableHead>
-                        <TableHead className="text-right">Sales</TableHead>
-                        <TableHead className="text-right">Revenue</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {overviewLoading && composerStats.length === 0 && (
-                        <LoadingTableRow
-                          colSpan={4}
-                          label="Loading composer analytics..."
-                        />
-                      )}
-                      {composerStats.slice(0, 10).map((c) => (
-                        <TableRow key={c.id}>
-                          <TableCell className="font-medium">
-                            {c.display_name}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {c.compositionCount}
-                          </TableCell>
-                          <TableCell className="text-right">{c.salesCount}</TableCell>
-                          <TableCell className="text-right font-semibold">
-                            {formatKesAmount(Number(c.revenue || 0))}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-card/98">
-                <CardHeader className="flex flex-col gap-3 border-b border-border/60 bg-card/92 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="space-y-1">
-                    <CardTitle>Recent Transactions</CardTitle>
-                    <CardDescription>Latest purchases on the platform</CardDescription>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={markAllTransactionsRead}
-                      disabled={isProcessing || unreadRecentTransactions.length === 0}
+                    <Collapsible
+                      open={overviewMoreOpen}
+                      onOpenChange={setOverviewMoreOpen}
                     >
-                      <Check className="mr-2 size-4" />
-                      Mark All Read
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={resetTransactionsToZero}
-                      disabled={
-                        isProcessing ||
-                        (transactionsSinceReset === 0 &&
-                          revenueSinceReset === 0 &&
-                          unreadRecentTransactions.length === 0)
-                      }
-                    >
-                      <Trash2 className="mr-2 size-4" />
-                      Reset Sales to 0
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <Table className="min-w-[760px]">
-                    <TableHeader className="bg-card/88">
-                      <TableRow className="bg-card/88 hover:bg-card/88">
-                        <TableHead>Date</TableHead>
-                        <TableHead>Buyer</TableHead>
-                        <TableHead>Composition</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody className="[&_tr]:bg-card/72 [&_tr:hover]:bg-muted/55">
-                      {transactionsLoading && transactions.length === 0 && (
-                        <LoadingTableRow
-                          colSpan={5}
-                          label="Loading recent transactions..."
-                        />
-                      )}
-                      {!transactionsLoading && unreadRecentTransactions.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={5} className="py-8 text-center">
-                            <p className="text-sm text-muted-foreground">
-                              All caught up. No unread transactions.
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs text-muted-foreground">More actions</p>
+                        <CollapsibleTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2"
+                          >
+                            {overviewMoreOpen ? "Hide" : "Show"}
+                            <ChevronDown
+                              className={`ml-1 size-4 transition ${
+                                overviewMoreOpen ? "rotate-180" : ""
+                              }`}
+                            />
+                          </Button>
+                        </CollapsibleTrigger>
+                      </div>
+                      <CollapsibleContent className="mt-3">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab("requests")}
+                            className="rounded-xl border border-border/70 bg-muted/20 p-3 text-left transition hover:cursor-pointer hover:bg-muted/30 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                          >
+                            <p className="text-xs text-muted-foreground">
+                              Role requests
                             </p>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                      {unreadRecentTransactions.slice(0, 10).map((t) => (
-                        <TableRow key={t.id}>
-                          <TableCell>
-                            {formatDateTime(
-                              t.purchased_at ||
-                                t.purchasedAt ||
-                                t.submitted_at ||
-                                t.submittedAt ||
-                                t.created_at ||
-                                t.createdAt ||
-                                "",
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {t.buyers?.users?.display_name ||
-                              t.buyers?.users?.email ||
-                              "Unknown"}
-                          </TableCell>
-                          <TableCell>
-                            {t.compositions?.title || "Unknown"}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              className={
-                                t.status === "pending"
-                                  ? "bg-amber-100 text-amber-800"
-                                  : t.status === "rejected"
-                                    ? "bg-red-100 text-red-800"
-                                    : "bg-green-100 text-green-800"
-                              }
-                            >
-                              {(t.status || "approved").toString().toUpperCase()}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right font-semibold">
-                            {formatKesAmount(Number(t.price_paid || 0))}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
+                            <p className="text-2xl font-semibold">
+                              {pendingRequests.length}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Awaiting approval
+                            </p>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab("invites")}
+                            className="rounded-xl border border-border/70 bg-muted/20 p-3 text-left transition hover:cursor-pointer hover:bg-muted/30 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                          >
+                            <p className="text-xs text-muted-foreground">
+                              Pending invites
+                            </p>
+                            <p className="text-2xl font-semibold">
+                              {pendingInviteCount}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Unused links
+                            </p>
+                          </button>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-card/98">
+                  <CardHeader className="pb-3">
+                    <CardTitle>Insights</CardTitle>
+                    <CardDescription>
+                      Expand for unread sales and the composer leaderboard.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <Collapsible
+                      open={overviewActivityOpen}
+                      onOpenChange={setOverviewActivityOpen}
+                    >
+                      <CollapsibleTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/15 px-3 py-2 text-left transition hover:cursor-pointer hover:bg-muted/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">Unread transactions</p>
+                            <p className="text-xs text-muted-foreground">
+                              {unreadRecentTransactions.length} unread
+                            </p>
+                          </div>
+                          <ChevronDown
+                            className={`size-4 shrink-0 transition ${
+                              overviewActivityOpen ? "rotate-180" : ""
+                            }`}
+                          />
+                        </button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="mt-3 space-y-3">
+                        <div className="space-y-2">
+                          {transactionsLoading && transactions.length === 0 ? (
+                            <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-card/60 p-3 text-sm text-muted-foreground">
+                              <Loader className="size-4 animate-spin" />
+                              Loading transactions...
+                            </div>
+                          ) : unreadRecentTransactions.length === 0 ? (
+                            <div className="rounded-xl border border-border/60 bg-card/60 p-3 text-sm text-muted-foreground">
+                              All caught up. No unread transactions.
+                            </div>
+                          ) : (
+                            unreadRecentTransactions.slice(0, 3).map((t) => (
+                              <div
+                                key={t.id}
+                                className="flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-card/60 p-3"
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium">
+                                    {t.compositions?.title || "Unknown"}
+                                  </p>
+                                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                                    {t.buyers?.users?.display_name ||
+                                      t.buyers?.users?.email ||
+                                      "Unknown"}{" "}
+                                    •{" "}
+                                    {formatDateTime(
+                                      t.purchased_at ||
+                                        t.purchasedAt ||
+                                        t.submitted_at ||
+                                        t.submittedAt ||
+                                        t.created_at ||
+                                        t.createdAt ||
+                                        "",
+                                    )}
+                                  </p>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <p className="text-sm font-semibold">
+                                    {formatKesAmount(Number(t.price_paid || 0))}
+                                  </p>
+                                  <Badge
+                                    className={`mt-2 ${
+                                      t.status === "pending"
+                                        ? "bg-amber-100 text-amber-800"
+                                        : t.status === "rejected"
+                                          ? "bg-red-100 text-red-800"
+                                          : "bg-green-100 text-green-800"
+                                    }`}
+                                  >
+                                    {(t.status || "approved")
+                                      .toString()
+                                      .toUpperCase()}
+                                  </Badge>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={markAllTransactionsRead}
+                            disabled={isProcessing || unreadRecentTransactions.length === 0}
+                          >
+                            <Check className="mr-2 size-4" />
+                            Mark All Read
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={resetTransactionsToZero}
+                            disabled={
+                              isProcessing ||
+                              (transactionsSinceReset === 0 &&
+                                revenueSinceReset === 0 &&
+                                unreadRecentTransactions.length === 0)
+                            }
+                          >
+                            <Trash2 className="mr-2 size-4" />
+                            Reset Sales to 0
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => setActiveTab("transactions")}
+                          >
+                            Open Transactions
+                            <ChevronRight className="ml-2 size-4" />
+                          </Button>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+
+                    <Collapsible
+                      open={overviewLeaderboardOpen}
+                      onOpenChange={setOverviewLeaderboardOpen}
+                    >
+                      <CollapsibleTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/15 px-3 py-2 text-left transition hover:cursor-pointer hover:bg-muted/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">Top composers</p>
+                            <p className="text-xs text-muted-foreground">
+                              Revenue leaderboard
+                            </p>
+                          </div>
+                          <ChevronDown
+                            className={`size-4 shrink-0 transition ${
+                              overviewLeaderboardOpen ? "rotate-180" : ""
+                            }`}
+                          />
+                        </button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="mt-3 space-y-3">
+                        <div className="space-y-2">
+                          {overviewLoading && composerStats.length === 0 ? (
+                            <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-card/60 p-3 text-sm text-muted-foreground">
+                              <Loader className="size-4 animate-spin" />
+                              Loading leaderboard...
+                            </div>
+                          ) : composerStats.length === 0 ? (
+                            <div className="rounded-xl border border-border/60 bg-card/60 p-3 text-sm text-muted-foreground">
+                              No composer earnings to show yet.
+                            </div>
+                          ) : (
+                            composerStats.slice(0, 3).map((c) => (
+                              <div
+                                key={c.id}
+                                className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-card/60 p-3"
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium">
+                                    {c.display_name}
+                                  </p>
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    {c.compositionCount} compositions •{" "}
+                                    {c.salesCount} sales
+                                  </p>
+                                </div>
+                                <p className="shrink-0 text-sm font-semibold">
+                                  {formatKesAmount(Number(c.revenue || 0))}
+                                </p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setActiveTab("compositions")}
+                          >
+                            Open Compositions
+                            <ChevronRight className="ml-2 size-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setUserRoleFilter("composer");
+                              setUserStatusFilter("all");
+                              setUserSearchQuery("");
+                              setActiveTab("users");
+                            }}
+                          >
+                            View Composers
+                            <ChevronRight className="ml-2 size-4" />
+                          </Button>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
 
         {/* Users */}
@@ -4408,6 +4527,7 @@ export function AdminPanel() {
             </CardContent>
           </Card>
         </TabsContent>
+            </div>
           </div>
         </div>
       </Tabs>
