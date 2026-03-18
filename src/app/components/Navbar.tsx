@@ -235,17 +235,23 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     setMarkingAllRead(true);
     try {
       const result = await navbarService.markNotificationsRead(notifications);
-      if (result.partialFailure) {
-        const refreshed = await navbarService.fetchNotifications({ isAdmin });
-        setNotifications(
-          ensureArray<any>(refreshed?.notificationItems, ["notifications"]),
-        );
-        setMessengerUnreadCount(
-          Math.max(0, Number(refreshed?.messengerUnreadCount || 0)),
-        );
-      } else {
-        setNotifications([]);
-      }
+        if (result.partialFailure) {
+          const refreshed = await navbarService.fetchNotifications({ isAdmin });
+          setNotifications(
+            ensureArray<any>(refreshed?.notificationItems, ["notifications"]),
+          );
+          setMessengerUnreadCount(
+            Math.max(0, Number(refreshed?.messengerUnreadCount || 0)),
+          );
+        } else {
+          const refreshed = await navbarService.fetchNotifications({ isAdmin });
+          setNotifications(
+            ensureArray<any>(refreshed?.notificationItems, ["notifications"]),
+          );
+          setMessengerUnreadCount(
+            Math.max(0, Number(refreshed?.messengerUnreadCount || 0)),
+          );
+        }
     } catch (err) {
       console.error("Failed to mark notifications as read:", err);
       toast.error("Failed to mark notifications as read");

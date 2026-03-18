@@ -117,9 +117,22 @@ export function SupportIssueButton({
         const response = await supportService.getThreadMessages(threadId);
         setMessages(response?.messages || []);
 
-        if (markRead && response?.thread?.is_user_unread) {
+        const threadFromList = threads.find((thread) => thread.id === threadId);
+        const shouldMarkRead =
+          Boolean(response?.thread?.is_user_unread) ||
+          Boolean(threadFromList?.is_user_unread);
+
+        if (markRead && shouldMarkRead) {
           await supportService.markThreadRead(threadId).catch(() => null);
+          setThreads((prev) =>
+            prev.map((thread) =>
+              thread.id === threadId
+                ? { ...thread, is_user_unread: false }
+                : thread,
+            ),
+          );
           await loadThreads(false);
+          Promise.resolve(onInboxRefresh?.()).catch(() => null);
         }
       } catch (error: any) {
         console.error("[support-chat] load messages failed:", error);
@@ -128,7 +141,7 @@ export function SupportIssueButton({
         setLoadingMessages(false);
       }
     },
-    [loadThreads],
+    [loadThreads, onInboxRefresh, threads],
   );
 
   useEffect(() => {
