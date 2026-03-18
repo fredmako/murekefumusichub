@@ -34,7 +34,6 @@ interface SupportIssueButtonProps {
   triggerVariant?: "default" | "outline" | "secondary" | "ghost";
   unreadCount?: number;
   onInboxRefresh?: () => void;
-  isLoading?: boolean;
 }
 
 function formatThreadTime(value?: string | null) {
@@ -53,7 +52,6 @@ export function SupportIssueButton({
   triggerVariant = "outline",
   unreadCount = 0,
   onInboxRefresh,
-  isLoading = false,
 }: SupportIssueButtonProps) {
   const { appUser } = useAuth();
   const TriggerIcon = triggerIcon === "message" ? MessageSquare : LifeBuoy;
@@ -90,9 +88,7 @@ export function SupportIssueButton({
         const inbox = await supportService.getInbox();
         const nextThreads = inbox?.threads || [];
         setThreads(nextThreads);
-        Promise.resolve(onInboxRefresh?.()).catch((error) => {
-          console.warn("[support-chat] inbox refresh callback failed:", error);
-        });
+        onInboxRefresh?.();
 
         setSelectedThreadId((currentSelected) => {
           if (!preserveSelection) return currentSelected;
@@ -119,22 +115,9 @@ export function SupportIssueButton({
         const response = await supportService.getThreadMessages(threadId);
         setMessages(response?.messages || []);
 
-        const threadFromList = threads.find((thread) => thread.id === threadId);
-        const shouldMarkRead =
-          Boolean(response?.thread?.is_user_unread) ||
-          Boolean(threadFromList?.is_user_unread);
-
-        if (markRead && shouldMarkRead) {
+        if (markRead && response?.thread?.is_user_unread) {
           await supportService.markThreadRead(threadId).catch(() => null);
-          setThreads((prev) =>
-            prev.map((thread) =>
-              thread.id === threadId
-                ? { ...thread, is_user_unread: false }
-                : thread,
-            ),
-          );
           await loadThreads(false);
-          Promise.resolve(onInboxRefresh?.()).catch(() => null);
         }
       } catch (error: any) {
         console.error("[support-chat] load messages failed:", error);
@@ -143,7 +126,7 @@ export function SupportIssueButton({
         setLoadingMessages(false);
       }
     },
-    [loadThreads, onInboxRefresh, threads],
+    [loadThreads],
   );
 
   useEffect(() => {
@@ -320,11 +303,6 @@ export function SupportIssueButton({
           <span className={hideLabelOnMobile ? "hidden sm:inline" : ""}>
             {triggerLabel}
           </span>
-          {isLoading ? (
-            <span className="absolute -top-2 -right-2 grid size-5 place-items-center rounded-full border border-border/70 bg-background/95 text-[10px] text-muted-foreground">
-              <Loader className="size-3 animate-spin" />
-            </span>
-          ) : null}
           {unreadCount > 0 ? (
             <Badge className="absolute -top-2 -right-2 size-5 min-w-5 px-1 text-[10px] leading-none">
               {unreadCount > 99 ? "99+" : unreadCount}

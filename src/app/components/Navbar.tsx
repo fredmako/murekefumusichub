@@ -1,5 +1,5 @@
 // src/app/components/Navbar.tsx
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { navbarService } from "@/services/navbarService";
 import { SupportIssueButton } from "@/app/components/SupportIssueButton";
 import { buildProfileImageSrcSet, getOptimizedProfileImageUrl } from "@/services/profileImageService";
@@ -72,7 +72,6 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [messengerUnreadCount, setMessengerUnreadCount] = useState(0);
   const [notifLoading, setNotifLoading] = useState(false);
-  const [messengerLoading, setMessengerLoading] = useState(false);
   const [markingAllRead, setMarkingAllRead] = useState(false);
   const [processingNotification, setProcessingNotification] = useState<
     string | null
@@ -81,29 +80,6 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
 
   // Polling interval (ms) for navbar notifications
   const NOTIF_POLL_INTERVAL = 15000;
-
-  const refreshNavbarNotifications = useCallback(async () => {
-    if (!isAuthenticated) {
-      setNotifications([]);
-      setMessengerUnreadCount(0);
-      setMessengerLoading(false);
-      return;
-    }
-    setMessengerLoading(true);
-    try {
-      const result = await navbarService.fetchNotifications({ isAdmin });
-      setNotifications(
-        ensureArray<any>(result?.notificationItems, ["notifications"]),
-      );
-      setMessengerUnreadCount(
-        Math.max(0, Number(result?.messengerUnreadCount || 0)),
-      );
-    } catch (error) {
-      console.warn("[navbar] notification refresh failed:", error);
-    } finally {
-      setMessengerLoading(false);
-    }
-  }, [isAdmin, isAuthenticated]);
 
   // Fetch notifications for all authenticated users.
   useEffect(() => {
@@ -243,23 +219,17 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     setMarkingAllRead(true);
     try {
       const result = await navbarService.markNotificationsRead(notifications);
-        if (result.partialFailure) {
-          const refreshed = await navbarService.fetchNotifications({ isAdmin });
-          setNotifications(
-            ensureArray<any>(refreshed?.notificationItems, ["notifications"]),
-          );
-          setMessengerUnreadCount(
-            Math.max(0, Number(refreshed?.messengerUnreadCount || 0)),
-          );
-        } else {
-          const refreshed = await navbarService.fetchNotifications({ isAdmin });
-          setNotifications(
-            ensureArray<any>(refreshed?.notificationItems, ["notifications"]),
-          );
-          setMessengerUnreadCount(
-            Math.max(0, Number(refreshed?.messengerUnreadCount || 0)),
-          );
-        }
+      if (result.partialFailure) {
+        const refreshed = await navbarService.fetchNotifications({ isAdmin });
+        setNotifications(
+          ensureArray<any>(refreshed?.notificationItems, ["notifications"]),
+        );
+        setMessengerUnreadCount(
+          Math.max(0, Number(refreshed?.messengerUnreadCount || 0)),
+        );
+      } else {
+        setNotifications([]);
+      }
     } catch (err) {
       console.error("Failed to mark notifications as read:", err);
       toast.error("Failed to mark notifications as read");
@@ -416,12 +386,6 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
 
           {/* ================= Right Actions ================= */}
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-            {messengerLoading ? (
-              <div className="hidden items-center gap-2 rounded-full border border-border/70 bg-card/70 px-3 py-1 text-xs font-semibold text-muted-foreground sm:flex">
-                <Loader className="size-3 animate-spin" />
-                Connecting
-              </div>
-            ) : null}
             <Button
               type="button"
               variant="outline"
@@ -446,8 +410,24 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                 triggerIcon="message"
                 triggerVariant="outline"
                 unreadCount={messengerUnreadCount}
-                onInboxRefresh={refreshNavbarNotifications}
-                isLoading={messengerLoading}
+                onInboxRefresh={() => {
+                  void navbarService
+                    .fetchNotifications({ isAdmin })
+                    .then((result) => {
+                      setNotifications(
+                        ensureArray<any>(
+                          result?.notificationItems,
+                          ["notifications"],
+                        ),
+                      );
+                      setMessengerUnreadCount(
+                        Math.max(0, Number(result?.messengerUnreadCount || 0)),
+                      );
+                    })
+                    .catch((error) => {
+                      console.warn("Navbar messenger refresh error:", error);
+                    });
+                }}
                 className="rounded-full border-border/80 bg-secondary/40 text-xs font-semibold tracking-[0.06em]"
               />
             )}
