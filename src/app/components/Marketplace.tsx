@@ -97,6 +97,9 @@ function mapComposition(comp: any): Composition {
 
 export function Marketplace({ onAddToCart }: MarketplaceProps) {
   const { appUser } = useAuth();
+  const [activeFeed, setActiveFeed] = useState<"all" | "for-you" | "discover">(
+    "all",
+  );
   const [searchTerm, setSearchTerm] = useState("");
   const [languageFilter, setLanguageFilter] = useState<string>("all");
   const [accompanimentFilter, setAccompanimentFilter] = useState<string>("all");
@@ -267,86 +270,164 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
 
   return (
     <div className="section-shell">
-      <div className="route-backdrop-panel route-backdrop-panel-strong mb-10 overflow-hidden rounded-2xl border border-white/15 bg-card/20 p-8 text-white shadow-[0_20px_40px_-30px_rgba(15,23,42,0.7)] dark:border-white/10 dark:bg-card/25">
-        <span className="inline-flex rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em]">
-          Music Hub
-        </span>
-        <h1 className="mt-4 text-4xl font-semibold">Discover Choral Music</h1>
-        <p className="mt-3 max-w-2xl text-white/85">
-          Browse, filter, and personalize your discovery feed using the same
-          backend recommendation and category services that power buyer data.
-        </p>
+      <div className="mb-8 rounded-2xl border border-border/60 bg-card/40 p-6 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.6)]">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <span className="inline-flex rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+              Music Hub
+            </span>
+            <h1 className="mt-3 text-3xl font-semibold text-foreground">
+              Discover Choral Music
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+              Browse, filter, and personalize your feed with compositions and
+              arrangements curated for you.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2 rounded-full border border-border/60 bg-background/70 p-1">
+            {([
+              { id: "all", label: "All" },
+              { id: "for-you", label: "For You" },
+              { id: "discover", label: "Discover More" },
+            ] as const).map((item) => (
+              <Button
+                key={item.id}
+                type="button"
+                size="sm"
+                variant={activeFeed === item.id ? "default" : "ghost"}
+                className="rounded-full px-4 text-xs font-semibold"
+                onClick={() => setActiveFeed(item.id)}
+              >
+                {item.label}
+              </Button>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {appUser ? (
-        <div className="route-backdrop-panel mb-8 overflow-hidden rounded-2xl border border-white/45 bg-card/35 p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)] dark:border-white/10 dark:bg-card/30">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
+      {activeFeed === "for-you" ? (
+        <div className="mb-8 rounded-2xl border border-border/70 bg-card/40 p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)]">
+          {!appUser ? (
+            <div className="flex flex-col gap-2">
               <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
                 <Sparkles className="size-3.5" />
-                Recommended For You
+                For You
               </div>
-              <h2 className="mt-3 text-2xl font-semibold">Buyer suggestions</h2>
-              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                {recommendationMeta.message ||
-                  "This section adapts once your purchase history is strong enough to personalize recommendations."}
+              <p className="text-sm text-muted-foreground">
+                Sign in to unlock personalized recommendations.
               </p>
             </div>
+          ) : (
+            <>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+                    <Sparkles className="size-3.5" />
+                    Recommended For You
+                  </div>
+                  <h2 className="mt-3 text-2xl font-semibold">
+                    Buyer suggestions
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                    {recommendationMeta.message ||
+                      "This section adapts once your purchase history is strong enough to personalize recommendations."}
+                  </p>
+                </div>
 
+                <div className="flex flex-wrap gap-2">
+                  {categories.slice(0, 6).map((category) => (
+                    <Button
+                      key={category.id}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={
+                        preferenceSavingCategoryId === category.id ||
+                        recommendationMeta.mode === "cold_start"
+                      }
+                      onClick={() => void handlePreferenceBoost(category.id)}
+                    >
+                      {preferenceSavingCategoryId === category.id ? (
+                        <Loader2 className="mr-2 size-3.5 animate-spin" />
+                      ) : null}
+                      Prefer {category.name}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-6">
+                {recommendationsLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" />
+                    Loading recommendations...
+                  </div>
+                ) : recommendationMeta.mode === "cold_start" ? (
+                  <p className="text-sm text-muted-foreground">
+                    {recommendationMeta.message ||
+                      "Make a few purchases to unlock personalized recommendations."}
+                  </p>
+                ) : recommendationMeta.mode === "degraded" ? (
+                  <p className="text-sm text-muted-foreground">
+                    {recommendationMeta.message ||
+                      "Recommendations are temporarily unavailable."}
+                  </p>
+                ) : recommendedCompositions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No personalized recommendations yet. Pick a preferred category
+                    to seed them.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+                    {recommendedCompositions.map((composition) => (
+                      <CompositionCard
+                        key={`recommended-${composition.id}`}
+                        composition={composition}
+                        onAddToCart={onAddToCart}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      ) : null}
+
+      {activeFeed === "discover" ? (
+        <div className="mb-8 rounded-2xl border border-border/70 bg-card/40 p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)]">
+          <div className="flex flex-col gap-3">
+            <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+              <Sparkles className="size-3.5" />
+              Discover More
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Explore by category or jump straight into a new vibe.
+            </p>
             <div className="flex flex-wrap gap-2">
-              {categories.slice(0, 6).map((category) => (
+              <Button
+                type="button"
+                size="sm"
+                variant={categoryFilter === "all" ? "default" : "outline"}
+                onClick={() => setCategoryFilter("all")}
+              >
+                All Categories
+              </Button>
+              {categories.map((category) => (
                 <Button
                   key={category.id}
                   type="button"
                   size="sm"
-                  variant="outline"
-                  disabled={
-                    preferenceSavingCategoryId === category.id ||
-                    recommendationMeta.mode === "cold_start"
+                  variant={
+                    categoryFilter === String(category.id) ? "default" : "outline"
                   }
-                  onClick={() => void handlePreferenceBoost(category.id)}
+                  onClick={() => setCategoryFilter(String(category.id))}
                 >
-                  {preferenceSavingCategoryId === category.id ? (
-                    <Loader2 className="mr-2 size-3.5 animate-spin" />
-                  ) : null}
-                  Prefer {category.name}
+                  {category.name}
                 </Button>
               ))}
             </div>
-          </div>
-
-          <div className="mt-6">
-            {recommendationsLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" />
-                Loading recommendations...
-              </div>
-            ) : recommendationMeta.mode === "cold_start" ? (
-              <p className="text-sm text-muted-foreground">
-                {recommendationMeta.message ||
-                  "Make a few purchases to unlock personalized recommendations."}
-              </p>
-            ) : recommendationMeta.mode === "degraded" ? (
-              <p className="text-sm text-muted-foreground">
-                {recommendationMeta.message ||
-                  "Recommendations are temporarily unavailable."}
-              </p>
-            ) : recommendedCompositions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No personalized recommendations yet. Pick a preferred category to
-                seed them.
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {recommendedCompositions.map((composition) => (
-                  <CompositionCard
-                    key={`recommended-${composition.id}`}
-                    composition={composition}
-                    onAddToCart={onAddToCart}
-                  />
-                ))}
-              </div>
-            )}
           </div>
         </div>
       ) : null}
