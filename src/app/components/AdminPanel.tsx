@@ -83,6 +83,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { adminService } from "@/services/adminService";
 import { compositionService } from "@/services/api";
 import { SupportIssueButton } from "@/app/components/SupportIssueButton";
+import { PdfFieldExportMenu } from "@/app/components/PdfFieldExportMenu";
 import { supportService, type AdminThreadType } from "@/services/supportService";
 import { getOptimizedProfileImageUrl } from "@/services/profileImageService";
 import { supabase } from "@/lib/supabase";
@@ -103,6 +104,49 @@ const rolePriority: Record<string, number> = {
 const ADMIN_TRANSACTIONS_READ_CUTOFF_KEY = "admin.transactionsReadCutoffMs";
 const ADMIN_TRANSACTIONS_RESET_BASELINE_KEY = "admin.transactionsResetBaseline";
 const ADMIN_REVENUE_RESET_BASELINE_KEY = "admin.revenueResetBaseline";
+
+const USERS_REPORT_FIELDS = [
+  { key: "photo", label: "Profile Photo" },
+  { key: "name", label: "Name" },
+  { key: "email", label: "Email" },
+  { key: "phone", label: "Phone" },
+  { key: "roles", label: "Roles" },
+  { key: "status", label: "Status" },
+  { key: "created", label: "Created" },
+];
+const COMPOSITIONS_REPORT_FIELDS = [
+  { key: "title", label: "Title" },
+  { key: "composer", label: "Composer" },
+  { key: "price", label: "Price (KES)" },
+  { key: "verified", label: "Verified" },
+  { key: "created", label: "Created" },
+];
+const TRANSACTIONS_REPORT_FIELDS = [
+  { key: "transactionId", label: "Transaction ID" },
+  { key: "date", label: "Date" },
+  { key: "buyer", label: "Buyer" },
+  { key: "composition", label: "Composition" },
+  { key: "paymentRef", label: "Payment Ref" },
+  { key: "status", label: "Status" },
+  { key: "amount", label: "Amount (KES)" },
+  { key: "source", label: "Source" },
+];
+const REQUESTS_REPORT_FIELDS = [
+  { key: "email", label: "Email" },
+  { key: "requestedAt", label: "Requested At" },
+  { key: "requestedRole", label: "Requested Role" },
+  { key: "currentRoles", label: "Current Roles" },
+];
+const ENROLLMENTS_REPORT_FIELDS = [
+  { key: "name", label: "Name" },
+  { key: "email", label: "Email" },
+  { key: "class", label: "Class" },
+  { key: "level", label: "Level" },
+  { key: "notes", label: "Notes" },
+  { key: "submitted", label: "Submitted" },
+  { key: "status", label: "Status" },
+  { key: "admitted", label: "Admitted" },
+];
 
 function getInitials(displayName?: string | null, email?: string | null) {
   const source = (displayName || email || "U").trim();
@@ -1071,20 +1115,62 @@ export function AdminPanel() {
     transactionSourceFilter,
   ]);
 
-  const exportUsersPdf = async () => {
+  const exportUsersPdf = async (selectedKeys: string[]) => {
+    const selectedFields = USERS_REPORT_FIELDS.filter((f) =>
+      selectedKeys.includes(f.key),
+    );
+    if (selectedFields.length === 0) return;
+
+    const initials = filteredUsers.map((user: any) =>
+      getInitials(user?.display_name, user?.email),
+    );
+
+    const photoColIndex = selectedFields.findIndex((f) => f.key === "photo");
+    const avatarUrls =
+      photoColIndex >= 0
+        ? filteredUsers.map((user: any) => {
+            const optimized =
+              getOptimizedProfileImageUrl(user?.avatar_url, {
+                width: 128,
+                height: 128,
+                quality: 62,
+                resize: "cover",
+              }) || user?.avatar_url;
+            return optimized || null;
+          })
+        : [];
+
     try {
       await exportTableReportToPdf({
         title: "Users Report",
         subtitle: `${filteredUsers.length} users (role: ${userRoleFilter}, status: ${userStatusFilter})`,
-        columns: ["Name", "Email", "Phone", "Roles", "Status", "Created"],
-        rows: filteredUsers.map((user: any) => [
-          user?.display_name || "N/A",
-          user?.email || "N/A",
-          user?.phone || "-",
-          resolveUserRoles(user).join(", "),
-          user?.is_active === false ? "Suspended" : "Active",
-          formatDateTime(user?.created_at || null) || "-",
-        ]),
+        columns: selectedFields.map((f) => f.label),
+        rows: filteredUsers.map((user: any, index: number) =>
+          selectedFields.map((f) => {
+            if (f.key === "photo") return initials[index] || "";
+            if (f.key === "name") return user?.display_name || "N/A";
+            if (f.key === "email") return user?.email || "N/A";
+            if (f.key === "phone") return user?.phone || "-";
+            if (f.key === "roles") return resolveUserRoles(user).join(", ");
+            if (f.key === "status")
+              return user?.is_active === false ? "Suspended" : "Active";
+            if (f.key === "created")
+              return formatDateTime(user?.created_at || null) || "-";
+            return "";
+          }),
+        ),
+        imageColumns:
+          photoColIndex >= 0
+            ? [
+                {
+                  columnIndex: photoColIndex,
+                  imageUrls: avatarUrls,
+                  sizeMm: 10,
+                  fallbackText: initials,
+                },
+              ]
+            : undefined,
+        orientation: selectedFields.length > 6 ? "landscape" : "portrait",
         generatedBy: appUser?.email || undefined,
       });
     } catch (error: any) {
@@ -1093,21 +1179,34 @@ export function AdminPanel() {
     }
   };
 
-  const exportCompositionsPdf = async () => {
+  const exportCompositionsPdf = async (selectedKeys: string[]) => {
+    const selectedFields = COMPOSITIONS_REPORT_FIELDS.filter((f) =>
+      selectedKeys.includes(f.key),
+    );
+    if (selectedFields.length === 0) return;
+
     try {
       await exportTableReportToPdf({
         title: "Compositions Report",
         subtitle: `${filteredCompositions.length} compositions (verification: ${compositionVerificationFilter})`,
-        columns: ["Title", "Composer", "Price (KES)", "Verified", "Created"],
-        rows: filteredCompositions.map((composition: any) => [
-          composition?.title || "N/A",
-          composition?.composers?.users?.display_name ||
-            composition?.composers?.users?.email ||
-            "Unknown",
-          Number(composition?.price || 0),
-          composition?.is_verified ? "Yes" : "No",
-          formatDateTime(composition?.created_at || null) || "-",
-        ]),
+        columns: selectedFields.map((f) => f.label),
+        rows: filteredCompositions.map((composition: any) =>
+          selectedFields.map((f) => {
+            if (f.key === "title") return composition?.title || "N/A";
+            if (f.key === "composer")
+              return (
+                composition?.composers?.users?.display_name ||
+                composition?.composers?.users?.email ||
+                "Unknown"
+              );
+            if (f.key === "price") return Number(composition?.price || 0);
+            if (f.key === "verified")
+              return composition?.is_verified ? "Yes" : "No";
+            if (f.key === "created")
+              return formatDateTime(composition?.created_at || null) || "-";
+            return "";
+          }),
+        ),
         generatedBy: appUser?.email || undefined,
       });
     } catch (error: any) {
@@ -1116,39 +1215,46 @@ export function AdminPanel() {
     }
   };
 
-  const exportTransactionsPdf = async () => {
+  const exportTransactionsPdf = async (selectedKeys: string[]) => {
+    const selectedFields = TRANSACTIONS_REPORT_FIELDS.filter((f) =>
+      selectedKeys.includes(f.key),
+    );
+    if (selectedFields.length === 0) return;
+
     try {
       await exportTableReportToPdf({
         title: "Transactions Report",
         subtitle: `${filteredTransactions.length} transactions (status: ${transactionStatusFilter}, source: ${transactionSourceFilter})`,
-        columns: [
-          "Transaction ID",
-          "Date",
-          "Buyer",
-          "Composition",
-          "Payment Ref",
-          "Status",
-          "Amount (KES)",
-          "Source",
-        ],
-        rows: filteredTransactions.map((t: any) => [
-          t?.transaction_id || t?.id || "-",
-          formatDateTime(
-            t?.purchased_at ||
-              t?.purchasedAt ||
-              t?.submitted_at ||
-              t?.submittedAt ||
-              null,
-          ) || "-",
-          t?.buyers?.users?.display_name ||
-            t?.buyers?.users?.email ||
-            "Unknown",
-          t?.compositions?.title || "Unknown",
-          t?.payment_ref || "-",
-          String(t?.status || "approved").toUpperCase(),
-          Number(t?.price_paid || 0),
-          t?.source || "purchase",
-        ]),
+        columns: selectedFields.map((f) => f.label),
+        rows: filteredTransactions.map((t: any) =>
+          selectedFields.map((f) => {
+            if (f.key === "transactionId")
+              return t?.transaction_id || t?.id || "-";
+            if (f.key === "date")
+              return (
+                formatDateTime(
+                  t?.purchased_at ||
+                    t?.purchasedAt ||
+                    t?.submitted_at ||
+                    t?.submittedAt ||
+                    null,
+                ) || "-"
+              );
+            if (f.key === "buyer")
+              return (
+                t?.buyers?.users?.display_name ||
+                t?.buyers?.users?.email ||
+                "Unknown"
+              );
+            if (f.key === "composition") return t?.compositions?.title || "Unknown";
+            if (f.key === "paymentRef") return t?.payment_ref || "-";
+            if (f.key === "status")
+              return String(t?.status || "approved").toUpperCase();
+            if (f.key === "amount") return Number(t?.price_paid || 0);
+            if (f.key === "source") return t?.source || "purchase";
+            return "";
+          }),
+        ),
         generatedBy: appUser?.email || undefined,
       });
     } catch (error: any) {
@@ -1157,27 +1263,40 @@ export function AdminPanel() {
     }
   };
 
-  const exportRequestsPdf = async () => {
+  const exportRequestsPdf = async (selectedKeys: string[]) => {
+    const selectedFields = REQUESTS_REPORT_FIELDS.filter((f) =>
+      selectedKeys.includes(f.key),
+    );
+    if (selectedFields.length === 0) return;
+
     try {
       await exportTableReportToPdf({
         title: "Role Requests Report",
         subtitle: `${filteredRequests.length} pending requests (role filter: ${requestRoleFilter})`,
-        columns: ["Email", "Requested At", "Requested Role", "Current Roles"],
-        rows: filteredRequests.map((request: any) => [
-          request?.email || "N/A",
-          formatDateTime(request?.created_at || request?.createdAt || null) ||
-            "-",
-          String(
-            request?.requested_role || request?.requestedRole || "composer",
-          )
-            .toString()
-            .toLowerCase(),
-          Array.isArray(request?.roles)
-            ? request.roles.join(", ")
-            : request?.roles ||
-              userIdToRole[request?.user_id || request?.id] ||
-              "buyer",
-        ]),
+        columns: selectedFields.map((f) => f.label),
+        rows: filteredRequests.map((request: any) =>
+          selectedFields.map((f) => {
+            if (f.key === "email") return request?.email || "N/A";
+            if (f.key === "requestedAt")
+              return (
+                formatDateTime(request?.created_at || request?.createdAt || null) ||
+                "-"
+              );
+            if (f.key === "requestedRole")
+              return String(
+                request?.requested_role || request?.requestedRole || "composer",
+              )
+                .toString()
+                .toLowerCase();
+            if (f.key === "currentRoles")
+              return Array.isArray(request?.roles)
+                ? request.roles.join(", ")
+                : request?.roles ||
+                    userIdToRole[request?.user_id || request?.id] ||
+                    "buyer";
+            return "";
+          }),
+        ),
         generatedBy: appUser?.email || undefined,
       });
     } catch (error: any) {
@@ -1186,33 +1305,42 @@ export function AdminPanel() {
     }
   };
 
-  const exportEnrollmentsPdf = async () => {
+  const exportEnrollmentsPdf = async (selectedKeys: string[]) => {
+    const selectedFields = ENROLLMENTS_REPORT_FIELDS.filter((f) =>
+      selectedKeys.includes(f.key),
+    );
+    if (selectedFields.length === 0) return;
+
     try {
       await exportTableReportToPdf({
         title: "Enrollments Report",
         subtitle: `${filteredEnrollments.length} enrollments (status: ${enrollmentStatusFilter})`,
-        columns: [
-          "Name",
-          "Email",
-          "Class",
-          "Level",
-          "Notes",
-          "Submitted",
-          "Status",
-          "Admitted",
-        ],
-        rows: filteredEnrollments.map((enrollment: any) => [
-          enrollment?.full_name || enrollment?.requester?.display_name || "N/A",
-          enrollment?.email || enrollment?.requester?.email || "N/A",
-          enrollment?.music_class || "N/A",
-          String(enrollment?.skill_level || "N/A"),
-          enrollment?.notes || "-",
-          formatDateTime(enrollment?.created_at || null) || "-",
-          String(enrollment?.status || "pending").toUpperCase(),
-          enrollment?.admitted_at
-            ? `${enrollment?.admitted_admin?.display_name || enrollment?.admitted_admin?.email || "Admin"} - ${formatDateTime(enrollment?.admitted_at) || "-"}`
-            : "-",
-        ]),
+        columns: selectedFields.map((f) => f.label),
+        rows: filteredEnrollments.map((enrollment: any) =>
+          selectedFields.map((f) => {
+            if (f.key === "name")
+              return (
+                enrollment?.full_name ||
+                enrollment?.requester?.display_name ||
+                "N/A"
+              );
+            if (f.key === "email")
+              return enrollment?.email || enrollment?.requester?.email || "N/A";
+            if (f.key === "class") return enrollment?.music_class || "N/A";
+            if (f.key === "level")
+              return String(enrollment?.skill_level || "N/A");
+            if (f.key === "notes") return enrollment?.notes || "-";
+            if (f.key === "submitted")
+              return formatDateTime(enrollment?.created_at || null) || "-";
+            if (f.key === "status")
+              return String(enrollment?.status || "pending").toUpperCase();
+            if (f.key === "admitted")
+              return enrollment?.admitted_at
+                ? `${enrollment?.admitted_admin?.display_name || enrollment?.admitted_admin?.email || "Admin"} - ${formatDateTime(enrollment?.admitted_at) || "-"}`
+                : "-";
+            return "";
+          }),
+        ),
         generatedBy: appUser?.email || undefined,
       });
     } catch (error: any) {
@@ -2823,15 +2951,13 @@ export function AdminPanel() {
                       <SelectItem value="suspended">Suspended</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={exportUsersPdf}
+                  <PdfFieldExportMenu
                     disabled={filteredUsers.length === 0}
-                  >
-                    <FileDown className="mr-2 size-4" />
-                    Export PDF
-                  </Button>
+                    fields={USERS_REPORT_FIELDS}
+                    storageKey="admin.usersReportPdfFields"
+                    menuLabel="Users report fields"
+                    onExport={exportUsersPdf}
+                  />
                 </div>
               </div>
             </CardHeader>
@@ -3132,15 +3258,13 @@ export function AdminPanel() {
                       <SelectItem value="admin">Admin</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={exportRequestsPdf}
+                  <PdfFieldExportMenu
                     disabled={filteredRequests.length === 0}
-                  >
-                    <FileDown className="mr-2 size-4" />
-                    Export PDF
-                  </Button>
+                    fields={REQUESTS_REPORT_FIELDS}
+                    storageKey="admin.requestsReportPdfFields"
+                    menuLabel="Requests report fields"
+                    onExport={exportRequestsPdf}
+                  />
                 </div>
               </div>
             </CardHeader>
@@ -3275,15 +3399,13 @@ export function AdminPanel() {
                       className="pl-9"
                     />
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={exportEnrollmentsPdf}
+                  <PdfFieldExportMenu
                     disabled={filteredEnrollments.length === 0}
-                  >
-                    <FileDown className="mr-2 size-4" />
-                    Export PDF
-                  </Button>
+                    fields={ENROLLMENTS_REPORT_FIELDS}
+                    storageKey="admin.enrollmentsReportPdfFields"
+                    menuLabel="Enrollments report fields"
+                    onExport={exportEnrollmentsPdf}
+                  />
                 </div>
               </div>
             </CardHeader>
@@ -3424,15 +3546,13 @@ export function AdminPanel() {
                       <SelectItem value="unverified">Unverified</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={exportCompositionsPdf}
+                  <PdfFieldExportMenu
                     disabled={filteredCompositions.length === 0}
-                  >
-                    <FileDown className="mr-2 size-4" />
-                    Export PDF
-                  </Button>
+                    fields={COMPOSITIONS_REPORT_FIELDS}
+                    storageKey="admin.compositionsReportPdfFields"
+                    menuLabel="Compositions report fields"
+                    onExport={exportCompositionsPdf}
+                  />
                 </div>
               </div>
             </CardHeader>
@@ -3609,15 +3729,13 @@ export function AdminPanel() {
                       <SelectItem value="payment_submission">Payment submission</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={exportTransactionsPdf}
+                  <PdfFieldExportMenu
                     disabled={filteredTransactions.length === 0}
-                  >
-                    <FileDown className="mr-2 size-4" />
-                    Export PDF
-                  </Button>
+                    fields={TRANSACTIONS_REPORT_FIELDS}
+                    storageKey="admin.transactionsReportPdfFields"
+                    menuLabel="Transactions report fields"
+                    onExport={exportTransactionsPdf}
+                  />
                   <Button
                     size="sm"
                     variant="ghost"
