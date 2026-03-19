@@ -270,12 +270,6 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
               <div className="flex h-10 w-10 items-center justify-center rounded-full border border-primary/30 bg-primary/15 text-sm font-semibold text-primary">
                 {userInitial ? userInitial : <User className="size-6" />}
               </div>
-              <div>
-                <h1 className="text-2xl font-bold">Your Library</h1>
-                <p className="text-xs text-muted-foreground">
-                  Welcome back, {displayName}
-                </p>
-              </div>
             </div>
           </div>
         </div>
