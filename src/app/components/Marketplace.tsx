@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { Filter, Loader2, Music2, Search, Sparkles, X } from "lucide-react";
+import {
+  Filter,
+  Loader2,
+  Music2,
+  Play,
+  Search,
+  ShoppingBag,
+  Sparkles,
+  Star,
+  TrendingUp,
+  X,
+} from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Input } from "@/app/components/ui/input";
 import { Button } from "@/app/components/ui/button";
@@ -262,6 +273,22 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
     return Array.from(initials).sort((a, b) => a.localeCompare(b));
   }, [compositions]);
 
+  const featuredCompositions = useMemo(() => {
+    const source =
+      activeFeed === "for-you" && recommendedCompositions.length > 0
+        ? recommendedCompositions
+        : compositions;
+    return [...source]
+      .sort((a, b) => (b.stats?.purchases ?? 0) - (a.stats?.purchases ?? 0))
+      .slice(0, 3);
+  }, [activeFeed, compositions, recommendedCompositions]);
+
+  const trendingCompositions = useMemo(() => {
+    return [...compositions]
+      .sort((a, b) => (b.stats?.views ?? 0) - (a.stats?.views ?? 0))
+      .slice(0, 6);
+  }, [compositions]);
+
   useEffect(() => {
     const source =
       activeFeed === "for-you" ? recommendedCompositions : filteredCompositions;
@@ -317,41 +344,136 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
     }
   };
 
+  const featuredGradients = [
+    "from-violet-500/60 to-purple-700/80",
+    "from-emerald-500/60 to-teal-700/80",
+    "from-amber-500/60 to-orange-700/80",
+  ];
+
   return (
-    <div className="section-shell space-y-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <span className="inline-flex rounded-full bg-primary/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
-            Music Hub
-          </span>
-          <h1 className="mt-3 text-3xl font-semibold text-foreground">
-            Discover Choral Music
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            Browse, filter, and personalize your feed with compositions and
-            arrangements curated for you.
-          </p>
+    <main className="min-h-screen bg-gradient-to-b from-indigo-950/30 via-background to-background text-foreground">
+      <div className="section-shell space-y-10">
+        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-indigo-500/20 via-transparent to-transparent p-6 shadow-[0_30px_80px_-60px_rgba(76,29,149,0.8)] backdrop-blur md:p-10">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <span className="inline-flex rounded-full bg-primary/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+                Music Hub
+              </span>
+              <h1 className="mt-3 text-3xl font-semibold text-foreground md:text-4xl">
+                Discover Choral Music
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                Browse, filter, and personalize your feed with compositions and
+                arrangements curated for you.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 rounded-full border border-white/10 bg-white/5 p-1.5 backdrop-blur">
+              {([
+                { id: "all", label: "All" },
+                { id: "for-you", label: "For You" },
+                { id: "discover", label: "Discover More" },
+              ] as const).map((item) => (
+                <Button
+                  key={item.id}
+                  type="button"
+                  size="sm"
+                  variant={activeFeed === item.id ? "default" : "ghost"}
+                  className="rounded-full px-4 text-xs font-semibold"
+                  onClick={() => setActiveFeed(item.id)}
+                >
+                  {item.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-6 max-w-xl">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search for compositions..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="h-12 border-white/15 bg-white/10 pl-12 pr-12 text-foreground placeholder:text-muted-foreground focus-visible:ring-primary/40"
+              />
+              {searchTerm ? (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-3 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-white/10 text-muted-foreground transition hover:text-foreground"
+                  aria-label="Clear search"
+                >
+                  <X className="size-4" />
+                </button>
+              ) : null}
+            </div>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 rounded-full border border-white/10 bg-white/5 p-1.5 backdrop-blur">
-          {([
-            { id: "all", label: "All" },
-            { id: "for-you", label: "For You" },
-            { id: "discover", label: "Discover More" },
-          ] as const).map((item) => (
-            <Button
-              key={item.id}
-              type="button"
-              size="sm"
-              variant={activeFeed === item.id ? "default" : "ghost"}
-              className="rounded-full px-4 text-xs font-semibold"
-              onClick={() => setActiveFeed(item.id)}
-            >
-              {item.label}
-            </Button>
-          ))}
-        </div>
-      </div>
+        {featuredCompositions.length > 0 && (
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-semibold">Featured</h2>
+              <Button
+                variant="ghost"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => setSearchTerm("")}
+              >
+                Show all
+              </Button>
+            </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              {featuredCompositions.map((composition, index) => {
+                const gradient =
+                  featuredGradients[index % featuredGradients.length];
+
+                return (
+                  <div
+                    key={`featured-${composition.id}`}
+                    className="group overflow-hidden rounded-2xl border border-white/10 bg-white/5 transition hover:bg-white/10"
+                    onMouseEnter={() => setPreviewComposition(composition)}
+                    onFocus={() => setPreviewComposition(composition)}
+                  >
+                    <div className="relative aspect-[16/9] overflow-hidden">
+                      {composition.thumbnailUrl ? (
+                        <img
+                          src={composition.thumbnailUrl}
+                          alt={composition.title}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div
+                          className={`flex h-full items-center justify-center bg-gradient-to-br ${gradient}`}
+                        >
+                          <Music2 className="size-12 text-white/80" />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                        <Button
+                          size="icon"
+                          className="h-12 w-12 rounded-full bg-emerald-500 shadow-2xl transition-transform hover:scale-105 hover:bg-emerald-400"
+                          onClick={() => onAddToCart?.(composition)}
+                        >
+                          <Play className="size-5 fill-white" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-1 px-4 py-3">
+                      <h3 className="truncate text-base font-semibold text-foreground">
+                        {composition.title}
+                      </h3>
+                      <p className="truncate text-sm text-muted-foreground">
+                        {composition.composerName}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
       {categories.length > 0 && (
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
@@ -480,12 +602,19 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         </div>
       ) : null}
 
-      {activeFeed === "discover" ? (
-        <div className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)] backdrop-blur">
+      {categories.length > 0 && (
+        <section className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)] backdrop-blur">
           <div className="flex flex-col gap-3">
-            <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
-              <Sparkles className="size-3.5" />
-              Discover More
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+                <Sparkles className="size-3.5" />
+                Browse by category
+              </div>
+              {activeFeed === "discover" && (
+                <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Discover
+                </span>
+              )}
             </div>
             <p className="text-sm text-muted-foreground">
               Explore by category or jump straight into a new vibe.
@@ -514,31 +643,73 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
               ))}
             </div>
           </div>
-        </div>
-      ) : null}
+        </section>
+      )}
+
+      {trendingCompositions.length > 0 && (
+        <section className="space-y-4">
+          <div className="flex items-center gap-3">
+            <TrendingUp className="size-5 text-emerald-400" />
+            <h2 className="text-2xl font-semibold">Trending Now</h2>
+          </div>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+            {trendingCompositions.map((composition, index) => {
+              const gradient =
+                featuredGradients[index % featuredGradients.length];
+
+              return (
+                <div
+                  key={`trending-${composition.id}`}
+                  className="group rounded-xl border border-white/10 bg-white/5 p-3 transition-all hover:bg-white/10"
+                  onMouseEnter={() => setPreviewComposition(composition)}
+                  onFocus={() => setPreviewComposition(composition)}
+                >
+                  <div className="relative mb-3 aspect-square overflow-hidden rounded-lg shadow-xl">
+                    {composition.thumbnailUrl ? (
+                      <img
+                        src={composition.thumbnailUrl}
+                        alt={composition.title}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div
+                        className={`flex h-full items-center justify-center bg-gradient-to-br ${gradient}`}
+                      >
+                        <Music2 className="size-10 text-white/80" />
+                      </div>
+                    )}
+                    <div className="absolute right-2 top-2 rounded-full bg-emerald-500/90 px-2 py-1 text-[10px] text-white">
+                      <Star className="inline size-3 fill-white text-white" />
+                    </div>
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                      <Button
+                        size="icon"
+                        className="h-10 w-10 rounded-full bg-emerald-500 shadow-xl transition-transform hover:scale-105 hover:bg-emerald-400"
+                        onClick={() => onAddToCart?.(composition)}
+                      >
+                        <ShoppingBag className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <h3 className="truncate text-sm font-semibold text-foreground">
+                    {composition.title}
+                  </h3>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {composition.composerName}
+                  </p>
+                  <p className="mt-1 text-[11px] text-emerald-300/80">
+                    {(composition.stats?.views ?? 0).toLocaleString()} views
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <div className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)] backdrop-blur">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
-          <div className="relative lg:col-span-2">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search compositions..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="border-white/10 bg-white/10 pl-10 pr-10 text-foreground placeholder:text-muted-foreground focus-visible:ring-primary/40"
-            />
-            {searchTerm ? (
-              <button
-                type="button"
-                onClick={() => setSearchTerm("")}
-                className="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-white/20 text-muted-foreground transition hover:text-foreground"
-                aria-label="Clear search"
-              >
-                <X className="size-3.5" />
-              </button>
-            ) : null}
-          </div>
-
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
             <SelectTrigger className="border-white/10 bg-white/10 text-foreground">
               <SelectValue placeholder="Category" />
@@ -782,7 +953,8 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
           </div>
         </aside>
       </div>
-    </div>
+      </div>
+    </main>
   );
 }
 
