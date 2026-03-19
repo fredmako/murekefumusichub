@@ -10,6 +10,8 @@ import {
   Edit,
   Trash2,
   Loader,
+  Search,
+  X,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import {
@@ -109,6 +111,7 @@ export function ComposerDashboard() {
     purchases: [],
     loading: true,
   });
+  const [searchQuery, setSearchQuery] = useState("");
   const resolveCategoryTab = () => {
     const tab = new URLSearchParams(location.search).get("tab");
     if (tab === "arrangements" || tab === "compositions") return tab;
@@ -183,21 +186,52 @@ export function ComposerDashboard() {
       // Get total sales and revenue
       const { data: purchases, error: purchaseError } = await supabase
         .from("purchases")
-        .select("price_paid, composition_id")
+        .select("id, price_paid, composition_id")
         .in("composition_id", compositions?.map((c) => c.id) || [])
         .eq("is_active", true);
 
       if (purchaseError) throw purchaseError;
 
+      const { data: approvedSubmissions, error: submissionError } = await supabase
+        .from("payment_submissions")
+        .select("amount, composition_id, purchase_id, status")
+        .in("composition_id", compositions?.map((c) => c.id) || [])
+        .eq("status", "approved");
+
+      if (submissionError) throw submissionError;
+
+      const purchaseIdSet = new Set(
+        (purchases || []).map((purchase) => String(purchase.id || "")),
+      );
+      const approvedRows =
+        approvedSubmissions
+          ?.filter(
+            (submission) =>
+              !submission.purchase_id ||
+              !purchaseIdSet.has(String(submission.purchase_id)),
+          )
+          .map((submission) => ({
+            composition_id: submission.composition_id,
+            price_paid: Number(submission.amount || 0),
+          })) || [];
+
+      const combinedPurchases = [
+        ...(purchases || []).map((purchase) => ({
+          composition_id: purchase.composition_id,
+          price_paid: purchase.price_paid,
+        })),
+        ...approvedRows,
+      ];
+
       const totalRevenue =
-        purchases?.reduce((sum, p) => sum + (p.price_paid || 0), 0) || 0;
-      const totalSales = purchases?.length || 0;
+        combinedPurchases.reduce((sum, p) => sum + (p.price_paid || 0), 0) || 0;
+      const totalSales = combinedPurchases.length || 0;
 
       setStats({
         composerCompositions: compositions || [],
         totalRevenue,
         totalSales,
-        purchases: purchases || [],
+        purchases: combinedPurchases,
         loading: false,
       });
     } catch (error) {
@@ -239,6 +273,19 @@ export function ComposerDashboard() {
       composition.categories?.name || composition.category_name || "",
     ).trim().toLowerCase();
   const filteredCompositions = composerCompositions.filter((composition) => {
+    const query = searchQuery.trim().toLowerCase();
+    const haystack = [
+      composition.title,
+      composition.description,
+      composition.language,
+      composition.difficulty,
+      composition.duration,
+      resolveCategoryName(composition),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    if (query && !haystack.includes(query)) return false;
     if (activeCategory === "all") return true;
     return resolveCategoryName(composition) === activeCategory;
   });
@@ -747,6 +794,27 @@ export function ComposerDashboard() {
               <div>
                 <CardTitle>{activeCategoryTitle}</CardTitle>
                 <CardDescription>{activeCategoryDescription}</CardDescription>
+              </div>
+              <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+                <div className="relative w-full sm:w-72">
+                  <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder={`Search ${entryLabel.toLowerCase()}s...`}
+                    className="h-10 border-border/70 bg-background/70 pl-9 pr-8 text-sm"
+                  />
+                  {searchQuery ? (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full border border-border/60 bg-background/70 p-1 text-muted-foreground transition hover:text-foreground"
+                      aria-label="Clear search"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
           </CardHeader>

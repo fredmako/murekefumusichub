@@ -12,7 +12,6 @@ import {
   Search,
   ShoppingBag,
   Trash2,
-  User,
   X,
 } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -255,26 +254,8 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
     }
   };
 
-  const displayName =
-    appUser?.displayName ||
-    appUser?.email?.split("@")[0] ||
-    "Listener";
-  const userInitial = displayName?.charAt(0)?.toUpperCase() || "";
-
   return (
     <main className="min-h-screen bg-gradient-to-b from-indigo-950/30 via-background to-background text-foreground">
-      <div className="sticky top-0 z-10 border-b border-white/10 bg-background/80 backdrop-blur">
-        <div className="app-shell py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-primary/30 bg-primary/15 text-sm font-semibold text-primary">
-                {userInitial ? userInitial : <User className="size-6" />}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div className="section-shell space-y-6">
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
           <button

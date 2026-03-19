@@ -25,21 +25,62 @@ import { buildErrorReportMessage, shouldOfferReport, simplifyErrorMessage } from
 import { supportService } from "@/services/supportService";
 import { supabase } from "@/lib/supabase";
 import { Guitar, Loader2 } from "lucide-react";
-import bg1 from "@/app/components/images/bg_1.jpg";
-import bg2 from "@/app/components/images/bg_2.jpg";
-import bg3 from "@/app/components/images/bg_3.jpg";
-import bg4 from "@/app/components/images/bg_4.jpg";
-import bg5 from "@/app/components/images/bg_5.jpg";
-import bg6 from "@/app/components/images/bg_6.jpg";
-import bg7 from "@/app/components/images/bg_7.jpg";
-import bg9 from "@/app/components/images/bg_9.jpg";
-import bg10 from "@/app/components/images/bg_10.jpg";
-import bg11 from "@/app/components/images/bg_11.jpg";
 import {
   buildLoginPath,
   getCurrentPathWithQuery,
   persistPostLoginRedirect,
 } from "@/lib/authRedirect";
+
+const CART_STORAGE_PREFIX = "choral-cart";
+
+const getCartStorageKey = (userId?: string | null) =>
+  `${CART_STORAGE_PREFIX}:${userId || "guest"}`;
+
+const readStoredCart = (key: string): CartItem[] => {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item) => item && item.composition && item.composition.id,
+    ) as CartItem[];
+  } catch (error) {
+    console.warn("[cart] failed to read stored cart:", error);
+    return [];
+  }
+};
+
+const writeStoredCart = (key: string, value: CartItem[]) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    console.warn("[cart] failed to persist cart:", error);
+  }
+};
+
+const mergeCartItems = (primary: CartItem[], secondary: CartItem[]) => {
+  const merged = new Map<string, CartItem>();
+  primary.forEach((item) => {
+    if (!item?.composition?.id) return;
+    merged.set(item.composition.id, { ...item });
+  });
+  secondary.forEach((item) => {
+    if (!item?.composition?.id) return;
+    const existing = merged.get(item.composition.id);
+    if (existing) {
+      merged.set(item.composition.id, {
+        ...existing,
+        quantity: existing.quantity + (item.quantity || 1),
+      });
+      return;
+    }
+    merged.set(item.composition.id, { ...item });
+  });
+  return Array.from(merged.values());
+};
 
 /* -----------------------------
    Lazy-loaded Pages
@@ -109,9 +150,12 @@ type RouteBackdropConfig = {
   overlayDark: string;
 };
 
+const pixelBackdrop = (seed: string) =>
+  `https://picsum.photos/seed/${seed}/2400/1600`;
+
 const DEFAULT_ROUTE_BACKDROP: RouteBackdropConfig = {
-  light: bg11,
-  dark: bg9,
+  light: pixelBackdrop("choral-default-light"),
+  dark: pixelBackdrop("choral-default-dark"),
   overlayLight:
     "linear-gradient(140deg, rgba(247,252,255,0.62), rgba(242,249,255,0.5), rgba(236,245,251,0.58))",
   overlayDark:
@@ -123,8 +167,8 @@ function resolveRouteBackdrop(pathname: string): RouteBackdropConfig {
 
   if (path === "/" || path.startsWith("/home")) {
     return {
-      light: bg1,
-      dark: bg9,
+      light: pixelBackdrop("choral-home-light"),
+      dark: pixelBackdrop("choral-home-dark"),
       overlayLight:
         "linear-gradient(140deg, rgba(248,253,255,0.58), rgba(244,250,254,0.46), rgba(240,248,253,0.56))",
       overlayDark:
@@ -134,8 +178,8 @@ function resolveRouteBackdrop(pathname: string): RouteBackdropConfig {
 
   if (path.startsWith("/marketplace")) {
     return {
-      light: bg3,
-      dark: bg5,
+      light: pixelBackdrop("choral-market-light"),
+      dark: pixelBackdrop("choral-market-dark"),
       overlayLight:
         "linear-gradient(140deg, rgba(250,253,255,0.52), rgba(247,251,255,0.42), rgba(243,249,255,0.52))",
       overlayDark:
@@ -145,8 +189,8 @@ function resolveRouteBackdrop(pathname: string): RouteBackdropConfig {
 
   if (path.startsWith("/buyer") || path.startsWith("/checkout")) {
     return {
-      light: bg4,
-      dark: bg6,
+      light: pixelBackdrop("choral-library-light"),
+      dark: pixelBackdrop("choral-library-dark"),
       overlayLight:
         "linear-gradient(140deg, rgba(248,253,255,0.56), rgba(246,251,255,0.46), rgba(240,247,255,0.56))",
       overlayDark:
@@ -156,8 +200,8 @@ function resolveRouteBackdrop(pathname: string): RouteBackdropConfig {
 
   if (path.startsWith("/manage-account")) {
     return {
-      light: bg6,
-      dark: bg10,
+      light: pixelBackdrop("choral-account-light"),
+      dark: pixelBackdrop("choral-account-dark"),
       overlayLight:
         "linear-gradient(140deg, rgba(248,253,255,0.44), rgba(245,250,255,0.34), rgba(239,247,253,0.44))",
       overlayDark:
@@ -167,8 +211,8 @@ function resolveRouteBackdrop(pathname: string): RouteBackdropConfig {
 
   if (path.startsWith("/composer") || path.startsWith("/upload")) {
     return {
-      light: bg7,
-      dark: bg10,
+      light: pixelBackdrop("choral-composer-light"),
+      dark: pixelBackdrop("choral-composer-dark"),
       overlayLight:
         "linear-gradient(140deg, rgba(248,252,255,0.54), rgba(244,250,255,0.44), rgba(240,247,252,0.54))",
       overlayDark:
@@ -178,8 +222,8 @@ function resolveRouteBackdrop(pathname: string): RouteBackdropConfig {
 
   if (path.startsWith("/admin")) {
     return {
-      light: bg10,
-      dark: bg9,
+      light: pixelBackdrop("choral-admin-light"),
+      dark: pixelBackdrop("choral-admin-dark"),
       overlayLight:
         "linear-gradient(140deg, rgba(247,252,255,0.58), rgba(243,249,255,0.48), rgba(239,247,253,0.58))",
       overlayDark:
@@ -193,8 +237,8 @@ function resolveRouteBackdrop(pathname: string): RouteBackdropConfig {
     path.startsWith("/privacy-policy")
   ) {
     return {
-      light: bg2,
-      dark: bg5,
+      light: pixelBackdrop("choral-info-light"),
+      dark: pixelBackdrop("choral-info-dark"),
       overlayLight:
         "linear-gradient(140deg, rgba(248,253,255,0.56), rgba(245,250,255,0.46), rgba(240,247,252,0.56))",
       overlayDark:
@@ -204,8 +248,8 @@ function resolveRouteBackdrop(pathname: string): RouteBackdropConfig {
 
   if (path.startsWith("/enroll")) {
     return {
-      light: bg6,
-      dark: bg10,
+      light: pixelBackdrop("choral-enroll-light"),
+      dark: pixelBackdrop("choral-enroll-dark"),
       overlayLight:
         "linear-gradient(140deg, rgba(248,253,255,0.56), rgba(244,250,255,0.46), rgba(239,247,253,0.56))",
       overlayDark:
@@ -219,8 +263,8 @@ function resolveRouteBackdrop(pathname: string): RouteBackdropConfig {
     path.startsWith("/auth/callback")
   ) {
     return {
-      light: bg11,
-      dark: bg9,
+      light: pixelBackdrop("choral-auth-light"),
+      dark: pixelBackdrop("choral-auth-dark"),
       overlayLight:
         "linear-gradient(140deg, rgba(247,252,255,0.62), rgba(244,250,255,0.5), rgba(239,247,253,0.6))",
       overlayDark:
@@ -409,6 +453,28 @@ export default function App() {
       }) as React.CSSProperties,
     [isDarkMode, routeBackdropImage, routeBackdropOverlay],
   );
+
+  useEffect(() => {
+    const guestKey = getCartStorageKey(null);
+    if (appUser?.id) {
+      const userKey = getCartStorageKey(appUser.id);
+      const savedUserCart = readStoredCart(userKey);
+      const guestCart = readStoredCart(guestKey);
+      const merged = mergeCartItems(savedUserCart, guestCart);
+      setCart(merged);
+      writeStoredCart(userKey, merged);
+      if (guestCart.length > 0 && typeof window !== "undefined") {
+        window.localStorage.removeItem(guestKey);
+      }
+    } else {
+      setCart(readStoredCart(guestKey));
+    }
+  }, [appUser?.id]);
+
+  useEffect(() => {
+    const storageKey = getCartStorageKey(appUser?.id ?? null);
+    writeStoredCart(storageKey, cart);
+  }, [appUser?.id, cart]);
 
   useEffect(() => {
     const preset = appUser?.theme_settings?.preset;
