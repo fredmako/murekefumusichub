@@ -135,6 +135,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
   const [loading, setLoading] = useState(true);
   const [recommendationsLoading, setRecommendationsLoading] = useState(false);
   const [previewComposition, setPreviewComposition] = useState<Composition | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [recommendationMeta, setRecommendationMeta] = useState<RecommendationMeta>({
     mode: "idle",
     purchaseCount: 0,
@@ -291,16 +292,21 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
     const source =
       activeFeed === "for-you" ? recommendedCompositions : filteredCompositions;
     if (!source.some((comp) => comp.id === previewComposition.id)) {
+      setIsPreviewOpen(false);
       setPreviewComposition(null);
     }
   }, [activeFeed, filteredCompositions, previewComposition, recommendedCompositions]);
 
   const handlePreviewSelect = (composition: Composition) => {
     setPreviewComposition(composition);
+    setIsPreviewOpen(true);
   };
 
   const handlePreviewClear = () => {
-    setPreviewComposition(null);
+    setIsPreviewOpen(false);
+    window.setTimeout(() => {
+      setPreviewComposition(null);
+    }, 250);
   };
 
   const featuredGradients = [
@@ -668,9 +674,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         </p>
       </div>
 
-      <div
-        className={`grid gap-6 ${previewComposition ? "xl:grid-cols-[minmax(0,1fr)_320px]" : ""}`}
-      >
+      <div className="grid gap-6">
         <div>
           {loading && (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -723,88 +727,101 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
           )}
         </div>
 
-        {previewComposition && (
-          <aside className="hidden xl:block">
-            <div className="sticky top-24 space-y-4 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Preview
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handlePreviewClear}
-                  className="rounded-full border border-white/10 bg-white/10 p-1 text-muted-foreground transition hover:text-foreground"
-                  aria-label="Close preview"
-                >
-                  <X className="size-3.5" />
-                </button>
-              </div>
-              <div className="relative aspect-square overflow-hidden rounded-xl bg-white/5">
-                {previewComposition.thumbnailUrl ? (
-                  <img
-                    src={previewComposition.thumbnailUrl}
-                    alt={previewComposition.title}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="flex h-full items-center justify-center bg-gradient-to-br from-emerald-500/20 to-teal-500/20">
-                    <Music2 className="size-16 text-emerald-200/70" />
-                  </div>
-                )}
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-lg font-semibold text-foreground">
-                  {previewComposition.title}
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  {previewComposition.composerName}
+      </div>
+      {previewComposition && (
+        <div className="fixed inset-0 z-40">
+          <button
+            type="button"
+            aria-label="Close preview"
+            onClick={handlePreviewClear}
+            className={`absolute inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity ${
+              isPreviewOpen ? "opacity-100" : "opacity-0"
+            }`}
+          />
+          <aside
+            className={`absolute right-0 top-0 flex h-full w-full max-w-[420px] transform flex-col border-l border-white/10 bg-slate-950/95 p-5 shadow-2xl transition-transform duration-300 ease-out ${
+              isPreviewOpen ? "translate-x-0" : "translate-x-full"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Preview
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                {previewComposition.language ? (
-                  <span>{previewComposition.language}</span>
-                ) : null}
-                {previewComposition.duration ? (
-                  <span>{previewComposition.duration}</span>
-                ) : null}
-                {previewComposition.difficulty ? (
-                  <span>{previewComposition.difficulty}</span>
-                ) : null}
-              </div>
-              {previewComposition.midiUrl ? (
-                <MidiPreviewPlayer
-                  midiUrl={previewComposition.midiUrl}
-                  compact
-                  className="mt-2"
+              <button
+                type="button"
+                onClick={handlePreviewClear}
+                className="rounded-full border border-white/10 bg-white/10 p-1 text-muted-foreground transition hover:text-foreground"
+                aria-label="Close preview"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+            <div className="mt-4 relative aspect-square overflow-hidden rounded-xl bg-white/5">
+              {previewComposition.thumbnailUrl ? (
+                <img
+                  src={previewComposition.thumbnailUrl}
+                  alt={previewComposition.title}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
                 />
               ) : (
-                <p className="text-xs text-muted-foreground">
-                  MIDI preview not available for this composition.
-                </p>
+                <div className="flex h-full items-center justify-center bg-gradient-to-br from-emerald-500/20 to-teal-500/20">
+                  <Music2 className="size-16 text-emerald-200/70" />
+                </div>
               )}
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => onAddToCart?.(previewComposition)}
-                  disabled={!onAddToCart}
-                >
-                  Add to cart
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setSearchTerm(previewComposition.composerName)}
-                >
-                  More like this
-                </Button>
-              </div>
+            </div>
+            <div className="mt-4 space-y-1">
+              <h3 className="text-lg font-semibold text-foreground">
+                {previewComposition.title}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {previewComposition.composerName}
+              </p>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+              {previewComposition.language ? (
+                <span>{previewComposition.language}</span>
+              ) : null}
+              {previewComposition.duration ? (
+                <span>{previewComposition.duration}</span>
+              ) : null}
+              {previewComposition.difficulty ? (
+                <span>{previewComposition.difficulty}</span>
+              ) : null}
+            </div>
+            {previewComposition.midiUrl ? (
+              <MidiPreviewPlayer
+                midiUrl={previewComposition.midiUrl}
+                compact
+                className="mt-4"
+              />
+            ) : (
+              <p className="mt-3 text-xs text-muted-foreground">
+                MIDI preview not available for this composition.
+              </p>
+            )}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                onClick={() => onAddToCart?.(previewComposition)}
+                disabled={!onAddToCart}
+              >
+                <ShoppingBag className="mr-2 size-4" />
+                Add to cart
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setSearchTerm(previewComposition.composerName)}
+              >
+                More like this
+              </Button>
             </div>
           </aside>
-        )}
-      </div>
+        </div>
+      )}
       </div>
     </main>
   );
