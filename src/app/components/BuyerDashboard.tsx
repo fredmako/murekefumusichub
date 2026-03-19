@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import { useAuth } from "@/context/AuthContext";
+import { useState } from "react";
 import {
   Download,
   Calendar,
@@ -11,9 +10,11 @@ import {
   Trash2,
   ArrowRight,
   Search,
-  X,
+  Plus,
+  Grid3x3,
+  List,
+  User,
 } from "lucide-react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/app/components/ui/button";
 import {
   Card,
@@ -29,202 +30,136 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/app/components/ui/tabs";
-import { SupportIssueButton } from "@/app/components/SupportIssueButton";
-import { toast } from "sonner";
-import { purchaseService } from "@/services/api";
-import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
-import { formatKesAmount } from "@/lib/currency";
-import { CartItem } from "../types";
-import { ensureArray } from "@/lib/ensureArray";
 
-interface BuyerDashboardProps {
-  cart: CartItem[];
-  onRemoveFromCart?: (compositionId: string) => void;
-}
+// Mock data for demonstration
+const mockPurchasedCompositions = [
+  {
+    id: "1",
+    composition: {
+      title: "Symphony No. 5",
+      composerName: "Ludwig van Beethoven",
+      voiceParts: ["Violin I", "Violin II", "Viola", "Cello"],
+      color: "from-violet-500 to-purple-700",
+    },
+    purchased_at: "2026-01-15T10:30:00Z",
+    price_paid: 2500,
+  },
+  {
+    id: "2",
+    composition: {
+      title: "Moonlight Sonata",
+      composerName: "Ludwig van Beethoven",
+      voiceParts: ["Piano"],
+      color: "from-blue-500 to-indigo-700",
+    },
+    purchased_at: "2026-02-20T14:15:00Z",
+    price_paid: 1500,
+  },
+  {
+    id: "3",
+    composition: {
+      title: "The Four Seasons",
+      composerName: "Antonio Vivaldi",
+      voiceParts: ["Violin", "Viola", "Cello", "Bass"],
+      color: "from-emerald-500 to-teal-700",
+    },
+    purchased_at: "2026-03-10T09:00:00Z",
+    price_paid: 3000,
+  },
+  {
+    id: "4",
+    composition: {
+      title: "Ave Maria",
+      composerName: "Franz Schubert",
+      voiceParts: ["Soprano", "Alto", "Tenor", "Bass"],
+      color: "from-rose-500 to-pink-700",
+    },
+    purchased_at: "2026-03-12T16:45:00Z",
+    price_paid: 1800,
+  },
+  {
+    id: "5",
+    composition: {
+      title: "Canon in D",
+      composerName: "Johann Pachelbel",
+      voiceParts: ["Violin I", "Violin II", "Violin III", "Basso Continuo"],
+      color: "from-amber-500 to-orange-700",
+    },
+    purchased_at: "2026-03-15T11:20:00Z",
+    price_paid: 2200,
+  },
+  {
+    id: "6",
+    composition: {
+      title: "Clair de Lune",
+      composerName: "Claude Debussy",
+      voiceParts: ["Piano"],
+      color: "from-cyan-500 to-blue-700",
+    },
+    purchased_at: "2026-03-18T09:30:00Z",
+    price_paid: 1600,
+  },
+];
 
-export function BuyerDashboard({
-  cart,
-  onRemoveFromCart,
-}: BuyerDashboardProps) {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const { appUser, isLoading: isAuthLoading } = useAuth();
-  const [activeTab, setActiveTab] = useState(
-    searchParams.get("tab") === "checkout" ? "checkout" : "library",
-  );
-  const [loading, setLoading] = useState(true);
-  const [purchasedCompositions, setPurchasedCompositions] = useState<any[]>([]);
-  const [totalSpent, setTotalSpent] = useState(0);
+const mockCartItems = [
+  {
+    id: "cart-1",
+    composition: {
+      id: "c1",
+      title: "Requiem in D minor",
+      composerName: "Wolfgang Amadeus Mozart",
+      price: 4500,
+      voiceParts: ["Soprano", "Alto", "Tenor", "Bass", "Orchestra"],
+      color: "from-red-500 to-rose-700",
+    },
+    quantity: 1,
+  },
+  {
+    id: "cart-2",
+    composition: {
+      id: "c2",
+      title: "Brandenburg Concerto No. 3",
+      composerName: "Johann Sebastian Bach",
+      price: 3200,
+      voiceParts: ["Violin", "Viola", "Cello", "Harpsichord"],
+      color: "from-green-500 to-emerald-700",
+    },
+    quantity: 1,
+  },
+];
+
+// Helper function to format currency
+const formatKesAmount = (amount: number) => {
+  return `KES ${amount.toLocaleString()}`;
+};
+
+export function BuyerDashboard() {
+  const [activeTab, setActiveTab] = useState("library");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [loading, setLoading] = useState(false);
+  const [purchasedCompositions] = useState(mockPurchasedCompositions);
+  const [cart, setCart] = useState(mockCartItems);
   const [downloadingPurchaseId, setDownloadingPurchaseId] = useState<
     string | null
   >(null);
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
-  const [librarySearch, setLibrarySearch] = useState("");
-  const [libraryFilter, setLibraryFilter] = useState<
-    "all" | "arrangements" | "compositions"
-  >("all");
 
-  useEffect(() => {
-    const requestedTab =
-      searchParams.get("tab") === "checkout" ? "checkout" : "library";
-    setActiveTab((prev) => (prev === requestedTab ? prev : requestedTab));
-  }, [searchParams]);
+  const totalSpent = purchasedCompositions.reduce(
+    (sum, p) => sum + p.price_paid,
+    0,
+  );
 
-  useEffect(() => {
-    if (isAuthLoading) {
-      setLoading(true);
-      return;
-    }
-
-    let mounted = true;
-
-    const fetchUserPurchases = async (showSpinner = true) => {
-      try {
-        if (showSpinner) setLoading(true);
-        if (!appUser) {
-          if (showSpinner) {
-            toast.error("You must be signed in to view purchases");
-            setLoading(false);
-          }
-          return;
-        }
-
-        // Fetch purchases via API (auth UID is resolved from token server-side)
-        const purchasesPayload = await purchaseService.getByBuyer(appUser.id);
-        const purchases = ensureArray<any>(purchasesPayload, ["purchases"]);
-        if (!mounted) return;
-
-        const enriched = purchases.map((p: any) => ({
-          ...p,
-          composition: p.compositions || p.composition || null,
-        }));
-
-        setPurchasedCompositions(enriched);
-        const spent = purchases.reduce(
-          (sum: number, p: any) => sum + (p.price_paid || 0),
-          0,
-        );
-        setTotalSpent(spent);
-      } catch (err: any) {
-        const status = Number(err?.status || 0);
-        if (status === 401) {
-          console.warn("Purchases request blocked by expired session");
-          return;
-        }
-
-        if (status === 503 || status === 408) {
-          console.warn(
-            "Purchases request failed due to transient auth/network issue",
-          );
-          if (showSpinner) {
-            toast.warning(
-              "Connection issue while loading your library. Retrying in the background...",
-            );
-          }
-          return;
-        }
-
-        console.error("Error loading purchases:", err);
-        if (showSpinner) {
-          toast.error("Failed to load purchases");
-        }
-      } finally {
-        if (showSpinner && mounted) setLoading(false);
-      }
-    };
-
-    void fetchUserPurchases(true);
-    const timer = setInterval(() => {
-      void fetchUserPurchases(false);
-    }, 15000);
-
-    return () => {
-      mounted = false;
-      clearInterval(timer);
-    };
-  }, [appUser?.id, isAuthLoading]);
-
-  // Redirect to home if user logs out
-  useEffect(() => {
-    if (!isAuthLoading && appUser === null) {
-      const currentPath = `${location.pathname}${location.search}${location.hash}`;
-      persistPostLoginRedirect(currentPath);
-      navigate(buildLoginPath({ nextPath: currentPath }), { replace: true });
-    }
-  }, [
-    appUser,
-    isAuthLoading,
-    location.hash,
-    location.pathname,
-    location.search,
-    navigate,
-  ]);
-
-  // Cart calculations
   const cartTotal = cart.reduce(
     (sum, item) => sum + item.composition.price * item.quantity,
     0,
   );
 
-  const filteredLibrary = useMemo(() => {
-    const query = librarySearch.trim().toLowerCase();
-    if (!purchasedCompositions.length) return [];
-
-    return purchasedCompositions.filter((entry) => {
-      const composition = entry?.composition;
-      const title = composition?.title || "";
-      const composer =
-        composition?.composerName || composition?.composer_name || "";
-      const haystack = `${title} ${composer}`.toLowerCase();
-
-      if (query && !haystack.includes(query)) return false;
-      if (libraryFilter === "all") return true;
-
-      const categoryName = (
-        composition?.categories?.name ??
-        composition?.category_name ??
-        composition?.categoryName ??
-        ""
-      )
-        .toString()
-        .toLowerCase();
-      const isArrangement = categoryName.includes("arrange");
-
-      if (libraryFilter === "arrangements") return isArrangement;
-      if (libraryFilter === "compositions") return !isArrangement;
-      return true;
-    });
-  }, [librarySearch, libraryFilter, purchasedCompositions]);
-
-  const isLibraryFiltered =
-    librarySearch.trim().length > 0 || libraryFilter !== "all";
-
   const handleCheckout = () => {
-    if (!appUser) {
-      persistPostLoginRedirect("/checkout");
-      navigate(buildLoginPath({ nextPath: "/checkout", intent: "purchase" }));
-      return;
-    }
-    navigate("/checkout");
+    alert("Proceeding to checkout...");
   };
 
   const handleRemoveItem = (compositionId: string) => {
-    if (onRemoveFromCart) {
-      onRemoveFromCart(compositionId);
-      toast.success("Item removed from cart");
-    }
-  };
-
-  const handleTabChange = (nextTab: string) => {
-    setActiveTab(nextTab);
-    const next = new URLSearchParams(searchParams);
-    if (nextTab === "checkout") {
-      next.set("tab", "checkout");
-    } else {
-      next.delete("tab");
-    }
-    setSearchParams(next, { replace: true });
+    setCart(cart.filter((item) => item.composition.id !== compositionId));
   };
 
   const handleDownloadComposition = async (purchaseId: string) => {
@@ -232,389 +167,334 @@ export function BuyerDashboard({
 
     try {
       setDownloadingPurchaseId(purchaseId);
-      const result = await purchaseService.getDownloadLink(purchaseId);
-      const downloadUrl = result?.downloadUrl;
-      const fileName = result?.fileName || "composition.pdf";
-
-      if (!downloadUrl) {
-        throw new Error("Download link is unavailable for this composition");
-      }
-
-      const anchor = document.createElement("a");
-      anchor.href = downloadUrl;
-      anchor.target = "_blank";
-      anchor.rel = "noopener noreferrer";
-      anchor.download = fileName;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-
-      toast.success("Download started");
-    } catch (err: any) {
-      console.error("Failed to download composition:", err);
-      const message =
-        err?.message ||
-        "Could not start the composition download. Please try again.";
-      toast.error(message);
+      // Simulate download
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      alert("Download started!");
+    } catch (err) {
+      alert("Download failed");
     } finally {
       setDownloadingPurchaseId(null);
     }
   };
 
-  const libraryFilters = [
-    { id: "all", label: "All" },
-    { id: "arrangements", label: "Arrangements" },
-    { id: "compositions", label: "Compositions" },
-  ] as const;
-
   return (
-    <main className="min-h-screen bg-background py-8">
-      <div className="mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
-              My Library
-            </h1>
-            <p className="mt-2 text-base text-muted-foreground">
-              Access your purchased music and manage your collection
-            </p>
+    <main className="min-h-screen bg-black text-white">
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-black/95 backdrop-blur-md">
+        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-600">
+                <User className="size-6" />
+              </div>
+              <h1 className="text-2xl font-bold">Your Library</h1>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-white hover:bg-white/10"
+              >
+                <Search className="size-5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-white hover:bg-white/10"
+              >
+                <Plus className="size-5" />
+              </Button>
+            </div>
           </div>
-          <SupportIssueButton context="buyer-dashboard" />
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+        {/* Filter Pills */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-2">
+          <button
+            onClick={() => setActiveTab("library")}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === "library"
+                ? "bg-white text-black"
+                : "bg-white/10 text-white hover:bg-white/20"
+            }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setActiveTab("library")}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === "library"
+                ? "bg-white/10 text-white"
+                : "bg-white/10 text-white hover:bg-white/20"
+            }`}
+          >
+            Compositions
+          </button>
+          <button
+            onClick={() => setActiveTab("checkout")}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === "checkout"
+                ? "bg-white text-black"
+                : "bg-white/10 text-white hover:bg-white/20"
+            }`}
+          >
+            Cart {cart.length > 0 && `(${cart.length})`}
+          </button>
         </div>
 
-        {/* Quick Actions */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant={activeTab === "library" ? "default" : "secondary"}
-            onClick={() => handleTabChange("library")}
-            className="h-9 rounded-full px-4 text-sm"
-          >
-            <Music className="mr-2 size-4" />
-            Library
-            <span className="ml-2 rounded-full bg-background/20 px-2 py-0.5 text-xs">
-              {loading ? "..." : purchasedCompositions.length}
-            </span>
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => handleTabChange("library")}
-            className="h-9 rounded-full px-4 text-sm"
-          >
-            <DollarSign className="mr-2 size-4" />
-            {loading ? "..." : formatKesAmount(totalSpent)}
-          </Button>
-          <Button
-            variant={activeTab === "checkout" ? "default" : "secondary"}
-            onClick={() => handleTabChange("checkout")}
-            className="h-9 rounded-full px-4 text-sm"
-          >
-            <ShoppingBag className="mr-2 size-4" />
-            Cart
-            <span className="ml-2 rounded-full bg-background/20 px-2 py-0.5 text-xs">
-              {cart.length}
-            </span>
-          </Button>
-        </div>
+        {activeTab === "library" && (
+          <div className="space-y-6">
+            {/* View Toggle */}
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold">Recent Purchases</h2>
+              <div className="flex gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setViewMode("list")}
+                  className={`text-white hover:bg-white/10 ${viewMode === "list" ? "bg-white/20" : ""}`}
+                >
+                  <List className="size-5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setViewMode("grid")}
+                  className={`text-white hover:bg-white/10 ${viewMode === "grid" ? "bg-white/20" : ""}`}
+                >
+                  <Grid3x3 className="size-5" />
+                </Button>
+              </div>
+            </div>
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={handleTabChange}>
-          <TabsList className="inline-flex h-10 items-center justify-center rounded-full bg-muted p-1">
-            <TabsTrigger
-              value="library"
-              className="rounded-full px-6 data-[state=active]:bg-background data-[state=active]:shadow-sm"
-            >
-              Library
-            </TabsTrigger>
-            <TabsTrigger
-              value="checkout"
-              className="rounded-full px-6 data-[state=active]:bg-background data-[state=active]:shadow-sm"
-            >
-              Cart{" "}
-              {cart.length > 0 && (
-                <span className="ml-1.5 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
-                  {cart.length}
-                </span>
-              )}
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Library Tab */}
-          <TabsContent value="library" className="mt-6">
             {loading ? (
               <div className="flex min-h-[400px] items-center justify-center">
-                <div className="text-center">
-                  <Loader className="mx-auto mb-4 size-12 animate-spin text-primary" />
-                  <p className="text-muted-foreground">
-                    Loading your library...
-                  </p>
-                </div>
+                <Loader className="size-12 animate-spin text-white" />
               </div>
             ) : purchasedCompositions.length === 0 ? (
               <div className="flex min-h-[400px] items-center justify-center">
                 <div className="text-center">
-                  <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
-                    <Music className="size-12 text-muted-foreground" />
-                  </div>
-                  <h3 className="mb-2 text-2xl font-semibold">
+                  <Music className="mx-auto mb-4 size-16 text-white/40" />
+                  <h3 className="mb-2 text-xl font-semibold">
                     Your library is empty
                   </h3>
-                  <p className="mb-6 text-muted-foreground">
+                  <p className="mb-6 text-white/60">
                     Start building your collection of beautiful compositions
                   </p>
-                  <Button onClick={() => navigate("/marketplace")} size="lg">
+                  <Button className="bg-white text-black hover:bg-white/90">
+                    Browse Marketplace
+                    <ArrowRight className="ml-2 size-4" />
+                  </Button>
+                </div>
+              </div>
+            ) : viewMode === "grid" ? (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                {purchasedCompositions.map(
+                  ({ composition, purchased_at, id }) => (
+                    <div
+                      key={id}
+                      className="group cursor-pointer rounded-lg bg-white/5 p-4 transition-all hover:bg-white/10"
+                      onMouseEnter={() => setHoveredCard(id)}
+                      onMouseLeave={() => setHoveredCard(null)}
+                    >
+                      {/* Album Art */}
+                      <div className="relative mb-4 aspect-square overflow-hidden rounded-md shadow-xl">
+                        <div
+                          className={`flex h-full items-center justify-center bg-gradient-to-br ${composition.color || "from-purple-500 to-pink-600"}`}
+                        >
+                          <Music className="size-16 text-white/90" />
+                        </div>
+
+                        {/* Download Button Overlay */}
+                        <div
+                          className={`absolute inset-0 flex items-center justify-center bg-black/60 transition-opacity ${
+                            hoveredCard === id ? "opacity-100" : "opacity-0"
+                          }`}
+                        >
+                          <Button
+                            size="icon"
+                            className="h-14 w-14 rounded-full bg-emerald-500 shadow-2xl transition-all hover:scale-110 hover:bg-emerald-400"
+                            onClick={() => void handleDownloadComposition(id)}
+                            disabled={downloadingPurchaseId === id}
+                          >
+                            {downloadingPurchaseId === id ? (
+                              <Loader className="size-6 animate-spin" />
+                            ) : (
+                              <Download className="size-6" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Info */}
+                      <div className="space-y-1">
+                        <h3 className="truncate font-semibold text-white">
+                          {composition.title}
+                        </h3>
+                        <p className="truncate text-sm text-white/60">
+                          {composition.composerName}
+                        </p>
+                        {composition.voiceParts &&
+                          composition.voiceParts.length > 0 && (
+                            <p className="truncate text-xs text-white/40">
+                              {composition.voiceParts.join(", ")}
+                            </p>
+                          )}
+                      </div>
+                    </div>
+                  ),
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {purchasedCompositions.map(
+                  ({ composition, purchased_at, id }) => (
+                    <div
+                      key={id}
+                      className="group flex cursor-pointer items-center gap-4 rounded-lg p-2 transition-colors hover:bg-white/10"
+                      onClick={() => void handleDownloadComposition(id)}
+                    >
+                      <div
+                        className={`h-14 w-14 flex-shrink-0 rounded-md bg-gradient-to-br ${composition.color || "from-purple-500 to-pink-600"} flex items-center justify-center shadow-lg`}
+                      >
+                        <Music className="size-6 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="truncate font-semibold text-white">
+                          {composition.title}
+                        </h3>
+                        <p className="truncate text-sm text-white/60">
+                          {composition.composerName}
+                        </p>
+                        {composition.voiceParts &&
+                          composition.voiceParts.length > 0 && (
+                            <p className="truncate text-xs text-white/40">
+                              {composition.voiceParts.join(", ")}
+                            </p>
+                          )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-white opacity-0 transition-opacity hover:bg-white/10 group-hover:opacity-100"
+                        disabled={downloadingPurchaseId === id}
+                      >
+                        {downloadingPurchaseId === id ? (
+                          <Loader className="size-5 animate-spin" />
+                        ) : (
+                          <Download className="size-5" />
+                        )}
+                      </Button>
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
+
+            {/* Quick Stats Section */}
+            <div className="mt-8 rounded-2xl bg-gradient-to-r from-purple-600/20 to-pink-600/20 p-6">
+              <h3 className="mb-4 text-lg font-semibold">Your Stats</h3>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                <div>
+                  <div className="text-3xl font-bold">
+                    {purchasedCompositions.length}
+                  </div>
+                  <p className="text-sm text-white/60">Compositions</p>
+                </div>
+                <div>
+                  <div className="text-3xl font-bold">
+                    {formatKesAmount(totalSpent)}
+                  </div>
+                  <p className="text-sm text-white/60">Total Spent</p>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <div className="text-3xl font-bold">
+                    {new Date(
+                      purchasedCompositions[0]?.purchased_at,
+                    ).toLocaleDateString("en-US", {
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </div>
+                  <p className="text-sm text-white/60">Member Since</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "checkout" && (
+          <div className="space-y-6">
+            <h2 className="text-2xl font-bold">Shopping Cart</h2>
+
+            {cart.length === 0 ? (
+              <div className="flex min-h-[400px] items-center justify-center rounded-2xl bg-white/5 p-8">
+                <div className="text-center">
+                  <ShoppingBag className="mx-auto mb-4 size-16 text-white/40" />
+                  <h3 className="mb-2 text-xl font-semibold">
+                    Your cart is empty
+                  </h3>
+                  <p className="mb-6 text-white/60">
+                    Add compositions to get started
+                  </p>
+                  <Button className="bg-white text-black hover:bg-white/90">
                     Browse Marketplace
                     <ArrowRight className="ml-2 size-4" />
                   </Button>
                 </div>
               </div>
             ) : (
-              <div className="space-y-6">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <h2 className="text-2xl font-semibold">Library</h2>
-                    <p className="text-sm text-muted-foreground">
-                      {isLibraryFiltered
-                        ? `${filteredLibrary.length} of ${purchasedCompositions.length} compositions`
-                        : `${purchasedCompositions.length} compositions`}
-                    </p>
-                  </div>
-                  <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center lg:w-auto">
-                    <div className="relative w-full sm:w-72">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                      <input
-                        value={librarySearch}
-                        onChange={(event) =>
-                          setLibrarySearch(event.target.value)
-                        }
-                        placeholder="Search your library..."
-                        className="h-10 w-full rounded-full border border-border/60 bg-background/60 pl-9 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                      />
-                      {librarySearch && (
-                        <button
-                          type="button"
-                          onClick={() => setLibrarySearch("")}
-                          className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                        >
-                          <X className="size-3" />
-                        </button>
-                      )}
+              <div className="grid gap-6 lg:grid-cols-3">
+                <div className="space-y-4 lg:col-span-2">
+                  {cart.map((item) => (
+                    <div
+                      key={item.composition.id}
+                      className="flex items-start gap-4 rounded-2xl bg-white/5 p-4 transition-colors hover:bg-white/10"
+                    >
+                      <div
+                        className={`h-20 w-20 flex-shrink-0 rounded-lg bg-gradient-to-br ${item.composition.color || "from-purple-500 to-pink-600"} flex items-center justify-center shadow-lg`}
+                      >
+                        <Music className="size-10 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="truncate font-semibold text-white">
+                          {item.composition.title}
+                        </h4>
+                        <p className="truncate text-sm text-white/60">
+                          {item.composition.composerName}
+                        </p>
+                        {item.composition.voiceParts &&
+                          item.composition.voiceParts.length > 0 && (
+                            <p className="mt-1 truncate text-xs text-white/40">
+                              {item.composition.voiceParts.join(", ")}
+                            </p>
+                          )}
+                        <p className="mt-2 text-lg font-bold text-white">
+                          {formatKesAmount(item.composition.price)}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveItem(item.composition.id)}
+                        className="text-white/60 hover:bg-white/10 hover:text-white"
+                      >
+                        <Trash2 className="mr-1 size-4" />
+                        Remove
+                      </Button>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {libraryFilters.map((filter) => (
-                        <Button
-                          key={filter.id}
-                          type="button"
-                          variant="secondary"
-                          onClick={() => setLibraryFilter(filter.id)}
-                          className={`h-8 rounded-full px-3 text-xs ${
-                            libraryFilter === filter.id
-                              ? "bg-foreground text-background hover:bg-foreground/90"
-                              : "bg-muted/60 text-foreground/80 hover:bg-muted"
-                          }`}
-                        >
-                          {filter.label}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
+                  ))}
                 </div>
 
-                {filteredLibrary.length === 0 ? (
-                  <div className="rounded-2xl border border-border/40 bg-card/40 p-10 text-center">
-                    <h3 className="text-lg font-semibold text-foreground">
-                      No compositions match your filters
-                    </h3>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      Try adjusting your search or clearing the filters.
-                    </p>
-                    {isLibraryFiltered && (
-                      <Button
-                        variant="outline"
-                        className="mt-5"
-                        onClick={() => {
-                          setLibrarySearch("");
-                          setLibraryFilter("all");
-                        }}
-                      >
-                        Clear filters
-                      </Button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                    {filteredLibrary.map((entry) => {
-                      const { composition, purchased_at, id } = entry;
-                      const coverUrl =
-                        composition?.thumbnail_url || composition?.thumbnailUrl;
-
-                      return (
-                        <div
-                          key={id}
-                          className="group relative rounded-xl bg-card/50 p-3 transition-all hover:bg-card hover:shadow-lg"
-                          onMouseEnter={() => setHoveredCard(id)}
-                          onMouseLeave={() => setHoveredCard(null)}
-                        >
-                          <div className="relative mb-3 aspect-square overflow-hidden rounded-lg bg-muted/50">
-                            {coverUrl ? (
-                              <img
-                                src={coverUrl}
-                                alt={composition?.title || "Composition cover"}
-                                className="h-full w-full object-cover"
-                                loading="lazy"
-                              />
-                            ) : (
-                              <div className="flex h-full items-center justify-center bg-gradient-to-br from-emerald-500/20 to-teal-500/20">
-                                <Music className="size-12 text-emerald-600/60" />
-                              </div>
-                            )}
-
-                            <div
-                              className={`absolute inset-0 flex items-center justify-center bg-black/40 transition-opacity ${
-                                hoveredCard === id
-                                  ? "opacity-100"
-                                  : "opacity-0"
-                              }`}
-                            >
-                              <Button
-                                size="icon"
-                                className="h-11 w-11 rounded-full bg-primary shadow-xl transition-transform hover:scale-110"
-                                onClick={() =>
-                                  void handleDownloadComposition(id)
-                                }
-                                disabled={downloadingPurchaseId === id}
-                              >
-                                {downloadingPurchaseId === id ? (
-                                  <Loader className="size-5 animate-spin" />
-                                ) : (
-                                  <Download className="size-5" />
-                                )}
-                              </Button>
-                            </div>
-                          </div>
-
-                          <div className="space-y-1">
-                            <h3 className="truncate text-sm font-semibold text-foreground">
-                              {composition?.title || "Untitled"}
-                            </h3>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {composition?.composerName || "Unknown"}
-                            </p>
-                            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
-                              <Calendar className="size-3" />
-                              <span>
-                                {new Date(purchased_at).toLocaleDateString(
-                                  "en-US",
-                                  {
-                                    month: "short",
-                                    year: "numeric",
-                                  },
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </TabsContent>
-
-          {/* Checkout Tab */}
-          <TabsContent value="checkout" className="mt-6">
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-              {/* Cart Items */}
-              <div className="lg:col-span-2">
-                <Card className="border-border/40 bg-card/50">
-                  <CardHeader>
-                    <CardTitle className="text-2xl">Shopping Cart</CardTitle>
-                    <CardDescription>
-                      Review your items before checkout
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {cart.length === 0 ? (
-                      <div className="py-12 text-center">
-                        <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
-                          <ShoppingBag className="size-12 text-muted-foreground" />
-                        </div>
-                        <h3 className="mb-2 text-xl font-semibold">
-                          Your cart is empty
-                        </h3>
-                        <p className="mb-6 text-muted-foreground">
-                          Add compositions to get started
-                        </p>
-                        <Button
-                          onClick={() => navigate("/marketplace")}
-                          variant="outline"
-                        >
-                          Browse Marketplace
-                          <ArrowRight className="ml-2 size-4" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {cart.map((item) => (
-                          <div
-                            key={item.composition.id}
-                            className="flex items-start gap-4 rounded-lg border border-border/60 bg-background/50 p-4 transition-all hover:border-primary/40 hover:bg-background"
-                          >
-                            <div className="flex h-16 w-16 items-center justify-center rounded-md bg-gradient-to-br from-emerald-500/20 to-teal-500/20">
-                              <Music className="size-8 text-emerald-600/60" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <h4 className="truncate font-semibold text-foreground">
-                                {item.composition.title}
-                              </h4>
-                              <p className="truncate text-sm text-muted-foreground">
-                                {item.composition.composerName}
-                              </p>
-                              {/* Deliverables under the card in cart too */}
-                              {Array.isArray(item.composition.voiceParts) &&
-                                item.composition.voiceParts.length > 0 && (
-                                  <p className="mt-1 truncate text-xs text-muted-foreground/70">
-                                    {item.composition.voiceParts.join(", ")}
-                                  </p>
-                                )}
-                            </div>
-                            <div className="flex flex-col items-end gap-2">
-                              <p className="text-lg font-bold text-foreground">
-                                {formatKesAmount(item.composition.price)}
-                              </p>
-                              {onRemoveFromCart && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() =>
-                                    handleRemoveItem(item.composition.id)
-                                  }
-                                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                >
-                                  <Trash2 className="mr-1 size-4" />
-                                  Remove
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Order Summary */}
-              <div>
-                <Card className="sticky top-6 border-border/40 bg-card/50">
-                  <CardHeader>
-                    <CardTitle className="text-xl">Order Summary</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
+                {/* Summary */}
+                <div className="lg:sticky lg:top-24 lg:self-start">
+                  <div className="rounded-2xl bg-white/5 p-6">
+                    <h3 className="mb-4 text-xl font-bold">Order Summary</h3>
                     <div className="space-y-3">
                       <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">
+                        <span className="text-white/60">
                           Subtotal ({cart.length}{" "}
                           {cart.length === 1 ? "item" : "items"})
                         </span>
@@ -623,24 +503,20 @@ export function BuyerDashboard({
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">
-                          Processing Fee
-                        </span>
-                        <span className="font-medium text-emerald-600">
+                        <span className="text-white/60">Processing Fee</span>
+                        <span className="font-medium text-emerald-400">
                           FREE
                         </span>
                       </div>
-                      <Separator />
+                      <Separator className="bg-white/10" />
                       <div className="flex justify-between text-lg font-bold">
                         <span>Total</span>
-                        <span className="text-primary">
-                          {formatKesAmount(cartTotal)}
-                        </span>
+                        <span>{formatKesAmount(cartTotal)}</span>
                       </div>
                     </div>
 
                     <Button
-                      className="w-full"
+                      className="mt-6 w-full bg-emerald-500 text-white hover:bg-emerald-400"
                       size="lg"
                       disabled={cart.length === 0}
                       onClick={handleCheckout}
@@ -649,26 +525,26 @@ export function BuyerDashboard({
                       Proceed to Checkout
                     </Button>
 
-                    <div className="space-y-2 rounded-lg bg-muted/50 p-4">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <div className="h-2 w-2 rounded-full bg-emerald-600"></div>
+                    <div className="mt-4 space-y-2 rounded-lg bg-white/5 p-4">
+                      <div className="flex items-center gap-2 text-sm text-white/60">
+                        <div className="h-2 w-2 rounded-full bg-emerald-500"></div>
                         <span>Secure checkout</span>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <div className="h-2 w-2 rounded-full bg-emerald-600"></div>
+                      <div className="flex items-center gap-2 text-sm text-white/60">
+                        <div className="h-2 w-2 rounded-full bg-emerald-500"></div>
                         <span>Instant download</span>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <div className="h-2 w-2 rounded-full bg-emerald-600"></div>
+                      <div className="flex items-center gap-2 text-sm text-white/60">
+                        <div className="h-2 w-2 rounded-full bg-emerald-500"></div>
                         <span>Lifetime access</span>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
               </div>
-            </div>
-          </TabsContent>
-        </Tabs>
+            )}
+          </div>
+        )}
       </div>
     </main>
   );
