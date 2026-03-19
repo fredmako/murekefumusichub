@@ -402,6 +402,19 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                 <Moon className="size-5" />
               )}
             </Button>
+            {!isAuthenticated && (
+              <Button
+                type="button"
+                className="rounded-full bg-primary px-4 text-xs font-semibold tracking-[0.08em] text-primary-foreground shadow-[0_12px_24px_-16px_rgba(15,23,42,0.8)]"
+                onClick={() => {
+                  const currentPath = `${location.pathname}${location.search}${location.hash}`;
+                  persistPostLoginRedirect(currentPath);
+                  navigate(buildLoginPath({ nextPath: currentPath }));
+                }}
+              >
+                Sign In
+              </Button>
+            )}
             {isAuthenticated && (
               <SupportIssueButton
                 context="navbar-messenger"
