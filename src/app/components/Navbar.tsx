@@ -1,7 +1,6 @@
 // src/app/components/Navbar.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { navbarService } from "@/services/navbarService";
-import { SupportIssueButton } from "@/app/components/SupportIssueButton";
 import { buildProfileImageSrcSet, getOptimizedProfileImageUrl } from "@/services/profileImageService";
 import { useLocation, NavLink, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -135,6 +134,13 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
       );
     }
   }, [notifications, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (location.pathname.startsWith("/messenger")) {
+      setMessengerUnreadCount(0);
+    }
+  }, [isAuthenticated, location.pathname]);
 
   // Handle approve/reject actions
   const handleApproveRequest = async (
@@ -416,33 +422,21 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
               </Button>
             )}
             {isAuthenticated && (
-              <SupportIssueButton
-                context="navbar-messenger"
-                triggerLabel="Messenger"
-                hideLabelOnMobile
-                triggerIcon="message"
-                triggerVariant="outline"
-                unreadCount={messengerUnreadCount}
-                onInboxRefresh={() => {
-                  void navbarService
-                    .fetchNotifications({ isAdmin })
-                    .then((result) => {
-                      setNotifications(
-                        ensureArray<any>(
-                          result?.notificationItems,
-                          ["notifications"],
-                        ),
-                      );
-                      setMessengerUnreadCount(
-                        Math.max(0, Number(result?.messengerUnreadCount || 0)),
-                      );
-                    })
-                    .catch((error) => {
-                      console.warn("Navbar messenger refresh error:", error);
-                    });
-                }}
-                className="rounded-full border-border/80 bg-secondary/40 text-xs font-semibold tracking-[0.06em]"
-              />
+              <Button
+                asChild
+                variant="outline"
+                className="relative rounded-full border-border/80 bg-secondary/40 text-xs font-semibold tracking-[0.06em]"
+              >
+                <Link to="/messenger">
+                  <MessageSquare className="mr-2 size-4" />
+                  <span className="hidden sm:inline">Messenger</span>
+                  {messengerUnreadCount > 0 && (
+                    <Badge className="absolute -top-2 -right-2 size-5 min-w-5 px-1 text-[10px] leading-none">
+                      {messengerUnreadCount > 99 ? "99+" : messengerUnreadCount}
+                    </Badge>
+                  )}
+                </Link>
+              </Button>
             )}
             {/* ===== Notifications (All Authenticated Roles) ===== */}
             {isAuthenticated && (

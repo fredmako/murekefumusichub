@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Users,
   Music,
@@ -87,7 +87,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { adminService } from "@/services/adminService";
 import { compositionService } from "@/services/api";
-import { SupportIssueButton } from "@/app/components/SupportIssueButton";
+import { Link } from "react-router-dom";
 import { PdfFieldExportMenu } from "@/app/components/PdfFieldExportMenu";
 import { supportService, type AdminThreadType } from "@/services/supportService";
 import { getOptimizedProfileImageUrl } from "@/services/profileImageService";
@@ -2040,7 +2040,9 @@ export function AdminPanel() {
               Manage platform operations and monitor activity
             </p>
           </div>
-          <SupportIssueButton context="admin-dashboard" triggerLabel="Talk to Us" />
+          <Button asChild variant="outline">
+            <Link to="/messenger">Talk to Us</Link>
+          </Button>
         </div>
       </div>
       <Card className="route-backdrop-panel border-white/15 bg-card/25 xl:hidden dark:border-white/10 dark:bg-card/25">

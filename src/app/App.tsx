@@ -137,6 +137,12 @@ const AdminDashboard = React.lazy(() =>
   })),
 );
 
+const MessengerPage = React.lazy(() =>
+  import("./pages/MessengerPage").then((m) => ({
+    default: (m as any).MessengerPage ?? (m as any).default,
+  })),
+);
+
 const SetNewPassword = React.lazy(() =>
   import("./components/SetNewPassword").then((m) => ({
     default: (m as any).SetNewPassword ?? (m as any).default,
@@ -784,6 +790,7 @@ export default function App() {
                   element={<Marketplace onAddToCart={handleAddToCart} />}
                 />
                 <Route path="/about" element={<AboutPage />} />
+                <Route path="/messenger" element={<MessengerPage />} />
                 <Route path="/privacy-policy" element={<PrivacyPolicy />} />
                 <Route path="/manage-account" element={<ManageAccount />} />
                 <Route path="/auth/callback/*" element={<AuthCallback />} />

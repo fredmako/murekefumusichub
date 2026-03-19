@@ -42,7 +42,6 @@ import { Badge } from "@/app/components/ui/badge";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
 import { UploadComposition } from "@/app/components/UploadComposition";
-import { SupportIssueButton } from "@/app/components/SupportIssueButton";
 import { supabase } from "@/lib/supabase";
 import { compositionService } from "@/services/api";
 import { toast } from "sonner";
@@ -479,7 +478,13 @@ export function ComposerDashboard() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <SupportIssueButton context="composer-dashboard" />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => navigate("/messenger")}
+              >
+                Support Messenger
+              </Button>
               <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
                 <DialogTrigger asChild>
                   <Button
