@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/app/components/ui/select";
-import { CompositionCard } from "@/app/components/CompositionCard";
+import { CompositionCard } from "@/app/components/ui/CompositionCard";
 import {
   categoryService,
   compositionService,
@@ -35,6 +35,7 @@ interface Composition {
   voiceParts: string[];
   pdfUrl?: string;
   midiUrl?: string;
+  thumbnailUrl?: string;
   createdAt: string;
   categoryId?: number | null;
   categoryName?: string;
@@ -92,6 +93,7 @@ function mapComposition(comp: any): Composition {
     voiceParts: Array.isArray(comp.voice_parts) ? comp.voice_parts : [],
     pdfUrl: comp.pdf_url || undefined,
     midiUrl: comp.midi_url || undefined,
+    thumbnailUrl: comp.thumbnail_url || comp.thumbnailUrl || undefined,
     createdAt: comp.created_at || "",
     categoryId:
       typeof comp.category_id === "number" ? comp.category_id : null,

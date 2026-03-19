@@ -8,7 +8,10 @@ import { Progress } from "@/app/components/ui/progress";
 interface MidiPreviewPlayerProps {
   midiUrl: string;
   previewSeconds?: number;
+  previewRatio?: number;
   className?: string;
+  compact?: boolean;
+  onPreviewEnd?: () => void;
 }
 
 interface MidiNoteEvent {
@@ -21,7 +24,10 @@ interface MidiNoteEvent {
 export function MidiPreviewPlayer({
   midiUrl,
   previewSeconds = 25,
+  previewRatio = 0.33,
   className,
+  compact = false,
+  onPreviewEnd,
 }: MidiPreviewPlayerProps) {
   const [status, setStatus] = useState<
     "idle" | "loading" | "ready" | "playing" | "error"
@@ -33,6 +39,11 @@ export function MidiPreviewPlayer({
   const lastUrlRef = useRef<string | null>(null);
   const synthRef = useRef<Tone.PolySynth | null>(null);
   const partRef = useRef<Tone.Part<MidiNoteEvent> | null>(null);
+  const onPreviewEndRef = useRef(onPreviewEnd);
+
+  useEffect(() => {
+    onPreviewEndRef.current = onPreviewEnd;
+  }, [onPreviewEnd]);
 
   const teardownPlayback = () => {
     Tone.Transport.stop();
@@ -108,9 +119,13 @@ export function MidiPreviewPlayer({
     try {
       await Tone.start();
       const midi = await ensureMidi();
-      const previewLength = Math.max(
-        8,
-        Math.min(previewSeconds, midi.duration || previewSeconds),
+      const totalDuration = Number.isFinite(midi.duration)
+        ? midi.duration
+        : previewSeconds;
+      const ratioLength = totalDuration * Math.max(0.1, Math.min(0.5, previewRatio));
+      const previewLength = Math.min(
+        totalDuration,
+        Math.max(4, ratioLength || previewSeconds),
       );
       setDuration(previewLength);
 
@@ -138,6 +153,7 @@ export function MidiPreviewPlayer({
       Tone.Transport.seconds = 0;
       Tone.Transport.scheduleOnce(() => {
         stopPlayback();
+        onPreviewEndRef.current?.();
       }, previewLength);
 
       setStatus("playing");
@@ -151,6 +167,40 @@ export function MidiPreviewPlayer({
       );
     }
   };
+
+  if (compact) {
+    return (
+      <div className={`flex flex-col items-center gap-2 ${className || ""}`}>
+        <Button
+          type="button"
+          size="icon"
+          variant="outline"
+          className="size-12 rounded-full border-white/30 bg-black/50 text-white hover:bg-black/60"
+          onClick={() => void handleTogglePlayback()}
+          disabled={status === "loading"}
+        >
+          {status === "loading" ? (
+            <Loader2 className="size-5 animate-spin" />
+          ) : status === "playing" ? (
+            <Square className="size-5" />
+          ) : (
+            <Play className="size-5" />
+          )}
+        </Button>
+        {status === "playing" ? (
+          <div className="h-1 w-24 overflow-hidden rounded-full bg-white/20">
+            <div
+              className="h-full bg-white/70 transition-all"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        ) : null}
+        {status === "error" && errorMessage ? (
+          <p className="text-xs text-red-200">{errorMessage}</p>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div

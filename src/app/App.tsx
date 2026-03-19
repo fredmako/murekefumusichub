@@ -45,7 +45,7 @@ import {
    Lazy-loaded Pages
 -------------------------------- */
 const LandingPage = React.lazy(() =>
-  import("./components/LandingPage").then((m) => ({
+  import("./pages/LandingPage").then((m) => ({
     default: (m as any).LandingPage ?? (m as any).default,
   })),
 );
@@ -67,7 +67,7 @@ const Marketplace = React.lazy(() =>
 );
 
 const AboutPage = React.lazy(() =>
-  import("./components/AboutPage").then((m) => ({
+  import("./pages/AboutPage").then((m) => ({
     default: (m as any).AboutPage ?? (m as any).default,
   })),
 );
@@ -79,7 +79,7 @@ const BuyerDashboard = React.lazy(() =>
 );
 
 const CheckoutPage = React.lazy(() =>
-  import("./components/CheckoutPage").then((m) => ({
+  import("./pages/CheckoutPage").then((m) => ({
     default: (m as any).CheckoutPage ?? (m as any).default,
   })),
 );
@@ -91,7 +91,7 @@ const ComposerDashboard = React.lazy(() =>
 );
 
 const AdminDashboard = React.lazy(() =>
-  import("./components/AdminPanel").then((m) => ({
+  import("./pages/AdminPanel").then((m) => ({
     default: (m as any).AdminPanel ?? (m as any).default,
   })),
 );
