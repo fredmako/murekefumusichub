@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Filter,
+  Grid2x2,
+  Grid3x3,
+  LayoutGrid,
   Loader2,
   Music2,
   Play,
@@ -16,6 +19,13 @@ import { Input } from "@/app/components/ui/input";
 import { Button } from "@/app/components/ui/button";
 import { Checkbox } from "@/app/components/ui/checkbox";
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/app/components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -24,6 +34,7 @@ import {
 } from "@/app/components/ui/select";
 import { CompositionCard } from "@/app/components/ui/CompositionCard";
 import { MidiPreviewPlayer } from "@/app/components/MidiPreviewPlayer";
+import { ToggleGroup, ToggleGroupItem } from "@/app/components/ui/toggle-group";
 import {
   categoryService,
   compositionService,
@@ -32,6 +43,7 @@ import {
 import { toast } from "sonner";
 import { ensureArray } from "@/lib/ensureArray";
 import { parseAccompanimentList } from "@/lib/compositionMeta";
+import { useNavigate } from "react-router-dom";
 
 interface Composition {
   id: string;
@@ -118,6 +130,7 @@ function mapComposition(comp: any): Composition {
 }
 
 export function Marketplace({ onAddToCart }: MarketplaceProps) {
+  const navigate = useNavigate();
   const { appUser } = useAuth();
   const [activeFeed, setActiveFeed] = useState<"all" | "for-you" | "discover">(
     "all",
@@ -135,7 +148,9 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
   const [loading, setLoading] = useState(true);
   const [recommendationsLoading, setRecommendationsLoading] = useState(false);
   const [previewComposition, setPreviewComposition] = useState<Composition | null>(null);
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [viewSize, setViewSize] = useState<"compact" | "comfortable" | "large">(
+    "comfortable",
+  );
   const [recommendationMeta, setRecommendationMeta] = useState<RecommendationMeta>({
     mode: "idle",
     purchaseCount: 0,
@@ -292,21 +307,23 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
     const source =
       activeFeed === "for-you" ? recommendedCompositions : filteredCompositions;
     if (!source.some((comp) => comp.id === previewComposition.id)) {
-      setIsPreviewOpen(false);
       setPreviewComposition(null);
     }
   }, [activeFeed, filteredCompositions, previewComposition, recommendedCompositions]);
 
   const handlePreviewSelect = (composition: Composition) => {
     setPreviewComposition(composition);
-    setIsPreviewOpen(true);
   };
 
   const handlePreviewClear = () => {
-    setIsPreviewOpen(false);
-    window.setTimeout(() => {
-      setPreviewComposition(null);
-    }, 250);
+    setPreviewComposition(null);
+  };
+
+  const handlePurchase = (composition: Composition) => {
+    if (onAddToCart) {
+      onAddToCart(composition);
+    }
+    navigate("/checkout");
   };
 
   const featuredGradients = [
@@ -413,15 +430,18 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                           <Music2 className="size-12 text-white/80" />
                         </div>
                       )}
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-                        <Button
-                          size="icon"
-                          className="h-12 w-12 rounded-full bg-emerald-500 shadow-2xl transition-transform hover:scale-105 hover:bg-emerald-400"
-                          onClick={() => onAddToCart?.(composition)}
-                        >
-                          <Play className="size-5 fill-white" />
-                        </Button>
-                      </div>
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                      <Button
+                        size="icon"
+                        className="h-12 w-12 rounded-full bg-emerald-500 shadow-2xl transition-transform hover:scale-105 hover:bg-emerald-400"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handlePreviewSelect(composition);
+                        }}
+                      >
+                        <Play className="size-5 fill-white" />
+                      </Button>
+                    </div>
                     </div>
                     <div className="space-y-1 px-4 py-3">
                       <h3 className="truncate text-base font-semibold text-foreground">
@@ -486,10 +506,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                         key={`recommended-${composition.id}`}
                         onClick={() => handlePreviewSelect(composition)}
                       >
-                        <CompositionCard
-                          composition={composition}
-                          onAddToCart={onAddToCart}
-                        />
+                        <CompositionCard composition={composition} showActions={false} />
                       </div>
                     ))}
                   </div>
@@ -539,9 +556,12 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                       <Button
                         size="icon"
                         className="h-10 w-10 rounded-full bg-emerald-500 shadow-xl transition-transform hover:scale-105 hover:bg-emerald-400"
-                        onClick={() => onAddToCart?.(composition)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handlePreviewSelect(composition);
+                        }}
                       >
-                        <ShoppingBag className="size-4" />
+                        <Play className="size-4 fill-white" />
                       </Button>
                     </div>
                   </div>
@@ -666,18 +686,49 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         )}
       </div>
 
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm font-medium text-muted-foreground">
           {loading
             ? "Loading compositions..."
             : `${filteredCompositions.length} composition${filteredCompositions.length !== 1 ? "s" : ""} found`}
         </p>
+        <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 p-1.5">
+          <span className="px-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            View
+          </span>
+          <ToggleGroup
+            type="single"
+            value={viewSize}
+            onValueChange={(value) => {
+              if (value) setViewSize(value as typeof viewSize);
+            }}
+            className="flex items-center"
+          >
+            <ToggleGroupItem value="compact" aria-label="Compact view">
+              <Grid3x3 className="size-4" />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="comfortable" aria-label="Comfortable view">
+              <LayoutGrid className="size-4" />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="large" aria-label="Large view">
+              <Grid2x2 className="size-4" />
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </div>
       </div>
 
       <div className="grid gap-6">
         <div>
           {loading && (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div
+              className={`grid grid-cols-1 gap-6 md:grid-cols-2 ${
+                viewSize === "compact"
+                  ? "lg:grid-cols-4 xl:grid-cols-5"
+                  : viewSize === "large"
+                    ? "lg:grid-cols-2 xl:grid-cols-3"
+                    : "lg:grid-cols-3 xl:grid-cols-4"
+              }`}
+            >
               {[1, 2, 3, 4, 5, 6].map((i) => (
                 <div
                   key={i}
@@ -688,16 +739,21 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
           )}
 
           {!loading && filteredCompositions.length > 0 && (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div
+              className={`grid grid-cols-1 gap-6 md:grid-cols-2 ${
+                viewSize === "compact"
+                  ? "lg:grid-cols-4 xl:grid-cols-5"
+                  : viewSize === "large"
+                    ? "lg:grid-cols-2 xl:grid-cols-3"
+                    : "lg:grid-cols-3 xl:grid-cols-4"
+              }`}
+            >
               {filteredCompositions.map((composition) => (
                 <div
                   key={composition.id}
                   onClick={() => handlePreviewSelect(composition)}
                 >
-                  <CompositionCard
-                    composition={composition}
-                    onAddToCart={onAddToCart}
-                  />
+                  <CompositionCard composition={composition} showActions={false} />
                 </div>
               ))}
             </div>
@@ -728,100 +784,125 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         </div>
 
       </div>
-      {previewComposition && (
-        <div className="fixed inset-0 z-40">
-          <button
-            type="button"
-            aria-label="Close preview"
-            onClick={handlePreviewClear}
-            className={`absolute inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity ${
-              isPreviewOpen ? "opacity-100" : "opacity-0"
-            }`}
-          />
-          <aside
-            className={`absolute right-0 top-0 flex h-full w-full max-w-[420px] transform flex-col border-l border-white/10 bg-slate-950/95 p-5 shadow-2xl transition-transform duration-300 ease-out ${
-              isPreviewOpen ? "translate-x-0" : "translate-x-full"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Preview
+      <Dialog
+        open={Boolean(previewComposition)}
+        onOpenChange={(open) => {
+          if (!open) handlePreviewClear();
+        }}
+      >
+        <DialogContent className="max-w-3xl border-white/10 bg-slate-950/95 text-foreground">
+          {previewComposition ? (
+            <>
+              <DialogHeader className="space-y-1 text-left">
+                <DialogTitle className="text-xl font-semibold">
+                  {previewComposition.title}
+                </DialogTitle>
+                <p className="text-sm text-muted-foreground">
+                  {previewComposition.composerName}
                 </p>
-              </div>
-              <button
-                type="button"
-                onClick={handlePreviewClear}
-                className="rounded-full border border-white/10 bg-white/10 p-1 text-muted-foreground transition hover:text-foreground"
-                aria-label="Close preview"
-              >
-                <X className="size-3.5" />
-              </button>
-            </div>
-            <div className="mt-4 relative aspect-square overflow-hidden rounded-xl bg-white/5">
-              {previewComposition.thumbnailUrl ? (
-                <img
-                  src={previewComposition.thumbnailUrl}
-                  alt={previewComposition.title}
-                  className="h-full w-full object-cover"
-                  loading="lazy"
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center bg-gradient-to-br from-emerald-500/20 to-teal-500/20">
-                  <Music2 className="size-16 text-emerald-200/70" />
+              </DialogHeader>
+              <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                <div className="space-y-4">
+                  <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                    {previewComposition.thumbnailUrl ? (
+                      <img
+                        src={previewComposition.thumbnailUrl}
+                        alt={previewComposition.title}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center bg-gradient-to-br from-emerald-500/20 to-teal-500/20">
+                        <Music2 className="size-16 text-emerald-200/70" />
+                      </div>
+                    )}
+                  </div>
+                  {previewComposition.midiUrl ? (
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Preview
+                      </p>
+                      <MidiPreviewPlayer
+                        midiUrl={previewComposition.midiUrl}
+                        previewRatio={0.33}
+                        className="mt-3"
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      MIDI preview not available for this composition.
+                    </p>
+                  )}
                 </div>
-              )}
-            </div>
-            <div className="mt-4 space-y-1">
-              <h3 className="text-lg font-semibold text-foreground">
-                {previewComposition.title}
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                {previewComposition.composerName}
-              </p>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-              {previewComposition.language ? (
-                <span>{previewComposition.language}</span>
-              ) : null}
-              {previewComposition.duration ? (
-                <span>{previewComposition.duration}</span>
-              ) : null}
-              {previewComposition.difficulty ? (
-                <span>{previewComposition.difficulty}</span>
-              ) : null}
-            </div>
-            {previewComposition.midiUrl ? (
-              <MidiPreviewPlayer
-                midiUrl={previewComposition.midiUrl}
-                compact
-                className="mt-4"
-              />
-            ) : (
-              <p className="mt-3 text-xs text-muted-foreground">
-                MIDI preview not available for this composition.
-              </p>
-            )}
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                onClick={() => onAddToCart?.(previewComposition)}
-                disabled={!onAddToCart}
-              >
-                <ShoppingBag className="mr-2 size-4" />
-                Add to cart
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setSearchTerm(previewComposition.composerName)}
-              >
-                More like this
-              </Button>
-            </div>
-          </aside>
-        </div>
-      )}
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Details
+                    </p>
+                    <div className="mt-3 grid gap-2 text-sm text-foreground">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Price</span>
+                        <span className="font-semibold">
+                          {previewComposition.priceCurrency || "KES"}{" "}
+                          {previewComposition.price.toLocaleString()}
+                        </span>
+                      </div>
+                      {previewComposition.language ? (
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Language</span>
+                          <span>{previewComposition.language}</span>
+                        </div>
+                      ) : null}
+                      {previewComposition.duration ? (
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Duration</span>
+                          <span>{previewComposition.duration}</span>
+                        </div>
+                      ) : null}
+                      {previewComposition.difficulty ? (
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Difficulty</span>
+                          <span>{previewComposition.difficulty}</span>
+                        </div>
+                      ) : null}
+                      {previewComposition.voiceParts?.length ? (
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="text-muted-foreground">Voice Parts</span>
+                          <span className="text-right">
+                            {previewComposition.voiceParts.join(", ")}
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                  {previewComposition.description ? (
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Description
+                      </p>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        {previewComposition.description}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              <DialogFooter className="gap-2 sm:justify-between">
+                <Button variant="outline" onClick={handlePreviewClear}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => handlePurchase(previewComposition)}
+                  className="gap-2"
+                >
+                  <ShoppingBag className="size-4" />
+                  Purchase &amp; Checkout
+                </Button>
+              </DialogFooter>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
       </div>
     </main>
   );
