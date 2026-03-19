@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Filter, Loader2, Search, Sparkles, X } from "lucide-react";
+import { Filter, Loader2, Music2, Search, Sparkles, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Input } from "@/app/components/ui/input";
 import { Button } from "@/app/components/ui/button";
@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/app/components/ui/select";
 import { CompositionCard } from "@/app/components/ui/CompositionCard";
+import { MidiPreviewPlayer } from "@/app/components/MidiPreviewPlayer";
 import {
   categoryService,
   compositionService,
@@ -122,6 +123,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [recommendationsLoading, setRecommendationsLoading] = useState(false);
+  const [previewComposition, setPreviewComposition] = useState<Composition | null>(null);
   const [preferenceSavingCategoryId, setPreferenceSavingCategoryId] = useState<
     number | null
   >(null);
@@ -260,6 +262,21 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
     return Array.from(initials).sort((a, b) => a.localeCompare(b));
   }, [compositions]);
 
+  useEffect(() => {
+    const source =
+      activeFeed === "for-you" ? recommendedCompositions : filteredCompositions;
+    if (source.length === 0) {
+      setPreviewComposition(null);
+      return;
+    }
+    setPreviewComposition((current) => {
+      if (current && source.some((comp) => comp.id === current.id)) {
+        return current;
+      }
+      return source[0];
+    });
+  }, [activeFeed, filteredCompositions, recommendedCompositions]);
+
   const handlePreferenceBoost = async (categoryId: number) => {
     if (!appUser?.id) {
       toast.info("Sign in to personalize your recommendations.");
@@ -301,45 +318,76 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
   };
 
   return (
-    <div className="section-shell">
-      <div className="mb-8 rounded-2xl border border-border/60 bg-card/40 p-6 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.6)]">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <span className="inline-flex rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
-              Music Hub
-            </span>
-            <h1 className="mt-3 text-3xl font-semibold text-foreground">
-              Discover Choral Music
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-              Browse, filter, and personalize your feed with compositions and
-              arrangements curated for you.
-            </p>
-          </div>
+    <div className="section-shell space-y-8">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <span className="inline-flex rounded-full bg-primary/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+            Music Hub
+          </span>
+          <h1 className="mt-3 text-3xl font-semibold text-foreground">
+            Discover Choral Music
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+            Browse, filter, and personalize your feed with compositions and
+            arrangements curated for you.
+          </p>
+        </div>
 
-          <div className="flex flex-wrap gap-2 rounded-full border border-border/60 bg-background/70 p-1">
-            {([
-              { id: "all", label: "All" },
-              { id: "for-you", label: "For You" },
-              { id: "discover", label: "Discover More" },
-            ] as const).map((item) => (
-              <Button
-                key={item.id}
-                type="button"
-                size="sm"
-                variant={activeFeed === item.id ? "default" : "ghost"}
-                className="rounded-full px-4 text-xs font-semibold"
-                onClick={() => setActiveFeed(item.id)}
-              >
-                {item.label}
-              </Button>
-            ))}
-          </div>
+        <div className="flex flex-wrap items-center gap-2 rounded-full border border-white/10 bg-white/5 p-1.5 backdrop-blur">
+          {([
+            { id: "all", label: "All" },
+            { id: "for-you", label: "For You" },
+            { id: "discover", label: "Discover More" },
+          ] as const).map((item) => (
+            <Button
+              key={item.id}
+              type="button"
+              size="sm"
+              variant={activeFeed === item.id ? "default" : "ghost"}
+              className="rounded-full px-4 text-xs font-semibold"
+              onClick={() => setActiveFeed(item.id)}
+            >
+              {item.label}
+            </Button>
+          ))}
         </div>
       </div>
 
+      {categories.length > 0 && (
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+                <Sparkles className="size-3.5" />
+                Personalize
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Tell us what you want more of and we will shape your feed.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {categories.slice(0, 6).map((category) => (
+                <Button
+                  key={`personalize-${category.id}`}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={preferenceSavingCategoryId === category.id}
+                  onClick={() => void handlePreferenceBoost(category.id)}
+                >
+                  {preferenceSavingCategoryId === category.id ? (
+                    <Loader2 className="mr-2 size-3.5 animate-spin" />
+                  ) : null}
+                  Prefer {category.name}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeFeed === "for-you" ? (
-        <div className="mb-8 rounded-2xl border border-border/70 bg-card/40 p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)]">
+        <div className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)] backdrop-blur">
           {!appUser ? (
             <div className="flex flex-col gap-2">
               <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
@@ -413,11 +461,16 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                 ) : (
                   <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
                     {recommendedCompositions.map((composition) => (
-                      <CompositionCard
+                      <div
                         key={`recommended-${composition.id}`}
-                        composition={composition}
-                        onAddToCart={onAddToCart}
-                      />
+                        onMouseEnter={() => setPreviewComposition(composition)}
+                        onFocus={() => setPreviewComposition(composition)}
+                      >
+                        <CompositionCard
+                          composition={composition}
+                          onAddToCart={onAddToCart}
+                        />
+                      </div>
                     ))}
                   </div>
                 )}
@@ -428,7 +481,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
       ) : null}
 
       {activeFeed === "discover" ? (
-        <div className="mb-8 rounded-2xl border border-border/70 bg-card/40 p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)]">
+        <div className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)] backdrop-blur">
           <div className="flex flex-col gap-3">
             <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
               <Sparkles className="size-3.5" />
@@ -464,32 +517,21 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         </div>
       ) : null}
 
-      <div className="mb-8 rounded-2xl border border-border/70 bg-card p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)]">
+      <div className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)] backdrop-blur">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
           <div className="relative lg:col-span-2">
-            {searchTerm ? (
-              <button
-                type="button"
-                onClick={() => setSearchTerm("")}
-                className="absolute left-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full border border-border/70 bg-background/90 text-muted-foreground transition hover:text-foreground"
-                aria-label="Clear search"
-              >
-                <X className="size-3.5" />
-              </button>
-            ) : (
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-            )}
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search compositions..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="bg-white pl-11 pr-11"
+              className="border-white/10 bg-white/10 pl-10 pr-10 text-foreground placeholder:text-muted-foreground focus-visible:ring-primary/40"
             />
             {searchTerm ? (
               <button
                 type="button"
                 onClick={() => setSearchTerm("")}
-                className="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full border border-border/70 bg-background/90 text-muted-foreground transition hover:text-foreground"
+                className="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-white/20 text-muted-foreground transition hover:text-foreground"
                 aria-label="Clear search"
               >
                 <X className="size-3.5" />
@@ -498,7 +540,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
           </div>
 
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger>
+            <SelectTrigger className="border-white/10 bg-white/10 text-foreground">
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
@@ -512,7 +554,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
           </Select>
 
           <Select value={languageFilter} onValueChange={setLanguageFilter}>
-            <SelectTrigger>
+            <SelectTrigger className="border-white/10 bg-white/10 text-foreground">
               <SelectValue placeholder="Language" />
             </SelectTrigger>
             <SelectContent>
@@ -528,7 +570,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
             value={accompanimentFilter}
             onValueChange={setAccompanimentFilter}
           >
-            <SelectTrigger>
+            <SelectTrigger className="border-white/10 bg-white/10 text-foreground">
               <SelectValue placeholder="Accompaniment" />
             </SelectTrigger>
             <SelectContent>
@@ -542,7 +584,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         </div>
 
         {availableInitials.length > 0 && (
-          <div className="mt-4 rounded-xl border border-border/60 bg-muted/20 p-3">
+          <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3 backdrop-blur">
             <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               Quick initials
             </div>
@@ -608,51 +650,138 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         </p>
       </div>
 
-      {loading && (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div
-              key={i}
-              className="h-96 animate-pulse rounded-xl border border-border/60 bg-muted/60"
-            />
-          ))}
-        </div>
-      )}
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div>
+          {loading && (
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div
+                  key={i}
+                  className="h-96 animate-pulse rounded-xl border border-border/60 bg-muted/60"
+                />
+              ))}
+            </div>
+          )}
 
-      {!loading && (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {filteredCompositions.map((composition) => (
-            <CompositionCard
-              key={composition.id}
-              composition={composition}
-              onAddToCart={onAddToCart}
-            />
-          ))}
-        </div>
-      )}
+          {!loading && filteredCompositions.length > 0 && (
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {filteredCompositions.map((composition) => (
+                <div
+                  key={composition.id}
+                  onMouseEnter={() => setPreviewComposition(composition)}
+                  onFocus={() => setPreviewComposition(composition)}
+                >
+                  <CompositionCard
+                    composition={composition}
+                    onAddToCart={onAddToCart}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
 
-      {!loading && filteredCompositions.length === 0 && (
-        <div className="py-12 text-center">
-          <p className="text-gray-500">
-            {compositions.length === 0
-              ? "No compositions available yet. Check back soon."
-              : "No compositions found matching your criteria."}
-          </p>
-          {compositions.length > 0 && (
-            <Button
-              variant="link"
-              onClick={() => {
-                setSearchTerm("");
-                setCategoryFilter("all");
-                setLanguageFilter("all");
-                setAccompanimentFilter("all");
-              }}
-            >
-              Clear all filters
-            </Button>
+          {!loading && filteredCompositions.length === 0 && (
+            <div className="py-12 text-center">
+              <p className="text-gray-500">
+                {compositions.length === 0
+                  ? "No compositions available yet. Check back soon."
+                  : "No compositions found matching your criteria."}
+              </p>
+              {compositions.length > 0 && (
+                <Button
+                  variant="link"
+                  onClick={() => {
+                    setSearchTerm("");
+                    setCategoryFilter("all");
+                    setLanguageFilter("all");
+                    setAccompanimentFilter("all");
+                  }}
+                >
+                  Clear all filters
+                </Button>
+              )}
+            </div>
           )}
         </div>
-      )}
+
+        <aside className="hidden xl:block">
+          <div className="sticky top-24 space-y-4 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+            {previewComposition ? (
+              <>
+                <div className="relative aspect-square overflow-hidden rounded-xl bg-white/5">
+                  {previewComposition.thumbnailUrl ? (
+                    <img
+                      src={previewComposition.thumbnailUrl}
+                      alt={previewComposition.title}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center bg-gradient-to-br from-emerald-500/20 to-teal-500/20">
+                      <Music2 className="size-16 text-emerald-200/70" />
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-lg font-semibold text-foreground">
+                    {previewComposition.title}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {previewComposition.composerName}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  {previewComposition.language ? (
+                    <span>{previewComposition.language}</span>
+                  ) : null}
+                  {previewComposition.duration ? (
+                    <span>{previewComposition.duration}</span>
+                  ) : null}
+                  {previewComposition.difficulty ? (
+                    <span>{previewComposition.difficulty}</span>
+                  ) : null}
+                </div>
+                {previewComposition.midiUrl ? (
+                  <MidiPreviewPlayer
+                    midiUrl={previewComposition.midiUrl}
+                    compact
+                    className="mt-2"
+                  />
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    MIDI preview not available for this composition.
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => onAddToCart?.(previewComposition)}
+                    disabled={!onAddToCart}
+                  >
+                    Add to cart
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setSearchTerm(previewComposition.composerName)
+                    }
+                  >
+                    More like this
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center gap-3 text-center text-sm text-muted-foreground">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/10">
+                  <Music2 className="size-6" />
+                </div>
+                <p>Hover a composition to preview it here.</p>
+              </div>
+            )}
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
