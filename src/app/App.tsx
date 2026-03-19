@@ -30,6 +30,7 @@ import {
   getCurrentPathWithQuery,
   persistPostLoginRedirect,
 } from "@/lib/authRedirect";
+import { Analytics } from "@vercel/analytics/react";
 
 const CART_STORAGE_PREFIX = "choral-cart";
 
@@ -855,6 +856,7 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
         </Suspense>
+        <Analytics />
       </div>
     </AppErrorBoundary>
   );
