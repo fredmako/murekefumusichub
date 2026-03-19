@@ -1,165 +1,226 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 import {
-  Download,
-  Calendar,
-  DollarSign,
-  Music,
-  CreditCard,
-  ShoppingBag,
-  Loader,
-  Trash2,
   ArrowRight,
-  Search,
-  Plus,
+  Calendar,
+  CreditCard,
+  Download,
   Grid3x3,
   List,
+  Loader,
+  Music,
+  Plus,
+  Search,
+  ShoppingBag,
+  Trash2,
   User,
+  X,
 } from "lucide-react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/app/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/app/components/ui/card";
+import { Input } from "@/app/components/ui/input";
 import { Separator } from "@/app/components/ui/separator";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/app/components/ui/tabs";
+import { toast } from "sonner";
+import { purchaseService } from "@/services/api";
+import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
+import { formatKesAmount } from "@/lib/currency";
+import { CartItem } from "../types";
+import { ensureArray } from "@/lib/ensureArray";
 
-// Mock data for demonstration
-const mockPurchasedCompositions = [
-  {
-    id: "1",
-    composition: {
-      title: "Symphony No. 5",
-      composerName: "Ludwig van Beethoven",
-      voiceParts: ["Violin I", "Violin II", "Viola", "Cello"],
-      color: "from-violet-500 to-purple-700",
-    },
-    purchased_at: "2026-01-15T10:30:00Z",
-    price_paid: 2500,
-  },
-  {
-    id: "2",
-    composition: {
-      title: "Moonlight Sonata",
-      composerName: "Ludwig van Beethoven",
-      voiceParts: ["Piano"],
-      color: "from-blue-500 to-indigo-700",
-    },
-    purchased_at: "2026-02-20T14:15:00Z",
-    price_paid: 1500,
-  },
-  {
-    id: "3",
-    composition: {
-      title: "The Four Seasons",
-      composerName: "Antonio Vivaldi",
-      voiceParts: ["Violin", "Viola", "Cello", "Bass"],
-      color: "from-emerald-500 to-teal-700",
-    },
-    purchased_at: "2026-03-10T09:00:00Z",
-    price_paid: 3000,
-  },
-  {
-    id: "4",
-    composition: {
-      title: "Ave Maria",
-      composerName: "Franz Schubert",
-      voiceParts: ["Soprano", "Alto", "Tenor", "Bass"],
-      color: "from-rose-500 to-pink-700",
-    },
-    purchased_at: "2026-03-12T16:45:00Z",
-    price_paid: 1800,
-  },
-  {
-    id: "5",
-    composition: {
-      title: "Canon in D",
-      composerName: "Johann Pachelbel",
-      voiceParts: ["Violin I", "Violin II", "Violin III", "Basso Continuo"],
-      color: "from-amber-500 to-orange-700",
-    },
-    purchased_at: "2026-03-15T11:20:00Z",
-    price_paid: 2200,
-  },
-  {
-    id: "6",
-    composition: {
-      title: "Clair de Lune",
-      composerName: "Claude Debussy",
-      voiceParts: ["Piano"],
-      color: "from-cyan-500 to-blue-700",
-    },
-    purchased_at: "2026-03-18T09:30:00Z",
-    price_paid: 1600,
-  },
-];
+interface BuyerDashboardProps {
+  cart: CartItem[];
+  onRemoveFromCart?: (compositionId: string) => void;
+}
 
-const mockCartItems = [
-  {
-    id: "cart-1",
-    composition: {
-      id: "c1",
-      title: "Requiem in D minor",
-      composerName: "Wolfgang Amadeus Mozart",
-      price: 4500,
-      voiceParts: ["Soprano", "Alto", "Tenor", "Bass", "Orchestra"],
-      color: "from-red-500 to-rose-700",
-    },
-    quantity: 1,
-  },
-  {
-    id: "cart-2",
-    composition: {
-      id: "c2",
-      title: "Brandenburg Concerto No. 3",
-      composerName: "Johann Sebastian Bach",
-      price: 3200,
-      voiceParts: ["Violin", "Viola", "Cello", "Harpsichord"],
-      color: "from-green-500 to-emerald-700",
-    },
-    quantity: 1,
-  },
-];
-
-// Helper function to format currency
-const formatKesAmount = (amount: number) => {
-  return `KES ${amount.toLocaleString()}`;
-};
-
-export function BuyerDashboard() {
-  const [activeTab, setActiveTab] = useState("library");
+export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { appUser, isLoading: isAuthLoading } = useAuth();
+  const [activeTab, setActiveTab] = useState(
+    searchParams.get("tab") === "checkout" ? "checkout" : "library",
+  );
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [loading, setLoading] = useState(false);
-  const [purchasedCompositions] = useState(mockPurchasedCompositions);
-  const [cart, setCart] = useState(mockCartItems);
+  const [loading, setLoading] = useState(true);
+  const [purchasedCompositions, setPurchasedCompositions] = useState<any[]>([]);
+  const [totalSpent, setTotalSpent] = useState(0);
   const [downloadingPurchaseId, setDownloadingPurchaseId] = useState<
     string | null
   >(null);
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
-
-  const totalSpent = purchasedCompositions.reduce(
-    (sum, p) => sum + p.price_paid,
-    0,
+  const [libraryFilter, setLibraryFilter] = useState<"all" | "compositions">(
+    "all",
   );
+  const [showSearch, setShowSearch] = useState(false);
+  const [librarySearch, setLibrarySearch] = useState("");
+
+  useEffect(() => {
+    const requestedTab =
+      searchParams.get("tab") === "checkout" ? "checkout" : "library";
+    setActiveTab((prev) => (prev === requestedTab ? prev : requestedTab));
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (isAuthLoading) {
+      setLoading(true);
+      return;
+    }
+
+    let mounted = true;
+
+    const fetchUserPurchases = async (showSpinner = true) => {
+      try {
+        if (showSpinner) setLoading(true);
+        if (!appUser) {
+          if (showSpinner) {
+            toast.error("You must be signed in to view purchases");
+            setLoading(false);
+          }
+          return;
+        }
+
+        const purchasesPayload = await purchaseService.getByBuyer(appUser.id);
+        const purchases = ensureArray<any>(purchasesPayload, ["purchases"]);
+        if (!mounted) return;
+
+        const enriched = purchases.map((p: any) => ({
+          ...p,
+          composition: p.compositions || p.composition || null,
+        }));
+
+        setPurchasedCompositions(enriched);
+        const spent = purchases.reduce(
+          (sum: number, p: any) => sum + (p.price_paid || 0),
+          0,
+        );
+        setTotalSpent(spent);
+      } catch (err: any) {
+        const status = Number(err?.status || 0);
+        if (status === 401) {
+          console.warn("Purchases request blocked by expired session");
+          return;
+        }
+
+        if (status === 503 || status === 408) {
+          console.warn(
+            "Purchases request failed due to transient auth/network issue",
+          );
+          if (showSpinner) {
+            toast.warning(
+              "Connection issue while loading your library. Retrying in the background...",
+            );
+          }
+          return;
+        }
+
+        console.error("Error loading purchases:", err);
+        if (showSpinner) {
+          toast.error("Failed to load purchases");
+        }
+      } finally {
+        if (showSpinner && mounted) setLoading(false);
+      }
+    };
+
+    void fetchUserPurchases(true);
+    const timer = setInterval(() => {
+      void fetchUserPurchases(false);
+    }, 15000);
+
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, [appUser?.id, isAuthLoading]);
+
+  useEffect(() => {
+    if (!isAuthLoading && appUser === null) {
+      const currentPath = `${location.pathname}${location.search}${location.hash}`;
+      persistPostLoginRedirect(currentPath);
+      navigate(buildLoginPath({ nextPath: currentPath }), { replace: true });
+    }
+  }, [
+    appUser,
+    isAuthLoading,
+    location.hash,
+    location.pathname,
+    location.search,
+    navigate,
+  ]);
 
   const cartTotal = cart.reduce(
     (sum, item) => sum + item.composition.price * item.quantity,
     0,
   );
 
+  const memberSince = useMemo(() => {
+    const timestamps = purchasedCompositions
+      .map((purchase) => {
+        const raw =
+          purchase?.purchased_at ||
+          purchase?.created_at ||
+          purchase?.createdAt;
+        const ts = raw ? new Date(raw).getTime() : NaN;
+        return Number.isFinite(ts) ? ts : null;
+      })
+      .filter((value): value is number => value !== null);
+
+    if (timestamps.length === 0) return null;
+    return new Date(Math.min(...timestamps));
+  }, [purchasedCompositions]);
+
+  const filteredPurchases = useMemo(() => {
+    const query = librarySearch.trim().toLowerCase();
+    return purchasedCompositions.filter((purchase) => {
+      const composition = purchase?.composition;
+      const title = composition?.title || "";
+      const composer =
+        composition?.composerName ||
+        composition?.composer_name ||
+        composition?.composers?.users?.display_name ||
+        "";
+      const haystack = `${title} ${composer}`.toLowerCase();
+      if (query && !haystack.includes(query)) return false;
+
+      if (libraryFilter === "all") return true;
+      const categoryName = String(
+        composition?.categories?.name ||
+          composition?.category_name ||
+          composition?.categoryName ||
+          "",
+      ).toLowerCase();
+      if (libraryFilter === "compositions") {
+        return !categoryName.includes("arrange");
+      }
+      return true;
+    });
+  }, [libraryFilter, librarySearch, purchasedCompositions]);
+
   const handleCheckout = () => {
-    alert("Proceeding to checkout...");
+    if (!appUser) {
+      persistPostLoginRedirect("/checkout");
+      navigate(buildLoginPath({ nextPath: "/checkout", intent: "purchase" }));
+      return;
+    }
+    navigate("/checkout");
   };
 
   const handleRemoveItem = (compositionId: string) => {
-    setCart(cart.filter((item) => item.composition.id !== compositionId));
+    if (onRemoveFromCart) {
+      onRemoveFromCart(compositionId);
+      toast.success("Item removed from cart");
+    }
+  };
+
+  const handleTabChange = (nextTab: "library" | "checkout") => {
+    setActiveTab(nextTab);
+    const next = new URLSearchParams(searchParams);
+    if (nextTab === "checkout") {
+      next.set("tab", "checkout");
+    } else {
+      next.delete("tab");
+    }
+    setSearchParams(next, { replace: true });
   };
 
   const handleDownloadComposition = async (purchaseId: string) => {
@@ -167,33 +228,61 @@ export function BuyerDashboard() {
 
     try {
       setDownloadingPurchaseId(purchaseId);
-      // Simulate download
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      alert("Download started!");
-    } catch (err) {
-      alert("Download failed");
+      const result = await purchaseService.getDownloadLink(purchaseId);
+      const downloadUrl = result?.downloadUrl;
+      const fileName = result?.fileName || "composition.pdf";
+
+      if (!downloadUrl) {
+        throw new Error("Download link is unavailable for this composition");
+      }
+
+      const anchor = document.createElement("a");
+      anchor.href = downloadUrl;
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+
+      toast.success("Download started");
+    } catch (err: any) {
+      console.error("Failed to download composition:", err);
+      const message =
+        err?.message ||
+        "Could not start the composition download. Please try again.";
+      toast.error(message);
     } finally {
       setDownloadingPurchaseId(null);
     }
   };
 
+  const displayName =
+    appUser?.displayName ||
+    appUser?.email?.split("@")[0] ||
+    "Listener";
+  const userInitial = displayName?.charAt(0)?.toUpperCase() || "";
+
   return (
     <main className="min-h-screen bg-black text-white">
-      {/* Header */}
       <div className="sticky top-0 z-10 bg-black/95 backdrop-blur-md">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-600">
-                <User className="size-6" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-600 text-sm font-semibold">
+                {userInitial ? userInitial : <User className="size-6" />}
               </div>
-              <h1 className="text-2xl font-bold">Your Library</h1>
+              <div>
+                <h1 className="text-2xl font-bold">Your Library</h1>
+                <p className="text-xs text-white/50">Welcome back, {displayName}</p>
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
                 size="icon"
                 className="text-white hover:bg-white/10"
+                onClick={() => setShowSearch((prev) => !prev)}
               >
                 <Search className="size-5" />
               </Button>
@@ -201,21 +290,48 @@ export function BuyerDashboard() {
                 variant="ghost"
                 size="icon"
                 className="text-white hover:bg-white/10"
+                onClick={() => navigate("/marketplace")}
               >
                 <Plus className="size-5" />
               </Button>
             </div>
           </div>
+
+          {showSearch && (
+            <div className="mt-4 max-w-lg">
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-white/50" />
+                <Input
+                  placeholder="Search your library..."
+                  value={librarySearch}
+                  onChange={(event) => setLibrarySearch(event.target.value)}
+                  className="h-11 border-white/10 bg-white/10 pl-10 pr-10 text-white placeholder:text-white/40"
+                />
+                {librarySearch ? (
+                  <button
+                    type="button"
+                    onClick={() => setLibrarySearch("")}
+                    className="absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white/70 hover:bg-white/20"
+                    aria-label="Clear search"
+                  >
+                    <X className="size-4" />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-        {/* Filter Pills */}
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
           <button
-            onClick={() => setActiveTab("library")}
+            onClick={() => {
+              setLibraryFilter("all");
+              handleTabChange("library");
+            }}
             className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-              activeTab === "library"
+              activeTab === "library" && libraryFilter === "all"
                 ? "bg-white text-black"
                 : "bg-white/10 text-white hover:bg-white/20"
             }`}
@@ -223,17 +339,20 @@ export function BuyerDashboard() {
             All
           </button>
           <button
-            onClick={() => setActiveTab("library")}
+            onClick={() => {
+              setLibraryFilter("compositions");
+              handleTabChange("library");
+            }}
             className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-              activeTab === "library"
-                ? "bg-white/10 text-white"
+              activeTab === "library" && libraryFilter === "compositions"
+                ? "bg-white text-black"
                 : "bg-white/10 text-white hover:bg-white/20"
             }`}
           >
             Compositions
           </button>
           <button
-            onClick={() => setActiveTab("checkout")}
+            onClick={() => handleTabChange("checkout")}
             className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
               activeTab === "checkout"
                 ? "bg-white text-black"
@@ -246,7 +365,6 @@ export function BuyerDashboard() {
 
         {activeTab === "library" && (
           <div className="space-y-6">
-            {/* View Toggle */}
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold">Recent Purchases</h2>
               <div className="flex gap-1">
@@ -254,7 +372,9 @@ export function BuyerDashboard() {
                   variant="ghost"
                   size="icon"
                   onClick={() => setViewMode("list")}
-                  className={`text-white hover:bg-white/10 ${viewMode === "list" ? "bg-white/20" : ""}`}
+                  className={`text-white hover:bg-white/10 ${
+                    viewMode === "list" ? "bg-white/20" : ""
+                  }`}
                 >
                   <List className="size-5" />
                 </Button>
@@ -262,7 +382,9 @@ export function BuyerDashboard() {
                   variant="ghost"
                   size="icon"
                   onClick={() => setViewMode("grid")}
-                  className={`text-white hover:bg-white/10 ${viewMode === "grid" ? "bg-white/20" : ""}`}
+                  className={`text-white hover:bg-white/10 ${
+                    viewMode === "grid" ? "bg-white/20" : ""
+                  }`}
                 >
                   <Grid3x3 className="size-5" />
                 </Button>
@@ -273,7 +395,7 @@ export function BuyerDashboard() {
               <div className="flex min-h-[400px] items-center justify-center">
                 <Loader className="size-12 animate-spin text-white" />
               </div>
-            ) : purchasedCompositions.length === 0 ? (
+            ) : filteredPurchases.length === 0 ? (
               <div className="flex min-h-[400px] items-center justify-center">
                 <div className="text-center">
                   <Music className="mx-auto mb-4 size-16 text-white/40" />
@@ -283,7 +405,10 @@ export function BuyerDashboard() {
                   <p className="mb-6 text-white/60">
                     Start building your collection of beautiful compositions
                   </p>
-                  <Button className="bg-white text-black hover:bg-white/90">
+                  <Button
+                    className="bg-white text-black hover:bg-white/90"
+                    onClick={() => navigate("/marketplace")}
+                  >
                     Browse Marketplace
                     <ArrowRight className="ml-2 size-4" />
                   </Button>
@@ -291,95 +416,160 @@ export function BuyerDashboard() {
               </div>
             ) : viewMode === "grid" ? (
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                {purchasedCompositions.map(
-                  ({ composition, purchased_at, id }) => (
-                    <div
-                      key={id}
-                      className="group cursor-pointer rounded-lg bg-white/5 p-4 transition-all hover:bg-white/10"
-                      onMouseEnter={() => setHoveredCard(id)}
-                      onMouseLeave={() => setHoveredCard(null)}
-                    >
-                      {/* Album Art */}
-                      <div className="relative mb-4 aspect-square overflow-hidden rounded-md shadow-xl">
-                        <div
-                          className={`flex h-full items-center justify-center bg-gradient-to-br ${composition.color || "from-purple-500 to-pink-600"}`}
-                        >
-                          <Music className="size-16 text-white/90" />
-                        </div>
+                {filteredPurchases.map(
+                  ({ composition, purchased_at, created_at, id }) => {
+                    const title = composition?.title || "Untitled";
+                    const composer =
+                      composition?.composerName ||
+                      composition?.composer_name ||
+                      composition?.composers?.users?.display_name ||
+                      "Unknown";
+                    const voiceParts =
+                      composition?.voiceParts ||
+                      composition?.voice_parts ||
+                      [];
+                    const thumb =
+                      composition?.thumbnail_url || composition?.thumbnailUrl;
+                    const purchasedAt = purchased_at || created_at;
 
-                        {/* Download Button Overlay */}
-                        <div
-                          className={`absolute inset-0 flex items-center justify-center bg-black/60 transition-opacity ${
-                            hoveredCard === id ? "opacity-100" : "opacity-0"
-                          }`}
-                        >
-                          <Button
-                            size="icon"
-                            className="h-14 w-14 rounded-full bg-emerald-500 shadow-2xl transition-all hover:scale-110 hover:bg-emerald-400"
-                            onClick={() => void handleDownloadComposition(id)}
-                            disabled={downloadingPurchaseId === id}
+                    return (
+                      <div
+                        key={id}
+                        className="group cursor-pointer rounded-lg bg-white/5 p-4 transition-all hover:bg-white/10"
+                        onMouseEnter={() => setHoveredCard(id)}
+                        onMouseLeave={() => setHoveredCard(null)}
+                      >
+                        <div className="relative mb-4 aspect-square overflow-hidden rounded-md shadow-xl">
+                          {thumb ? (
+                            <img
+                              src={thumb}
+                              alt={title}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center bg-gradient-to-br from-purple-500 to-pink-600">
+                              <Music className="size-16 text-white/90" />
+                            </div>
+                          )}
+
+                          <div
+                            className={`absolute inset-0 flex items-center justify-center bg-black/60 transition-opacity ${
+                              hoveredCard === id ? "opacity-100" : "opacity-0"
+                            }`}
                           >
-                            {downloadingPurchaseId === id ? (
-                              <Loader className="size-6 animate-spin" />
-                            ) : (
-                              <Download className="size-6" />
-                            )}
-                          </Button>
+                            <Button
+                              size="icon"
+                              className="h-14 w-14 rounded-full bg-emerald-500 shadow-2xl transition-all hover:scale-110 hover:bg-emerald-400"
+                              onClick={() => void handleDownloadComposition(id)}
+                              disabled={downloadingPurchaseId === id}
+                            >
+                              {downloadingPurchaseId === id ? (
+                                <Loader className="size-6 animate-spin" />
+                              ) : (
+                                <Download className="size-6" />
+                              )}
+                            </Button>
+                          </div>
                         </div>
-                      </div>
 
-                      {/* Info */}
-                      <div className="space-y-1">
-                        <h3 className="truncate font-semibold text-white">
-                          {composition.title}
-                        </h3>
-                        <p className="truncate text-sm text-white/60">
-                          {composition.composerName}
-                        </p>
-                        {composition.voiceParts &&
-                          composition.voiceParts.length > 0 && (
+                        <div className="space-y-1">
+                          <h3 className="truncate font-semibold text-white">
+                            {title}
+                          </h3>
+                          <p className="truncate text-sm text-white/60">
+                            {composer}
+                          </p>
+                          {Array.isArray(voiceParts) && voiceParts.length > 0 && (
                             <p className="truncate text-xs text-white/40">
-                              {composition.voiceParts.join(", ")}
+                              {voiceParts.join(", ")}
                             </p>
                           )}
+                          {purchasedAt ? (
+                            <div className="flex items-center gap-1.5 text-xs text-white/40">
+                              <Calendar className="size-3" />
+                              <span>
+                                {new Date(purchasedAt).toLocaleDateString(
+                                  "en-US",
+                                  {
+                                    month: "short",
+                                    year: "numeric",
+                                  },
+                                )}
+                              </span>
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
-                    </div>
-                  ),
+                    );
+                  },
                 )}
               </div>
             ) : (
               <div className="space-y-2">
-                {purchasedCompositions.map(
-                  ({ composition, purchased_at, id }) => (
+                {filteredPurchases.map(({ composition, purchased_at, created_at, id }) => {
+                  const title = composition?.title || "Untitled";
+                  const composer =
+                    composition?.composerName ||
+                    composition?.composer_name ||
+                    composition?.composers?.users?.display_name ||
+                    "Unknown";
+                  const voiceParts =
+                    composition?.voiceParts || composition?.voice_parts || [];
+                  const thumb =
+                    composition?.thumbnail_url || composition?.thumbnailUrl;
+                  const purchasedAt = purchased_at || created_at;
+
+                  return (
                     <div
                       key={id}
                       className="group flex cursor-pointer items-center gap-4 rounded-lg p-2 transition-colors hover:bg-white/10"
                       onClick={() => void handleDownloadComposition(id)}
                     >
-                      <div
-                        className={`h-14 w-14 flex-shrink-0 rounded-md bg-gradient-to-br ${composition.color || "from-purple-500 to-pink-600"} flex items-center justify-center shadow-lg`}
-                      >
-                        <Music className="size-6 text-white" />
+                      <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-md shadow-lg">
+                        {thumb ? (
+                          <img
+                            src={thumb}
+                            alt={title}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-purple-500 to-pink-600">
+                            <Music className="size-6 text-white" />
+                          </div>
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <h3 className="truncate font-semibold text-white">
-                          {composition.title}
+                          {title}
                         </h3>
                         <p className="truncate text-sm text-white/60">
-                          {composition.composerName}
+                          {composer}
                         </p>
-                        {composition.voiceParts &&
-                          composition.voiceParts.length > 0 && (
-                            <p className="truncate text-xs text-white/40">
-                              {composition.voiceParts.join(", ")}
-                            </p>
-                          )}
+                        {Array.isArray(voiceParts) && voiceParts.length > 0 && (
+                          <p className="truncate text-xs text-white/40">
+                            {voiceParts.join(", ")}
+                          </p>
+                        )}
                       </div>
+                      {purchasedAt ? (
+                        <span className="hidden text-xs text-white/40 md:block">
+                          {new Date(purchasedAt).toLocaleDateString("en-US", {
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </span>
+                      ) : null}
                       <Button
                         variant="ghost"
                         size="icon"
                         className="text-white opacity-0 transition-opacity hover:bg-white/10 group-hover:opacity-100"
                         disabled={downloadingPurchaseId === id}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleDownloadComposition(id);
+                        }}
                       >
                         {downloadingPurchaseId === id ? (
                           <Loader className="size-5 animate-spin" />
@@ -388,12 +578,11 @@ export function BuyerDashboard() {
                         )}
                       </Button>
                     </div>
-                  ),
-                )}
+                  );
+                })}
               </div>
             )}
 
-            {/* Quick Stats Section */}
             <div className="mt-8 rounded-2xl bg-gradient-to-r from-purple-600/20 to-pink-600/20 p-6">
               <h3 className="mb-4 text-lg font-semibold">Your Stats</h3>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
@@ -411,12 +600,12 @@ export function BuyerDashboard() {
                 </div>
                 <div className="col-span-2 sm:col-span-1">
                   <div className="text-3xl font-bold">
-                    {new Date(
-                      purchasedCompositions[0]?.purchased_at,
-                    ).toLocaleDateString("en-US", {
-                      month: "short",
-                      year: "numeric",
-                    })}
+                    {memberSince
+                      ? memberSince.toLocaleDateString("en-US", {
+                          month: "short",
+                          year: "numeric",
+                        })
+                      : "--"}
                   </div>
                   <p className="text-sm text-white/60">Member Since</p>
                 </div>
@@ -439,7 +628,10 @@ export function BuyerDashboard() {
                   <p className="mb-6 text-white/60">
                     Add compositions to get started
                   </p>
-                  <Button className="bg-white text-black hover:bg-white/90">
+                  <Button
+                    className="bg-white text-black hover:bg-white/90"
+                    onClick={() => navigate("/marketplace")}
+                  >
                     Browse Marketplace
                     <ArrowRight className="ml-2 size-4" />
                   </Button>
@@ -453,9 +645,7 @@ export function BuyerDashboard() {
                       key={item.composition.id}
                       className="flex items-start gap-4 rounded-2xl bg-white/5 p-4 transition-colors hover:bg-white/10"
                     >
-                      <div
-                        className={`h-20 w-20 flex-shrink-0 rounded-lg bg-gradient-to-br ${item.composition.color || "from-purple-500 to-pink-600"} flex items-center justify-center shadow-lg`}
-                      >
+                      <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-pink-600 shadow-lg">
                         <Music className="size-10 text-white" />
                       </div>
                       <div className="flex-1 min-w-0">
@@ -465,7 +655,7 @@ export function BuyerDashboard() {
                         <p className="truncate text-sm text-white/60">
                           {item.composition.composerName}
                         </p>
-                        {item.composition.voiceParts &&
+                        {Array.isArray(item.composition.voiceParts) &&
                           item.composition.voiceParts.length > 0 && (
                             <p className="mt-1 truncate text-xs text-white/40">
                               {item.composition.voiceParts.join(", ")}
@@ -475,20 +665,21 @@ export function BuyerDashboard() {
                           {formatKesAmount(item.composition.price)}
                         </p>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemoveItem(item.composition.id)}
-                        className="text-white/60 hover:bg-white/10 hover:text-white"
-                      >
-                        <Trash2 className="mr-1 size-4" />
-                        Remove
-                      </Button>
+                      {onRemoveFromCart && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveItem(item.composition.id)}
+                          className="text-white/60 hover:bg-white/10 hover:text-white"
+                        >
+                          <Trash2 className="mr-1 size-4" />
+                          Remove
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
 
-                {/* Summary */}
                 <div className="lg:sticky lg:top-24 lg:self-start">
                   <div className="rounded-2xl bg-white/5 p-6">
                     <h3 className="mb-4 text-xl font-bold">Order Summary</h3>
@@ -527,15 +718,15 @@ export function BuyerDashboard() {
 
                     <div className="mt-4 space-y-2 rounded-lg bg-white/5 p-4">
                       <div className="flex items-center gap-2 text-sm text-white/60">
-                        <div className="h-2 w-2 rounded-full bg-emerald-500"></div>
+                        <div className="h-2 w-2 rounded-full bg-emerald-500" />
                         <span>Secure checkout</span>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-white/60">
-                        <div className="h-2 w-2 rounded-full bg-emerald-500"></div>
+                        <div className="h-2 w-2 rounded-full bg-emerald-500" />
                         <span>Instant download</span>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-white/60">
-                        <div className="h-2 w-2 rounded-full bg-emerald-500"></div>
+                        <div className="h-2 w-2 rounded-full bg-emerald-500" />
                         <span>Lifetime access</span>
                       </div>
                     </div>
@@ -549,3 +740,5 @@ export function BuyerDashboard() {
     </main>
   );
 }
+
+export default BuyerDashboard;
