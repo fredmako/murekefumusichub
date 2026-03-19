@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import {
   Download,
@@ -10,6 +10,8 @@ import {
   Loader,
   Trash2,
   ArrowRight,
+  Search,
+  X,
 } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/app/components/ui/button";
@@ -58,6 +60,10 @@ export function BuyerDashboard({
     string | null
   >(null);
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+  const [librarySearch, setLibrarySearch] = useState("");
+  const [libraryFilter, setLibraryFilter] = useState<
+    "all" | "arrangements" | "compositions"
+  >("all");
 
   useEffect(() => {
     const requestedTab =
@@ -161,6 +167,39 @@ export function BuyerDashboard({
     0,
   );
 
+  const filteredLibrary = useMemo(() => {
+    const query = librarySearch.trim().toLowerCase();
+    if (!purchasedCompositions.length) return [];
+
+    return purchasedCompositions.filter((entry) => {
+      const composition = entry?.composition;
+      const title = composition?.title || "";
+      const composer =
+        composition?.composerName || composition?.composer_name || "";
+      const haystack = `${title} ${composer}`.toLowerCase();
+
+      if (query && !haystack.includes(query)) return false;
+      if (libraryFilter === "all") return true;
+
+      const categoryName = (
+        composition?.categories?.name ??
+        composition?.category_name ??
+        composition?.categoryName ??
+        ""
+      )
+        .toString()
+        .toLowerCase();
+      const isArrangement = categoryName.includes("arrange");
+
+      if (libraryFilter === "arrangements") return isArrangement;
+      if (libraryFilter === "compositions") return !isArrangement;
+      return true;
+    });
+  }, [librarySearch, libraryFilter, purchasedCompositions]);
+
+  const isLibraryFiltered =
+    librarySearch.trim().length > 0 || libraryFilter !== "all";
+
   const handleCheckout = () => {
     if (!appUser) {
       persistPostLoginRedirect("/checkout");
@@ -222,6 +261,12 @@ export function BuyerDashboard({
     }
   };
 
+  const libraryFilters = [
+    { id: "all", label: "All" },
+    { id: "arrangements", label: "Arrangements" },
+    { id: "compositions", label: "Compositions" },
+  ] as const;
+
   return (
     <main className="min-h-screen bg-background py-8">
       <div className="mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
@@ -238,85 +283,38 @@ export function BuyerDashboard({
           <SupportIssueButton context="buyer-dashboard" />
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Card
-            role="button"
-            tabIndex={0}
+        {/* Quick Actions */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant={activeTab === "library" ? "default" : "secondary"}
             onClick={() => handleTabChange("library")}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                handleTabChange("library");
-              }
-            }}
-            className="group cursor-pointer border-border/40 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 transition-all hover:scale-[1.02] hover:border-emerald-500/50 hover:shadow-lg"
+            className="h-9 rounded-full px-4 text-sm"
           >
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Compositions
-              </CardTitle>
-              <Music className="size-4 text-emerald-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">
-                {loading ? "..." : purchasedCompositions.length}
-              </div>
-              <p className="text-xs text-muted-foreground">in your library</p>
-            </CardContent>
-          </Card>
-
-          <Card
-            role="button"
-            tabIndex={0}
+            <Music className="mr-2 size-4" />
+            Library
+            <span className="ml-2 rounded-full bg-background/20 px-2 py-0.5 text-xs">
+              {loading ? "..." : purchasedCompositions.length}
+            </span>
+          </Button>
+          <Button
+            variant="secondary"
             onClick={() => handleTabChange("library")}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                handleTabChange("library");
-              }
-            }}
-            className="group cursor-pointer border-border/40 bg-gradient-to-br from-green-500/10 to-emerald-500/10 transition-all hover:scale-[1.02] hover:border-green-500/50 hover:shadow-lg"
+            className="h-9 rounded-full px-4 text-sm"
           >
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Spent
-              </CardTitle>
-              <DollarSign className="size-4 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">
-                {loading ? "..." : formatKesAmount(totalSpent)}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                lifetime purchases
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card
-            role="button"
-            tabIndex={0}
+            <DollarSign className="mr-2 size-4" />
+            {loading ? "..." : formatKesAmount(totalSpent)}
+          </Button>
+          <Button
+            variant={activeTab === "checkout" ? "default" : "secondary"}
             onClick={() => handleTabChange("checkout")}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                handleTabChange("checkout");
-              }
-            }}
-            className="group cursor-pointer border-border/40 bg-gradient-to-br from-amber-500/10 to-orange-500/10 transition-all hover:scale-[1.02] hover:border-amber-500/50 hover:shadow-lg"
+            className="h-9 rounded-full px-4 text-sm"
           >
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Cart Items
-              </CardTitle>
-              <ShoppingBag className="size-4 text-amber-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{cart.length}</div>
-              <p className="text-xs text-muted-foreground">ready to purchase</p>
-            </CardContent>
-          </Card>
+            <ShoppingBag className="mr-2 size-4" />
+            Cart
+            <span className="ml-2 rounded-full bg-background/20 px-2 py-0.5 text-xs">
+              {cart.length}
+            </span>
+          </Button>
         </div>
 
         {/* Tabs */}
@@ -371,84 +369,155 @@ export function BuyerDashboard({
                 </div>
               </div>
             ) : (
-              <div>
-                <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-2xl font-bold">Your Compositions</h2>
-                  <p className="text-sm text-muted-foreground">
-                    {purchasedCompositions.length}{" "}
-                    {purchasedCompositions.length === 1
-                      ? "composition"
-                      : "compositions"}
-                  </p>
+              <div className="space-y-6">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <h2 className="text-2xl font-semibold">Library</h2>
+                    <p className="text-sm text-muted-foreground">
+                      {isLibraryFiltered
+                        ? `${filteredLibrary.length} of ${purchasedCompositions.length} compositions`
+                        : `${purchasedCompositions.length} compositions`}
+                    </p>
+                  </div>
+                  <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center lg:w-auto">
+                    <div className="relative w-full sm:w-72">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        value={librarySearch}
+                        onChange={(event) =>
+                          setLibrarySearch(event.target.value)
+                        }
+                        placeholder="Search your library..."
+                        className="h-10 w-full rounded-full border border-border/60 bg-background/60 pl-9 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                      />
+                      {librarySearch && (
+                        <button
+                          type="button"
+                          onClick={() => setLibrarySearch("")}
+                          className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {libraryFilters.map((filter) => (
+                        <Button
+                          key={filter.id}
+                          type="button"
+                          variant="secondary"
+                          onClick={() => setLibraryFilter(filter.id)}
+                          className={`h-8 rounded-full px-3 text-xs ${
+                            libraryFilter === filter.id
+                              ? "bg-foreground text-background hover:bg-foreground/90"
+                              : "bg-muted/60 text-foreground/80 hover:bg-muted"
+                          }`}
+                        >
+                          {filter.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                  {purchasedCompositions.map(
-                    ({ composition, purchased_at, price_paid, id }) => (
-                      <div
-                        key={id}
-                        className="group relative cursor-pointer rounded-lg bg-card/50 p-4 transition-all hover:bg-card"
-                        onMouseEnter={() => setHoveredCard(id)}
-                        onMouseLeave={() => setHoveredCard(null)}
+
+                {filteredLibrary.length === 0 ? (
+                  <div className="rounded-2xl border border-border/40 bg-card/40 p-10 text-center">
+                    <h3 className="text-lg font-semibold text-foreground">
+                      No compositions match your filters
+                    </h3>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Try adjusting your search or clearing the filters.
+                    </p>
+                    {isLibraryFiltered && (
+                      <Button
+                        variant="outline"
+                        className="mt-5"
+                        onClick={() => {
+                          setLibrarySearch("");
+                          setLibraryFilter("all");
+                        }}
                       >
-                        {/* Album Art Style Card */}
-                        <div className="relative mb-4 aspect-square overflow-hidden rounded-md bg-gradient-to-br from-emerald-500/20 to-teal-500/20 shadow-lg">
-                          <div className="flex h-full items-center justify-center">
-                            <Music className="size-16 text-emerald-600/60" />
-                          </div>
+                        Clear filters
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                    {filteredLibrary.map((entry) => {
+                      const { composition, purchased_at, id } = entry;
+                      const coverUrl =
+                        composition?.thumbnail_url || composition?.thumbnailUrl;
 
-                          {/* Play/Download Button Overlay */}
-                          <div
-                            className={`absolute inset-0 flex items-center justify-center bg-black/40 transition-opacity ${hoveredCard === id ? "opacity-100" : "opacity-0"}`}
-                          >
-                            <Button
-                              size="icon"
-                              className="h-12 w-12 rounded-full bg-primary shadow-xl transition-transform hover:scale-110"
-                              onClick={() => void handleDownloadComposition(id)}
-                              disabled={downloadingPurchaseId === id}
-                            >
-                              {downloadingPurchaseId === id ? (
-                                <Loader className="size-5 animate-spin" />
-                              ) : (
-                                <Download className="size-5" />
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-
-                        {/* Composition Info - Deliverables under the card */}
-                        <div className="space-y-1">
-                          <h3 className="truncate font-semibold text-foreground">
-                            {composition?.title || "Untitled"}
-                          </h3>
-                          <p className="truncate text-sm text-muted-foreground">
-                            {composition?.composerName || "Unknown"}
-                          </p>
-
-                          {/* Deliverables (voice parts) under the card */}
-                          {Array.isArray(composition?.voiceParts) &&
-                            composition.voiceParts.length > 0 && (
-                              <p className="truncate text-xs text-muted-foreground/80">
-                                {composition.voiceParts.join(", ")}
-                              </p>
+                      return (
+                        <div
+                          key={id}
+                          className="group relative rounded-xl bg-card/50 p-3 transition-all hover:bg-card hover:shadow-lg"
+                          onMouseEnter={() => setHoveredCard(id)}
+                          onMouseLeave={() => setHoveredCard(null)}
+                        >
+                          <div className="relative mb-3 aspect-square overflow-hidden rounded-lg bg-muted/50">
+                            {coverUrl ? (
+                              <img
+                                src={coverUrl}
+                                alt={composition?.title || "Composition cover"}
+                                className="h-full w-full object-cover"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="flex h-full items-center justify-center bg-gradient-to-br from-emerald-500/20 to-teal-500/20">
+                                <Music className="size-12 text-emerald-600/60" />
+                              </div>
                             )}
 
-                          <div className="flex items-center gap-1.5 pt-1 text-xs text-muted-foreground/70">
-                            <Calendar className="size-3" />
-                            <span>
-                              {new Date(purchased_at).toLocaleDateString(
-                                "en-US",
-                                {
-                                  month: "short",
-                                  year: "numeric",
-                                },
-                              )}
-                            </span>
+                            <div
+                              className={`absolute inset-0 flex items-center justify-center bg-black/40 transition-opacity ${
+                                hoveredCard === id
+                                  ? "opacity-100"
+                                  : "opacity-0"
+                              }`}
+                            >
+                              <Button
+                                size="icon"
+                                className="h-11 w-11 rounded-full bg-primary shadow-xl transition-transform hover:scale-110"
+                                onClick={() =>
+                                  void handleDownloadComposition(id)
+                                }
+                                disabled={downloadingPurchaseId === id}
+                              >
+                                {downloadingPurchaseId === id ? (
+                                  <Loader className="size-5 animate-spin" />
+                                ) : (
+                                  <Download className="size-5" />
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <h3 className="truncate text-sm font-semibold text-foreground">
+                              {composition?.title || "Untitled"}
+                            </h3>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {composition?.composerName || "Unknown"}
+                            </p>
+                            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
+                              <Calendar className="size-3" />
+                              <span>
+                                {new Date(purchased_at).toLocaleDateString(
+                                  "en-US",
+                                  {
+                                    month: "short",
+                                    year: "numeric",
+                                  },
+                                )}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ),
-                  )}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </TabsContent>
