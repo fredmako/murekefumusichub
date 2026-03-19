@@ -262,24 +262,26 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
   const userInitial = displayName?.charAt(0)?.toUpperCase() || "";
 
   return (
-    <main className="min-h-screen bg-black text-white">
-      <div className="sticky top-0 z-10 bg-black/95 backdrop-blur-md">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-gradient-to-b from-indigo-950/30 via-background to-background text-foreground">
+      <div className="sticky top-0 z-10 border-b border-white/10 bg-background/80 backdrop-blur">
+        <div className="app-shell py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-600 text-sm font-semibold">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-primary/30 bg-primary/15 text-sm font-semibold text-primary">
                 {userInitial ? userInitial : <User className="size-6" />}
               </div>
               <div>
                 <h1 className="text-2xl font-bold">Your Library</h1>
-                <p className="text-xs text-white/50">Welcome back, {displayName}</p>
+                <p className="text-xs text-muted-foreground">
+                  Welcome back, {displayName}
+                </p>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="section-shell space-y-6">
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
           <button
             onClick={() => {
@@ -288,8 +290,8 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
             }}
             className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
               activeTab === "library" && libraryFilter === "all"
-                ? "bg-white text-black"
-                : "bg-white/10 text-white hover:bg-white/20"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "border border-white/10 bg-white/5 text-foreground/80 hover:bg-white/10"
             }`}
           >
             All
@@ -301,8 +303,8 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
             }}
             className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
               activeTab === "library" && libraryFilter === "compositions"
-                ? "bg-white text-black"
-                : "bg-white/10 text-white hover:bg-white/20"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "border border-white/10 bg-white/5 text-foreground/80 hover:bg-white/10"
             }`}
           >
             Compositions
@@ -311,8 +313,8 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
             onClick={() => handleTabChange("checkout")}
             className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
               activeTab === "checkout"
-                ? "bg-white text-black"
-                : "bg-white/10 text-white hover:bg-white/20"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "border border-white/10 bg-white/5 text-foreground/80 hover:bg-white/10"
             }`}
           >
             Cart {cart.length > 0 && `(${cart.length})`}
@@ -323,18 +325,18 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
           <div className="space-y-6">
             <div className="max-w-lg">
               <div className="relative">
-                <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-white/50" />
+                <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Search your library..."
                   value={librarySearch}
                   onChange={(event) => setLibrarySearch(event.target.value)}
-                  className="h-11 border-white/10 bg-white/10 pl-10 pr-10 text-white placeholder:text-white/40"
+                  className="h-11 border-white/15 bg-white/10 pl-10 pr-10 text-foreground placeholder:text-muted-foreground focus-visible:ring-primary/40"
                 />
                 {librarySearch ? (
                   <button
                     type="button"
                     onClick={() => setLibrarySearch("")}
-                    className="absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white/70 hover:bg-white/20"
+                    className="absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-white/10 text-muted-foreground transition hover:text-foreground"
                     aria-label="Clear search"
                   >
                     <X className="size-4" />
@@ -349,8 +351,8 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
                   variant="ghost"
                   size="icon"
                   onClick={() => setViewMode("list")}
-                  className={`text-white hover:bg-white/10 ${
-                    viewMode === "list" ? "bg-white/20" : ""
+                  className={`text-foreground hover:bg-white/10 ${
+                    viewMode === "list" ? "bg-white/15" : ""
                   }`}
                 >
                   <List className="size-5" />
@@ -359,8 +361,8 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
                   variant="ghost"
                   size="icon"
                   onClick={() => setViewMode("grid")}
-                  className={`text-white hover:bg-white/10 ${
-                    viewMode === "grid" ? "bg-white/20" : ""
+                  className={`text-foreground hover:bg-white/10 ${
+                    viewMode === "grid" ? "bg-white/15" : ""
                   }`}
                 >
                   <Grid3x3 className="size-5" />
@@ -370,24 +372,24 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
 
             {loading ? (
               <div className="flex min-h-[400px] items-center justify-center">
-                <Loader className="size-12 animate-spin text-white" />
+                <Loader className="size-12 animate-spin text-muted-foreground" />
               </div>
             ) : filteredPurchases.length === 0 ? (
               <div className="flex min-h-[400px] items-center justify-center">
                 <div className="text-center">
-                  <Music className="mx-auto mb-4 size-16 text-white/40" />
+                  <Music className="mx-auto mb-4 size-16 text-muted-foreground" />
                   <h3 className="mb-2 text-xl font-semibold">
                     Your library is empty
                   </h3>
-                  <p className="mb-6 text-white/60">
+                  <p className="mb-6 text-muted-foreground">
                     Start building your collection of beautiful compositions
                   </p>
                   <Button
-                    className="bg-white text-black hover:bg-white/90"
+                    className="gap-2"
                     onClick={() => navigate("/marketplace")}
                   >
                     Browse Marketplace
-                    <ArrowRight className="ml-2 size-4" />
+                    <ArrowRight className="size-4" />
                   </Button>
                 </div>
               </div>
@@ -412,7 +414,7 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
                     return (
                       <div
                         key={id}
-                        className="group cursor-pointer rounded-lg bg-white/5 p-4 transition-all hover:bg-white/10"
+                        className="group cursor-pointer rounded-xl border border-white/10 bg-white/5 p-4 transition-all hover:bg-white/10"
                         onMouseEnter={() => setHoveredCard(id)}
                         onMouseLeave={() => setHoveredCard(null)}
                       >
@@ -451,19 +453,19 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
                         </div>
 
                         <div className="space-y-1">
-                          <h3 className="truncate font-semibold text-white">
+                          <h3 className="truncate font-semibold text-foreground">
                             {title}
                           </h3>
-                          <p className="truncate text-sm text-white/60">
+                          <p className="truncate text-sm text-muted-foreground">
                             {composer}
                           </p>
                           {Array.isArray(voiceParts) && voiceParts.length > 0 && (
-                            <p className="truncate text-xs text-white/40">
+                            <p className="truncate text-xs text-muted-foreground/80">
                               {voiceParts.join(", ")}
                             </p>
                           )}
                           {purchasedAt ? (
-                            <div className="flex items-center gap-1.5 text-xs text-white/40">
+                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground/80">
                               <Calendar className="size-3" />
                               <span>
                                 {new Date(purchasedAt).toLocaleDateString(
@@ -500,7 +502,7 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
                   return (
                     <div
                       key={id}
-                      className="group flex cursor-pointer items-center gap-4 rounded-lg p-2 transition-colors hover:bg-white/10"
+                      className="group flex cursor-pointer items-center gap-4 rounded-lg border border-white/10 p-2 transition-colors hover:bg-white/10"
                       onClick={() => void handleDownloadComposition(id)}
                     >
                       <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-md shadow-lg">
@@ -517,21 +519,21 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
                           </div>
                         )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="truncate font-semibold text-white">
+                        <div className="flex-1 min-w-0">
+                        <h3 className="truncate font-semibold text-foreground">
                           {title}
                         </h3>
-                        <p className="truncate text-sm text-white/60">
+                        <p className="truncate text-sm text-muted-foreground">
                           {composer}
                         </p>
                         {Array.isArray(voiceParts) && voiceParts.length > 0 && (
-                          <p className="truncate text-xs text-white/40">
+                          <p className="truncate text-xs text-muted-foreground/80">
                             {voiceParts.join(", ")}
                           </p>
                         )}
                       </div>
                       {purchasedAt ? (
-                        <span className="hidden text-xs text-white/40 md:block">
+                        <span className="hidden text-xs text-muted-foreground/80 md:block">
                           {new Date(purchasedAt).toLocaleDateString("en-US", {
                             month: "short",
                             year: "numeric",
@@ -541,7 +543,7 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="text-white opacity-0 transition-opacity hover:bg-white/10 group-hover:opacity-100"
+                        className="text-foreground/70 opacity-0 transition-opacity hover:bg-white/10 group-hover:opacity-100"
                         disabled={downloadingPurchaseId === id}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -560,20 +562,20 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
               </div>
             )}
 
-            <div className="mt-8 rounded-2xl bg-gradient-to-r from-purple-600/20 to-pink-600/20 p-6">
+            <div className="mt-8 rounded-2xl border border-white/10 bg-gradient-to-r from-purple-600/15 to-pink-600/15 p-6">
               <h3 className="mb-4 text-lg font-semibold">Your Stats</h3>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                 <div>
                   <div className="text-3xl font-bold">
                     {purchasedCompositions.length}
                   </div>
-                  <p className="text-sm text-white/60">Compositions</p>
+                  <p className="text-sm text-muted-foreground">Compositions</p>
                 </div>
                 <div>
                   <div className="text-3xl font-bold">
                     {formatKesAmount(totalSpent)}
                   </div>
-                  <p className="text-sm text-white/60">Total Spent</p>
+                  <p className="text-sm text-muted-foreground">Total Spent</p>
                 </div>
                 <div className="col-span-2 sm:col-span-1">
                   <div className="text-3xl font-bold">
@@ -584,7 +586,7 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
                         })
                       : "--"}
                   </div>
-                  <p className="text-sm text-white/60">Member Since</p>
+                  <p className="text-sm text-muted-foreground">Member Since</p>
                 </div>
               </div>
             </div>
@@ -596,21 +598,21 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
             <h2 className="text-2xl font-bold">Shopping Cart</h2>
 
             {cart.length === 0 ? (
-              <div className="flex min-h-[400px] items-center justify-center rounded-2xl bg-white/5 p-8">
+              <div className="flex min-h-[400px] items-center justify-center rounded-2xl border border-white/10 bg-white/5 p-8">
                 <div className="text-center">
-                  <ShoppingBag className="mx-auto mb-4 size-16 text-white/40" />
+                  <ShoppingBag className="mx-auto mb-4 size-16 text-muted-foreground" />
                   <h3 className="mb-2 text-xl font-semibold">
                     Your cart is empty
                   </h3>
-                  <p className="mb-6 text-white/60">
+                  <p className="mb-6 text-muted-foreground">
                     Add compositions to get started
                   </p>
                   <Button
-                    className="bg-white text-black hover:bg-white/90"
+                    className="gap-2"
                     onClick={() => navigate("/marketplace")}
                   >
                     Browse Marketplace
-                    <ArrowRight className="ml-2 size-4" />
+                    <ArrowRight className="size-4" />
                   </Button>
                 </div>
               </div>
@@ -620,25 +622,25 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
                   {cart.map((item) => (
                     <div
                       key={item.composition.id}
-                      className="flex items-start gap-4 rounded-2xl bg-white/5 p-4 transition-colors hover:bg-white/10"
+                      className="flex items-start gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 transition-colors hover:bg-white/10"
                     >
                       <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-pink-600 shadow-lg">
                         <Music className="size-10 text-white" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h4 className="truncate font-semibold text-white">
+                        <h4 className="truncate font-semibold text-foreground">
                           {item.composition.title}
                         </h4>
-                        <p className="truncate text-sm text-white/60">
+                        <p className="truncate text-sm text-muted-foreground">
                           {item.composition.composerName}
                         </p>
                         {Array.isArray(item.composition.voiceParts) &&
                           item.composition.voiceParts.length > 0 && (
-                            <p className="mt-1 truncate text-xs text-white/40">
+                            <p className="mt-1 truncate text-xs text-muted-foreground/80">
                               {item.composition.voiceParts.join(", ")}
                             </p>
                           )}
-                        <p className="mt-2 text-lg font-bold text-white">
+                        <p className="mt-2 text-lg font-bold text-foreground">
                           {formatKesAmount(item.composition.price)}
                         </p>
                       </div>
@@ -647,7 +649,7 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
                           variant="ghost"
                           size="sm"
                           onClick={() => handleRemoveItem(item.composition.id)}
-                          className="text-white/60 hover:bg-white/10 hover:text-white"
+                          className="text-foreground/70 hover:bg-white/10 hover:text-foreground"
                         >
                           <Trash2 className="mr-1 size-4" />
                           Remove
@@ -658,11 +660,11 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
                 </div>
 
                 <div className="lg:sticky lg:top-24 lg:self-start">
-                  <div className="rounded-2xl bg-white/5 p-6">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
                     <h3 className="mb-4 text-xl font-bold">Order Summary</h3>
                     <div className="space-y-3">
                       <div className="flex justify-between text-sm">
-                        <span className="text-white/60">
+                        <span className="text-muted-foreground">
                           Subtotal ({cart.length}{" "}
                           {cart.length === 1 ? "item" : "items"})
                         </span>
@@ -671,7 +673,7 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-white/60">Processing Fee</span>
+                        <span className="text-muted-foreground">Processing Fee</span>
                         <span className="font-medium text-emerald-400">
                           FREE
                         </span>
@@ -693,16 +695,16 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
                       Proceed to Checkout
                     </Button>
 
-                    <div className="mt-4 space-y-2 rounded-lg bg-white/5 p-4">
-                      <div className="flex items-center gap-2 text-sm text-white/60">
+                    <div className="mt-4 space-y-2 rounded-lg border border-white/10 bg-white/5 p-4">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <div className="h-2 w-2 rounded-full bg-emerald-500" />
                         <span>Secure checkout</span>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-white/60">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <div className="h-2 w-2 rounded-full bg-emerald-500" />
                         <span>Instant download</span>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-white/60">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <div className="h-2 w-2 rounded-full bg-emerald-500" />
                         <span>Lifetime access</span>
                       </div>
