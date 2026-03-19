@@ -135,9 +135,6 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
   const [loading, setLoading] = useState(true);
   const [recommendationsLoading, setRecommendationsLoading] = useState(false);
   const [previewComposition, setPreviewComposition] = useState<Composition | null>(null);
-  const [preferenceSavingCategoryId, setPreferenceSavingCategoryId] = useState<
-    number | null
-  >(null);
   const [recommendationMeta, setRecommendationMeta] = useState<RecommendationMeta>({
     mode: "idle",
     purchaseCount: 0,
@@ -290,58 +287,20 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
   }, [compositions]);
 
   useEffect(() => {
+    if (!previewComposition) return;
     const source =
       activeFeed === "for-you" ? recommendedCompositions : filteredCompositions;
-    if (source.length === 0) {
+    if (!source.some((comp) => comp.id === previewComposition.id)) {
       setPreviewComposition(null);
-      return;
     }
-    setPreviewComposition((current) => {
-      if (current && source.some((comp) => comp.id === current.id)) {
-        return current;
-      }
-      return source[0];
-    });
-  }, [activeFeed, filteredCompositions, recommendedCompositions]);
+  }, [activeFeed, filteredCompositions, previewComposition, recommendedCompositions]);
 
-  const handlePreferenceBoost = async (categoryId: number) => {
-    if (!appUser?.id) {
-      toast.info("Sign in to personalize your recommendations.");
-      return;
-    }
+  const handlePreviewSelect = (composition: Composition) => {
+    setPreviewComposition(composition);
+  };
 
-    if (
-      recommendationMeta.mode === "cold_start" &&
-      recommendationMeta.purchaseCount < recommendationMeta.minimumPurchasesForPersonalized
-    ) {
-      toast.info(
-        recommendationMeta.message ||
-          `Make ${recommendationMeta.minimumPurchasesForPersonalized} purchases to unlock personalized recommendations.`,
-      );
-      return;
-    }
-
-    setPreferenceSavingCategoryId(categoryId);
-    try {
-      await fypService.updatePreferences(appUser.id, categoryId, 1);
-      toast.success("Preference saved. Recommendations updated.");
-      const payload = await fypService.getRecommendations(appUser.id, 6) as any;
-      const rows = ensureArray<any>(payload, ["recommendations"]);
-      setRecommendedCompositions(rows.map(mapComposition));
-      setRecommendationMeta({
-        mode: payload?.mode || "fallback",
-        purchaseCount: Number(payload?.purchaseCount || 0),
-        minimumPurchasesForPersonalized: Number(
-          payload?.minimumPurchasesForPersonalized || 3,
-        ),
-        message: String(payload?.message || ""),
-      });
-    } catch (error: any) {
-      console.error("[marketplace] preference update failed:", error);
-      toast.error(error?.message || "Failed to update recommendation preference");
-    } finally {
-      setPreferenceSavingCategoryId(null);
-    }
+  const handlePreviewClear = () => {
+    setPreviewComposition(null);
   };
 
   const featuredGradients = [
@@ -432,8 +391,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                   <div
                     key={`featured-${composition.id}`}
                     className="group overflow-hidden rounded-2xl border border-white/10 bg-white/5 transition hover:bg-white/10"
-                    onMouseEnter={() => setPreviewComposition(composition)}
-                    onFocus={() => setPreviewComposition(composition)}
+                    onClick={() => handlePreviewSelect(composition)}
                   >
                     <div className="relative aspect-[16/9] overflow-hidden">
                       {composition.thumbnailUrl ? (
@@ -475,39 +433,6 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
           </section>
         )}
 
-      {categories.length > 0 && (
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
-                <Sparkles className="size-3.5" />
-                Personalize
-              </div>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Tell us what you want more of and we will shape your feed.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {categories.slice(0, 6).map((category) => (
-                <Button
-                  key={`personalize-${category.id}`}
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={preferenceSavingCategoryId === category.id}
-                  onClick={() => void handlePreferenceBoost(category.id)}
-                >
-                  {preferenceSavingCategoryId === category.id ? (
-                    <Loader2 className="mr-2 size-3.5 animate-spin" />
-                  ) : null}
-                  Prefer {category.name}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
       {activeFeed === "for-you" ? (
         <div className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)] backdrop-blur">
           {!appUser ? (
@@ -517,7 +442,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                 For You
               </div>
               <p className="text-sm text-muted-foreground">
-                Sign in to unlock personalized recommendations.
+                Sign in to see your tailored recommendations.
               </p>
             </div>
           ) : (
@@ -528,34 +453,10 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                     <Sparkles className="size-3.5" />
                     Recommended For You
                   </div>
-                  <h2 className="mt-3 text-2xl font-semibold">
-                    Buyer suggestions
-                  </h2>
+                  <h2 className="mt-3 text-2xl font-semibold">For you</h2>
                   <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                    {recommendationMeta.message ||
-                      "This section adapts once your purchase history is strong enough to personalize recommendations."}
+                    A quick mix of recommendations tailored to your listening.
                   </p>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {categories.slice(0, 6).map((category) => (
-                    <Button
-                      key={category.id}
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={
-                        preferenceSavingCategoryId === category.id ||
-                        recommendationMeta.mode === "cold_start"
-                      }
-                      onClick={() => void handlePreferenceBoost(category.id)}
-                    >
-                      {preferenceSavingCategoryId === category.id ? (
-                        <Loader2 className="mr-2 size-3.5 animate-spin" />
-                      ) : null}
-                      Prefer {category.name}
-                    </Button>
-                  ))}
                 </div>
               </div>
 
@@ -565,28 +466,20 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                     <Loader2 className="size-4 animate-spin" />
                     Loading recommendations...
                   </div>
-                ) : recommendationMeta.mode === "cold_start" ? (
-                  <p className="text-sm text-muted-foreground">
-                    {recommendationMeta.message ||
-                      "Make a few purchases to unlock personalized recommendations."}
-                  </p>
                 ) : recommendationMeta.mode === "degraded" ? (
                   <p className="text-sm text-muted-foreground">
-                    {recommendationMeta.message ||
-                      "Recommendations are temporarily unavailable."}
+                    Recommendations are temporarily unavailable.
                   </p>
                 ) : recommendedCompositions.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No personalized recommendations yet. Pick a preferred category
-                    to seed them.
+                    No recommendations yet. Check back after a few plays.
                   </p>
                 ) : (
                   <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
                     {recommendedCompositions.map((composition) => (
                       <div
                         key={`recommended-${composition.id}`}
-                        onMouseEnter={() => setPreviewComposition(composition)}
-                        onFocus={() => setPreviewComposition(composition)}
+                        onClick={() => handlePreviewSelect(composition)}
                       >
                         <CompositionCard
                           composition={composition}
@@ -661,8 +554,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                 <div
                   key={`trending-${composition.id}`}
                   className="group rounded-xl border border-white/10 bg-white/5 p-3 transition-all hover:bg-white/10"
-                  onMouseEnter={() => setPreviewComposition(composition)}
-                  onFocus={() => setPreviewComposition(composition)}
+                  onClick={() => handlePreviewSelect(composition)}
                 >
                   <div className="relative mb-3 aspect-square overflow-hidden rounded-lg shadow-xl">
                     {composition.thumbnailUrl ? (
@@ -821,7 +713,9 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         </p>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div
+        className={`grid gap-6 ${previewComposition ? "xl:grid-cols-[minmax(0,1fr)_320px]" : ""}`}
+      >
         <div>
           {loading && (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -839,8 +733,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
               {filteredCompositions.map((composition) => (
                 <div
                   key={composition.id}
-                  onMouseEnter={() => setPreviewComposition(composition)}
-                  onFocus={() => setPreviewComposition(composition)}
+                  onClick={() => handlePreviewSelect(composition)}
                 >
                   <CompositionCard
                     composition={composition}
@@ -875,83 +768,87 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
           )}
         </div>
 
-        <aside className="hidden xl:block">
-          <div className="sticky top-24 space-y-4 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-            {previewComposition ? (
-              <>
-                <div className="relative aspect-square overflow-hidden rounded-xl bg-white/5">
-                  {previewComposition.thumbnailUrl ? (
-                    <img
-                      src={previewComposition.thumbnailUrl}
-                      alt={previewComposition.title}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center bg-gradient-to-br from-emerald-500/20 to-teal-500/20">
-                      <Music2 className="size-16 text-emerald-200/70" />
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-lg font-semibold text-foreground">
-                    {previewComposition.title}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {previewComposition.composerName}
+        {previewComposition && (
+          <aside className="hidden xl:block">
+            <div className="sticky top-24 space-y-4 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Preview
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                  {previewComposition.language ? (
-                    <span>{previewComposition.language}</span>
-                  ) : null}
-                  {previewComposition.duration ? (
-                    <span>{previewComposition.duration}</span>
-                  ) : null}
-                  {previewComposition.difficulty ? (
-                    <span>{previewComposition.difficulty}</span>
-                  ) : null}
-                </div>
-                {previewComposition.midiUrl ? (
-                  <MidiPreviewPlayer
-                    midiUrl={previewComposition.midiUrl}
-                    compact
-                    className="mt-2"
+                <button
+                  type="button"
+                  onClick={handlePreviewClear}
+                  className="rounded-full border border-white/10 bg-white/10 p-1 text-muted-foreground transition hover:text-foreground"
+                  aria-label="Close preview"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+              <div className="relative aspect-square overflow-hidden rounded-xl bg-white/5">
+                {previewComposition.thumbnailUrl ? (
+                  <img
+                    src={previewComposition.thumbnailUrl}
+                    alt={previewComposition.title}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
                   />
                 ) : (
-                  <p className="text-xs text-muted-foreground">
-                    MIDI preview not available for this composition.
-                  </p>
+                  <div className="flex h-full items-center justify-center bg-gradient-to-br from-emerald-500/20 to-teal-500/20">
+                    <Music2 className="size-16 text-emerald-200/70" />
+                  </div>
                 )}
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => onAddToCart?.(previewComposition)}
-                    disabled={!onAddToCart}
-                  >
-                    Add to cart
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      setSearchTerm(previewComposition.composerName)
-                    }
-                  >
-                    More like this
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <div className="flex flex-col items-center gap-3 text-center text-sm text-muted-foreground">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/10">
-                  <Music2 className="size-6" />
-                </div>
-                <p>Hover a composition to preview it here.</p>
               </div>
-            )}
-          </div>
-        </aside>
+              <div className="space-y-1">
+                <h3 className="text-lg font-semibold text-foreground">
+                  {previewComposition.title}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {previewComposition.composerName}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                {previewComposition.language ? (
+                  <span>{previewComposition.language}</span>
+                ) : null}
+                {previewComposition.duration ? (
+                  <span>{previewComposition.duration}</span>
+                ) : null}
+                {previewComposition.difficulty ? (
+                  <span>{previewComposition.difficulty}</span>
+                ) : null}
+              </div>
+              {previewComposition.midiUrl ? (
+                <MidiPreviewPlayer
+                  midiUrl={previewComposition.midiUrl}
+                  compact
+                  className="mt-2"
+                />
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  MIDI preview not available for this composition.
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => onAddToCart?.(previewComposition)}
+                  disabled={!onAddToCart}
+                >
+                  Add to cart
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setSearchTerm(previewComposition.composerName)}
+                >
+                  More like this
+                </Button>
+              </div>
+            </div>
+          </aside>
+        )}
       </div>
       </div>
     </main>
