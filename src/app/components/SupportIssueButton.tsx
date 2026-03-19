@@ -63,6 +63,8 @@ export function SupportIssueButton({
 
   const [loadingThreads, setLoadingThreads] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [threadsError, setThreadsError] = useState<string | null>(null);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
   const [creatingThread, setCreatingThread] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [improvingDraft, setImprovingDraft] = useState(false);
@@ -73,6 +75,8 @@ export function SupportIssueButton({
   const messagesLoadRef = useRef(false);
   const threadsRequestId = useRef(0);
   const messagesRequestId = useRef(0);
+  const lastThreadsErrorAt = useRef(0);
+  const lastMessagesErrorAt = useRef(0);
 
   const selectedThread = useMemo(
     () => threads.find((thread) => thread.id === selectedThreadId) || null,
@@ -85,9 +89,10 @@ export function SupportIssueButton({
   }, [selectedThread]);
 
   const loadThreads = useCallback(
-    async (preserveSelection = true) => {
+    async (preserveSelection = true, force = false) => {
       if (!appUser?.id) return;
       if (threadsLoadRef.current) return;
+      if (!force && Date.now() - lastThreadsErrorAt.current < 6000) return;
       const requestId = ++threadsRequestId.current;
       threadsLoadRef.current = true;
       setLoadingThreads(true);
@@ -101,6 +106,8 @@ export function SupportIssueButton({
         if (requestId !== threadsRequestId.current) return;
         const nextThreads = inbox?.threads || [];
         setThreads(nextThreads);
+        setThreadsError(null);
+        lastThreadsErrorAt.current = 0;
         onInboxRefresh?.();
 
         setSelectedThreadId((currentSelected) => {
@@ -113,7 +120,10 @@ export function SupportIssueButton({
         });
       } catch (error: any) {
         console.error("[support-chat] load threads failed:", error);
-        toast.error(error?.message || "Failed to load support chats");
+        const message = error?.message || "Failed to load support chats";
+        setThreadsError(message);
+        lastThreadsErrorAt.current = Date.now();
+        toast.error(message);
       } finally {
         window.clearTimeout(timeoutHandle);
         if (requestId === threadsRequestId.current) {
@@ -126,8 +136,9 @@ export function SupportIssueButton({
   );
 
   const loadMessages = useCallback(
-    async (threadId: string, markRead = true) => {
+    async (threadId: string, markRead = true, force = false) => {
       if (messagesLoadRef.current) return;
+      if (!force && Date.now() - lastMessagesErrorAt.current < 6000) return;
       const requestId = ++messagesRequestId.current;
       messagesLoadRef.current = true;
       setLoadingMessages(true);
@@ -140,6 +151,8 @@ export function SupportIssueButton({
         const response = await supportService.getThreadMessages(threadId);
         if (requestId !== messagesRequestId.current) return;
         setMessages(response?.messages || []);
+        setMessagesError(null);
+        lastMessagesErrorAt.current = 0;
 
         if (markRead && response?.thread?.is_user_unread) {
           await supportService.markThreadRead(threadId).catch(() => null);
@@ -147,7 +160,10 @@ export function SupportIssueButton({
         }
       } catch (error: any) {
         console.error("[support-chat] load messages failed:", error);
-        toast.error(error?.message || "Failed to load thread messages");
+        const message = error?.message || "Failed to load thread messages";
+        setMessagesError(message);
+        lastMessagesErrorAt.current = Date.now();
+        toast.error(message);
       } finally {
         window.clearTimeout(timeoutHandle);
         if (requestId === messagesRequestId.current) {
@@ -369,6 +385,18 @@ export function SupportIssueButton({
                   <Loader className="size-4 animate-spin" />
                   Loading chats...
                 </div>
+              ) : threadsError ? (
+                <div className="space-y-2 px-2 py-3 text-sm text-muted-foreground">
+                  <p>{threadsError}</p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void loadThreads(true, true)}
+                  >
+                    Retry
+                  </Button>
+                </div>
               ) : threads.length === 0 ? (
                 <p className="px-2 py-3 text-sm text-muted-foreground">
                   No chats yet. Start one.
@@ -442,6 +470,22 @@ export function SupportIssueButton({
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader className="size-4 animate-spin" />
                     Loading messages...
+                  </div>
+                ) : messagesError ? (
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <p>{messagesError}</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        selectedThreadId
+                          ? void loadMessages(selectedThreadId, false, true)
+                          : null
+                      }
+                    >
+                      Retry
+                    </Button>
                   </div>
                 ) : messages.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No messages yet.</p>
