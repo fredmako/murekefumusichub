@@ -322,8 +322,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                 Discover Choral Music
               </h1>
               <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                Browse, filter, and personalize your feed with compositions and
-                arrangements curated for you.
+                Browse and filter compositions and arrangements in one place.
               </p>
             </div>
 
@@ -442,7 +441,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                 For You
               </div>
               <p className="text-sm text-muted-foreground">
-                Sign in to see your tailored recommendations.
+                Sign in to see your recommendations.
               </p>
             </div>
           ) : (
@@ -451,11 +450,11 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                 <div>
                   <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
                     <Sparkles className="size-3.5" />
-                    Recommended For You
+                    Recommended
                   </div>
                   <h2 className="mt-3 text-2xl font-semibold">For you</h2>
                   <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                    A quick mix of recommendations tailored to your listening.
+                    A quick mix of fresh picks and familiar favorites.
                   </p>
                 </div>
               </div>
@@ -494,50 +493,6 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
           )}
         </div>
       ) : null}
-
-      {categories.length > 0 && (
-        <section className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)] backdrop-blur">
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
-                <Sparkles className="size-3.5" />
-                Browse by category
-              </div>
-              {activeFeed === "discover" && (
-                <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  Discover
-                </span>
-              )}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Explore by category or jump straight into a new vibe.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant={categoryFilter === "all" ? "default" : "outline"}
-                onClick={() => setCategoryFilter("all")}
-              >
-                All Categories
-              </Button>
-              {categories.map((category) => (
-                <Button
-                  key={category.id}
-                  type="button"
-                  size="sm"
-                  variant={
-                    categoryFilter === String(category.id) ? "default" : "outline"
-                  }
-                  onClick={() => setCategoryFilter(String(category.id))}
-                >
-                  {category.name}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
 
       {trendingCompositions.length > 0 && (
         <section className="space-y-4">

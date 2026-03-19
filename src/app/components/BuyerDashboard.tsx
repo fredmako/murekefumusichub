@@ -9,7 +9,6 @@ import {
   List,
   Loader,
   Music,
-  Plus,
   Search,
   ShoppingBag,
   Trash2,
@@ -51,7 +50,6 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
   const [libraryFilter, setLibraryFilter] = useState<"all" | "compositions">(
     "all",
   );
-  const [showSearch, setShowSearch] = useState(false);
   const [librarySearch, setLibrarySearch] = useState("");
 
   useEffect(() => {
@@ -277,49 +275,7 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
                 <p className="text-xs text-white/50">Welcome back, {displayName}</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-white hover:bg-white/10"
-                onClick={() => setShowSearch((prev) => !prev)}
-              >
-                <Search className="size-5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-white hover:bg-white/10"
-                onClick={() => navigate("/marketplace")}
-              >
-                <Plus className="size-5" />
-              </Button>
-            </div>
           </div>
-
-          {showSearch && (
-            <div className="mt-4 max-w-lg">
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-white/50" />
-                <Input
-                  placeholder="Search your library..."
-                  value={librarySearch}
-                  onChange={(event) => setLibrarySearch(event.target.value)}
-                  className="h-11 border-white/10 bg-white/10 pl-10 pr-10 text-white placeholder:text-white/40"
-                />
-                {librarySearch ? (
-                  <button
-                    type="button"
-                    onClick={() => setLibrarySearch("")}
-                    className="absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white/70 hover:bg-white/20"
-                    aria-label="Clear search"
-                  >
-                    <X className="size-4" />
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -365,6 +321,27 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
 
         {activeTab === "library" && (
           <div className="space-y-6">
+            <div className="max-w-lg">
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-white/50" />
+                <Input
+                  placeholder="Search your library..."
+                  value={librarySearch}
+                  onChange={(event) => setLibrarySearch(event.target.value)}
+                  className="h-11 border-white/10 bg-white/10 pl-10 pr-10 text-white placeholder:text-white/40"
+                />
+                {librarySearch ? (
+                  <button
+                    type="button"
+                    onClick={() => setLibrarySearch("")}
+                    className="absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white/70 hover:bg-white/20"
+                    aria-label="Clear search"
+                  >
+                    <X className="size-4" />
+                  </button>
+                ) : null}
+              </div>
+            </div>
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold">Recent Purchases</h2>
               <div className="flex gap-1">

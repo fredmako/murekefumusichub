@@ -266,30 +266,30 @@ export function ComposerDashboard() {
       ? "My Arrangements"
       : activeCategory === "compositions"
         ? "My Compositions"
-        : "All Works";
+        : "My Works";
   const activeCategoryDescription =
     activeCategory === "arrangements"
       ? "Track your arrangement listings and performance."
       : activeCategory === "compositions"
         ? "Manage and track your original compositions."
-        : "Manage and track performance across all your works.";
+        : "Track performance across your catalog.";
   const isArrangementsView = activeCategory === "arrangements";
   const isCompositionsView = activeCategory === "compositions";
   const heroBadge = isArrangementsView
     ? "Arrangements Workspace"
     : isCompositionsView
       ? "Compositions Workspace"
-      : "Composer Workspace";
+      : "My Works";
   const heroTitle = isArrangementsView
     ? "My Arrangements"
     : isCompositionsView
       ? "My Compositions"
-      : "Composer Dashboard";
+      : "My Works";
   const heroDescription = isArrangementsView
     ? "Manage arrangement listings, update pricing, and monitor engagement."
     : isCompositionsView
       ? "Manage original compositions, update listings, and track performance."
-      : "Manage your score listings, monitor performance, and keep your catalog current.";
+      : "Manage your catalog, pricing, and performance in one place.";
   const entryLabel = isArrangementsView
     ? "Arrangement"
     : isCompositionsView
@@ -306,20 +306,6 @@ export function ComposerDashboard() {
       behavior: "smooth",
       block: "start",
     });
-  };
-  const handleCategoryChange = (next: "all" | "arrangements" | "compositions") => {
-    setActiveCategory(next);
-    const params = new URLSearchParams(location.search);
-    if (next === "all") {
-      params.delete("tab");
-    } else {
-      params.set("tab", next);
-    }
-    const search = params.toString();
-    navigate(
-      { pathname: location.pathname, search: search ? `?${search}` : "" },
-      { replace: true },
-    );
   };
   const handleViewComposition = (composition: CompositionWithStats) => {
     setSelectedComposition(composition);
@@ -761,32 +747,6 @@ export function ComposerDashboard() {
               <div>
                 <CardTitle>{activeCategoryTitle}</CardTitle>
                 <CardDescription>{activeCategoryDescription}</CardDescription>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={activeCategory === "all" ? "default" : "outline"}
-                  onClick={() => handleCategoryChange("all")}
-                >
-                  All Works
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={activeCategory === "compositions" ? "default" : "outline"}
-                  onClick={() => handleCategoryChange("compositions")}
-                >
-                  My Compositions
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={activeCategory === "arrangements" ? "default" : "outline"}
-                  onClick={() => handleCategoryChange("arrangements")}
-                >
-                  My Arrangements
-                </Button>
               </div>
             </div>
           </CardHeader>
