@@ -3,6 +3,9 @@
 :root {
   --font-size: 16px;
   --route-backdrop-image: none;
+  --route-backdrop-image-size: cover;
+  --route-backdrop-image-repeat: no-repeat;
+  --route-backdrop-image-position: center;
   --route-backdrop-overlay: linear-gradient(140deg, rgba(247, 252, 255, 0.58), rgba(242, 249, 255, 0.46), rgba(236, 245, 251, 0.56));
   --route-backdrop-scrim: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(248, 251, 255, 0.2), rgba(244, 248, 252, 0.36));
   --route-panel-overlay: linear-gradient(135deg, rgba(255, 255, 255, 0.44), rgba(248, 251, 255, 0.56), rgba(238, 246, 252, 0.34));
@@ -406,9 +409,9 @@
     border-radius: inherit;
     pointer-events: none;
     background-image: var(--route-panel-overlay), var(--route-backdrop-image);
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
+    background-size: cover, var(--route-backdrop-image-size);
+    background-position: center, var(--route-backdrop-image-position);
+    background-repeat: no-repeat, var(--route-backdrop-image-repeat);
     background-blend-mode: normal;
     mix-blend-mode: normal;
     opacity: 0.94;
@@ -437,6 +440,9 @@
   .route-backdrop-panel-strong::before {
     background-image: var(--route-panel-overlay-strong), var(--route-backdrop-image);
     opacity: 0.98;
+    background-size: cover, var(--route-backdrop-image-size);
+    background-position: center, var(--route-backdrop-image-position);
+    background-repeat: no-repeat, var(--route-backdrop-image-repeat);
   }
 
   .route-backdrop-panel-strong::after {

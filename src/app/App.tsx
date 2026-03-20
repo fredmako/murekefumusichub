@@ -154,131 +154,43 @@ type RouteBackdropConfig = {
   dark: string;
   overlayLight: string;
   overlayDark: string;
+  imageSize?: string;
+  imageRepeat?: string;
+  imagePosition?: string;
 };
 
-const pixelBackdrop = (seed: string) =>
-  `https://picsum.photos/seed/${seed}/2400/1600`;
+const OUTLOOK_STAR_DARK = [
+  "radial-gradient(circle at 18% 16%, rgba(118, 185, 255, 0.32), transparent 55%)",
+  "radial-gradient(circle at 82% 22%, rgba(92, 162, 255, 0.26), transparent 52%)",
+  "radial-gradient(circle at 52% 82%, rgba(28, 86, 160, 0.5), transparent 60%)",
+  "radial-gradient(circle, rgba(255,255,255,0.22) 1px, transparent 1.2px)",
+  "radial-gradient(circle, rgba(255,255,255,0.16) 1px, transparent 1.2px)",
+  "linear-gradient(180deg, rgba(4,10,24,0.98) 0%, rgba(6,18,40,0.98) 54%, rgba(8,30,64,0.98) 100%)",
+].join(", ");
 
-const DEFAULT_ROUTE_BACKDROP: RouteBackdropConfig = {
-  light: pixelBackdrop("choral-default-light"),
-  dark: pixelBackdrop("choral-default-dark"),
+const OUTLOOK_STAR_LIGHT = [
+  "radial-gradient(circle at 18% 16%, rgba(168, 210, 255, 0.5), transparent 60%)",
+  "radial-gradient(circle at 82% 20%, rgba(140, 188, 255, 0.42), transparent 58%)",
+  "radial-gradient(circle at 52% 82%, rgba(96, 152, 212, 0.42), transparent 60%)",
+  "radial-gradient(circle, rgba(255,255,255,0.46) 1px, transparent 1.2px)",
+  "radial-gradient(circle, rgba(255,255,255,0.34) 1px, transparent 1.2px)",
+  "linear-gradient(180deg, rgba(226, 238, 252, 0.98) 0%, rgba(208, 226, 248, 0.98) 58%, rgba(188, 210, 236, 0.98) 100%)",
+].join(", ");
+
+const OUTLOOK_ROUTE_BACKDROP: RouteBackdropConfig = {
+  light: OUTLOOK_STAR_LIGHT,
+  dark: OUTLOOK_STAR_DARK,
   overlayLight:
-    "linear-gradient(140deg, rgba(247,252,255,0.62), rgba(242,249,255,0.5), rgba(236,245,251,0.58))",
+    "linear-gradient(140deg, rgba(236, 245, 255, 0.7), rgba(224, 236, 250, 0.62), rgba(210, 226, 244, 0.6))",
   overlayDark:
-    "linear-gradient(140deg, rgba(5,11,24,0.62), rgba(16,10,32,0.5), rgba(8,24,48,0.58))",
+    "linear-gradient(140deg, rgba(7, 14, 30, 0.34), rgba(10, 22, 42, 0.46), rgba(10, 30, 54, 0.38))",
+  imageSize: "cover, cover, cover, 180px 180px, 120px 120px, cover",
+  imageRepeat: "no-repeat, no-repeat, no-repeat, repeat, repeat, no-repeat",
+  imagePosition: "center, center, center, 0 0, 40px 60px, center",
 };
 
 function resolveRouteBackdrop(pathname: string): RouteBackdropConfig {
-  const path = String(pathname || "/").toLowerCase();
-
-  if (path === "/" || path.startsWith("/home")) {
-    return {
-      light: pixelBackdrop("choral-home-light"),
-      dark: pixelBackdrop("choral-home-dark"),
-      overlayLight:
-        "linear-gradient(140deg, rgba(248,253,255,0.58), rgba(244,250,254,0.46), rgba(240,248,253,0.56))",
-      overlayDark:
-        "linear-gradient(140deg, rgba(4,10,22,0.58), rgba(16,9,31,0.46), rgba(7,23,45,0.56))",
-    };
-  }
-
-  if (path.startsWith("/marketplace")) {
-    return {
-      light: pixelBackdrop("choral-market-light"),
-      dark: pixelBackdrop("choral-market-dark"),
-      overlayLight:
-        "linear-gradient(140deg, rgba(250,253,255,0.52), rgba(247,251,255,0.42), rgba(243,249,255,0.52))",
-      overlayDark:
-        "linear-gradient(140deg, rgba(4,10,22,0.56), rgba(14,10,30,0.44), rgba(7,22,42,0.54))",
-    };
-  }
-
-  if (path.startsWith("/buyer") || path.startsWith("/checkout")) {
-    return {
-      light: pixelBackdrop("choral-library-light"),
-      dark: pixelBackdrop("choral-library-dark"),
-      overlayLight:
-        "linear-gradient(140deg, rgba(248,253,255,0.56), rgba(246,251,255,0.46), rgba(240,247,255,0.56))",
-      overlayDark:
-        "linear-gradient(140deg, rgba(5,11,24,0.58), rgba(16,10,34,0.46), rgba(8,24,46,0.56))",
-    };
-  }
-
-  if (path.startsWith("/manage-account")) {
-    return {
-      light: pixelBackdrop("choral-account-light"),
-      dark: pixelBackdrop("choral-account-dark"),
-      overlayLight:
-        "linear-gradient(140deg, rgba(248,253,255,0.44), rgba(245,250,255,0.34), rgba(239,247,253,0.44))",
-      overlayDark:
-        "linear-gradient(140deg, rgba(5,11,24,0.46), rgba(17,10,33,0.36), rgba(8,24,47,0.44))",
-    };
-  }
-
-  if (path.startsWith("/composer") || path.startsWith("/upload")) {
-    return {
-      light: pixelBackdrop("choral-composer-light"),
-      dark: pixelBackdrop("choral-composer-dark"),
-      overlayLight:
-        "linear-gradient(140deg, rgba(248,252,255,0.54), rgba(244,250,255,0.44), rgba(240,247,252,0.54))",
-      overlayDark:
-        "linear-gradient(140deg, rgba(5,11,25,0.58), rgba(18,10,34,0.46), rgba(8,24,47,0.56))",
-    };
-  }
-
-  if (path.startsWith("/admin")) {
-    return {
-      light: pixelBackdrop("choral-admin-light"),
-      dark: pixelBackdrop("choral-admin-dark"),
-      overlayLight:
-        "linear-gradient(140deg, rgba(247,252,255,0.58), rgba(243,249,255,0.48), rgba(239,247,253,0.58))",
-      overlayDark:
-        "linear-gradient(140deg, rgba(4,10,22,0.6), rgba(17,10,34,0.48), rgba(8,24,47,0.58))",
-    };
-  }
-
-  if (
-    path.startsWith("/about") ||
-    path.startsWith("/contact") ||
-    path.startsWith("/privacy-policy")
-  ) {
-    return {
-      light: pixelBackdrop("choral-info-light"),
-      dark: pixelBackdrop("choral-info-dark"),
-      overlayLight:
-        "linear-gradient(140deg, rgba(248,253,255,0.56), rgba(245,250,255,0.46), rgba(240,247,252,0.56))",
-      overlayDark:
-        "linear-gradient(140deg, rgba(4,10,22,0.58), rgba(17,10,33,0.46), rgba(8,24,46,0.56))",
-    };
-  }
-
-  if (path.startsWith("/enroll")) {
-    return {
-      light: pixelBackdrop("choral-enroll-light"),
-      dark: pixelBackdrop("choral-enroll-dark"),
-      overlayLight:
-        "linear-gradient(140deg, rgba(248,253,255,0.56), rgba(244,250,255,0.46), rgba(239,247,253,0.56))",
-      overlayDark:
-        "linear-gradient(140deg, rgba(5,11,24,0.58), rgba(17,10,33,0.46), rgba(8,24,47,0.56))",
-    };
-  }
-
-  if (
-    path.startsWith("/login") ||
-    path.startsWith("/reset-password") ||
-    path.startsWith("/auth/callback")
-  ) {
-    return {
-      light: pixelBackdrop("choral-auth-light"),
-      dark: pixelBackdrop("choral-auth-dark"),
-      overlayLight:
-        "linear-gradient(140deg, rgba(247,252,255,0.62), rgba(244,250,255,0.5), rgba(239,247,253,0.6))",
-      overlayDark:
-        "linear-gradient(140deg, rgba(5,11,24,0.62), rgba(17,10,34,0.5), rgba(8,24,48,0.6))",
-    };
-  }
-
-  return DEFAULT_ROUTE_BACKDROP;
+  return OUTLOOK_ROUTE_BACKDROP;
 }
 
 /* -----------------------------
@@ -445,19 +357,22 @@ export default function App() {
   const routeBackdropVars = useMemo(
     () =>
       ({
-        "--route-backdrop-image": `url(${routeBackdropImage})`,
+        "--route-backdrop-image": routeBackdropImage,
+        "--route-backdrop-image-size": routeBackdrop.imageSize ?? "cover",
+        "--route-backdrop-image-repeat": routeBackdrop.imageRepeat ?? "no-repeat",
+        "--route-backdrop-image-position": routeBackdrop.imagePosition ?? "center",
         "--route-backdrop-overlay": routeBackdropOverlay,
         "--route-backdrop-scrim": isDarkMode
-          ? "linear-gradient(180deg, rgba(5,10,19,0.18), rgba(7,13,24,0.5), rgba(6,12,22,0.72))"
-          : "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(248,251,255,0.2), rgba(244,248,252,0.36))",
+          ? "linear-gradient(180deg, rgba(5,10,22,0.12), rgba(7,14,28,0.46), rgba(6,12,22,0.76))"
+          : "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(241,248,255,0.32), rgba(228,238,252,0.5))",
         "--route-panel-overlay": isDarkMode
-          ? "linear-gradient(135deg, rgba(8,14,28,0.5), rgba(16,16,42,0.58), rgba(9,28,56,0.48))"
-          : "linear-gradient(135deg, rgba(255,255,255,0.44), rgba(248,251,255,0.56), rgba(238,246,252,0.34))",
+          ? "linear-gradient(135deg, rgba(10,18,32,0.6), rgba(12,26,44,0.66), rgba(16,38,70,0.58))"
+          : "linear-gradient(135deg, rgba(255,255,255,0.7), rgba(236,246,255,0.78), rgba(224,238,252,0.68))",
         "--route-panel-overlay-strong": isDarkMode
-          ? "linear-gradient(135deg, rgba(7,12,26,0.78), rgba(22,13,52,0.76), rgba(9,66,82,0.72))"
-          : "linear-gradient(135deg, rgba(7,56,64,0.76), rgba(9,84,96,0.72), rgba(5,150,105,0.64))",
+          ? "linear-gradient(135deg, rgba(6,12,26,0.8), rgba(14,22,44,0.82), rgba(16,40,74,0.76))"
+          : "linear-gradient(135deg, rgba(10,64,92,0.7), rgba(10,96,126,0.68), rgba(6,150,130,0.64))",
       }) as React.CSSProperties,
-    [isDarkMode, routeBackdropImage, routeBackdropOverlay],
+    [isDarkMode, routeBackdrop, routeBackdropImage, routeBackdropOverlay],
   );
 
   useEffect(() => {
@@ -698,10 +613,13 @@ export default function App() {
           className="pointer-events-none fixed inset-0 -z-10 bg-cover bg-center bg-no-repeat"
           style={{
             backgroundImage: "var(--route-backdrop-image)",
-            opacity: isDarkMode ? 0.4 : 0.28,
+            backgroundSize: "var(--route-backdrop-image-size)",
+            backgroundRepeat: "var(--route-backdrop-image-repeat)",
+            backgroundPosition: "var(--route-backdrop-image-position)",
+            opacity: isDarkMode ? 0.55 : 0.32,
             filter: isDarkMode
-              ? "saturate(1.14) contrast(1.08) brightness(0.88)"
-              : "saturate(1.12) contrast(1.04) brightness(1.04)",
+              ? "saturate(1.08) contrast(1.06) brightness(0.9)"
+              : "saturate(1.08) contrast(1.02) brightness(1.03)",
             transform: "scale(1.025)",
           }}
           aria-hidden="true"
@@ -730,6 +648,12 @@ export default function App() {
                 style={{
                   backgroundImage:
                     "var(--route-backdrop-scrim), var(--route-backdrop-overlay), var(--route-backdrop-image)",
+                  backgroundSize:
+                    "cover, cover, var(--route-backdrop-image-size)",
+                  backgroundRepeat:
+                    "no-repeat, no-repeat, var(--route-backdrop-image-repeat)",
+                  backgroundPosition:
+                    "center, center, var(--route-backdrop-image-position)",
                 }}
                 aria-hidden="true"
               />
