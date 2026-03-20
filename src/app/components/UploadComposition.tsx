@@ -115,6 +115,7 @@ export function UploadComposition({
     customAccompaniment: "",
     voiceParts: [] as string[],
     customVoicePart: "",
+    originalLink: "",
   });
 
   const [pdfFile, setPdfFile] = useState<File | null>(null);
@@ -217,6 +218,23 @@ export function UploadComposition({
     if (MIDI_MIME_TYPES.has(mime)) return true;
     if (mime === "application/octet-stream") return hasMidiExtension;
     return hasMidiExtension;
+  };
+
+  const normalizeExternalLink = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
+  };
+
+  const isValidUrl = (value: string) => {
+    if (!value) return true;
+    try {
+      new URL(value);
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const missingRequiredFields: string[] = [];
@@ -516,6 +534,9 @@ export function UploadComposition({
       }
 
       let parsedPrice = Number.parseFloat(formData.price);
+      const normalizedOriginalLink = isArrangement
+        ? normalizeExternalLink(formData.originalLink)
+        : "";
       const finalCurrency = "KES";
 
       if (!formData.title || !formData.description.trim()) {
@@ -534,6 +555,12 @@ export function UploadComposition({
 
       if (!resolvedLanguage || !resolvedAccompaniment) {
         toast.error("Please fill in all required fields");
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (isArrangement && normalizedOriginalLink && !isValidUrl(normalizedOriginalLink)) {
+        toast.error("Please enter a valid link for the original song");
         setIsSubmitting(false);
         return;
       }
@@ -690,6 +717,7 @@ export function UploadComposition({
           pdf_url: pdfUrl,
           midi_url: midiUrl,
           thumbnail_url: thumbnailUrl || null,
+          original_link: normalizedOriginalLink || null,
           is_published: true,
         }),
       });
@@ -968,6 +996,24 @@ export function UploadComposition({
             : "Choose whether this upload is an arrangement or an original composition."}
         </p>
       </div>
+
+      {isArrangement && (
+        <div>
+          <Label htmlFor="original-link">Original Song Link (optional)</Label>
+          <Input
+            id="original-link"
+            type="url"
+            value={formData.originalLink}
+            onChange={(e) =>
+              setFormData((prev) => ({ ...prev, originalLink: e.target.value }))
+            }
+            placeholder="https://youtube.com/..."
+          />
+          <p className="mt-2 text-xs text-gray-600">
+            Add a YouTube or external link to the original piece you arranged.
+          </p>
+        </div>
+      )}
 
       {/* Marketing Background */}
       <div>

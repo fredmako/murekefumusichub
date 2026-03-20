@@ -602,6 +602,7 @@ export const compositionService = {
     pdf_url: string;
     midi_url?: string;
     thumbnail_url?: string;
+    original_link?: string;
     duration?: string;
     accompaniment?: string | string[];
     voice_parts?: string[];
@@ -630,6 +631,7 @@ export const compositionService = {
       pdf_url: string | null;
       midi_url: string | null;
       thumbnail_url: string | null;
+      original_link: string | null;
     }>,
   ) {
     return await apiRequest(`/compositions/${id}`, {
