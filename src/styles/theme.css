@@ -529,3 +529,47 @@
     animation: none !important;
   }
 }
+
+@media (max-width: 768px) {
+  :root {
+    --font-size: 15px;
+  }
+
+  .app-shell,
+  .section-shell {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .section-shell {
+    padding-top: 2.5rem;
+    padding-bottom: 2.5rem;
+  }
+
+  .section-title {
+    font-size: 1.75rem;
+  }
+
+  .section-copy {
+    font-size: 0.95rem;
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --font-size: 14px;
+  }
+
+  .section-shell {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+  }
+
+  .section-title {
+    font-size: 1.5rem;
+  }
+
+  .section-copy {
+    font-size: 0.9rem;
+  }
+}
