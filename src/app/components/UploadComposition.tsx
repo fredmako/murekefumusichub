@@ -126,6 +126,7 @@ export function UploadComposition({
   const [metadataMode, setMetadataMode] = useState<MetadataMode>(null);
   const [analysisAttempted, setAnalysisAttempted] = useState(false);
   const [analysisFailed, setAnalysisFailed] = useState(false);
+  const [isFreeDownload, setIsFreeDownload] = useState(false);
   const [backgroundPrompt, setBackgroundPrompt] = useState("");
   const [backgroundCandidates, setBackgroundCandidates] = useState<
     CompositionBackgroundItem[]
@@ -221,7 +222,9 @@ export function UploadComposition({
   const missingRequiredFields: string[] = [];
   if (!formData.title.trim()) missingRequiredFields.push("Title");
   if (!formData.description.trim()) missingRequiredFields.push("Description");
-  if (!formData.price.trim()) missingRequiredFields.push("Price");
+  if (!isFreeDownload && !formData.price.trim()) {
+    missingRequiredFields.push("Price");
+  }
   if (!formData.duration.trim()) missingRequiredFields.push("Duration");
   if (!resolvedLanguage) missingRequiredFields.push("Language");
   if (!resolvedAccompaniment) missingRequiredFields.push("Accompaniment");
@@ -521,7 +524,9 @@ export function UploadComposition({
         return;
       }
 
-      if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+      if (isFreeDownload) {
+        parsedPrice = 0;
+      } else if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
         toast.error("Please enter a valid positive price");
         setIsSubmitting(false);
         return;
@@ -1039,7 +1044,26 @@ export function UploadComposition({
 
       {/* Price */}
       <div>
-        <Label>Price *</Label>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Label>Price *</Label>
+          <div className="flex items-center gap-2 rounded-full border border-border/70 bg-muted/30 px-3 py-1 text-xs text-muted-foreground">
+            <Checkbox
+              id="free-download"
+              checked={isFreeDownload}
+              onCheckedChange={(checked) => {
+                const nextValue = Boolean(checked);
+                setIsFreeDownload(nextValue);
+                setFormData((prev) => ({
+                  ...prev,
+                  price: nextValue ? "0" : prev.price === "0" ? "" : prev.price,
+                }));
+              }}
+            />
+            <Label htmlFor="free-download" className="cursor-pointer text-xs">
+              Offer as free download
+            </Label>
+          </div>
+        </div>
         <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
           <div className="flex items-center rounded-md border border-border/70 bg-muted/30 px-3 text-sm font-medium text-foreground">
             Kenyan Shilling (KES)
@@ -1053,12 +1077,15 @@ export function UploadComposition({
             onChange={(e) =>
               setFormData((prev) => ({ ...prev, price: e.target.value }))
             }
-            placeholder="e.g., 3500"
-            required
+            placeholder={isFreeDownload ? "0" : "e.g., 3500"}
+            required={!isFreeDownload}
+            disabled={isFreeDownload}
           />
         </div>
         <p className="mt-2 text-xs text-gray-600">
-          All composition prices are entered and stored in Kenyan Shilling (KES).
+          {isFreeDownload
+            ? "This upload will be listed as free for buyers."
+            : "All composition prices are entered and stored in Kenyan Shilling (KES)."}
         </p>
       </div>
 
