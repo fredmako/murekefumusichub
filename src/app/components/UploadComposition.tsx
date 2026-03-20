@@ -867,8 +867,7 @@ export function UploadComposition({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <>
-          {/* Metadata Entry Mode */}
+      {/* Metadata Entry Mode */}
       <div>
         <Label>How would you like to fill composition details?</Label>
         <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
