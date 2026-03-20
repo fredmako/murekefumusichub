@@ -250,7 +250,9 @@ export function UploadComposition({
     missingRequiredFields.push("At least one voice part");
   }
   if (!pdfFile) missingRequiredFields.push("PDF score");
-  if (!midiFile) missingRequiredFields.push("MIDI preview file");
+  if (midiFile === null) {
+    // MIDI is optional; no required field entry.
+  }
 
   const handleAddCustomVoicePart = () => {
     const value = formData.customVoicePart.trim();
@@ -634,7 +636,7 @@ export function UploadComposition({
         return;
       }
 
-      // Step 1b: Upload MIDI preview to Supabase storage bucket
+      // Step 1b: Upload MIDI preview to Supabase storage bucket (optional)
       if (midiFile) {
         const midiFormData = new FormData();
         midiFormData.append("file", midiFile);
@@ -672,10 +674,6 @@ export function UploadComposition({
         const midiUploadData = await midiUploadResponse.json();
         midiUrl = midiUploadData.url;
         setUploadProgress(100);
-      } else {
-        toast.error("Please select a MIDI file");
-        setIsSubmitting(false);
-        return;
       }
 
       let thumbnailUrl = selectedBackgroundUrl.trim();
@@ -837,7 +835,7 @@ export function UploadComposition({
 
   const renderMidiUploadSection = () => (
     <div>
-      <Label htmlFor="midi-file">MIDI Preview File *</Label>
+      <Label htmlFor="midi-file">MIDI Preview File (optional)</Label>
       <div className="mt-2">
         <Input
           id="midi-file"
@@ -851,7 +849,7 @@ export function UploadComposition({
           <p className="mt-2 text-sm text-gray-600">Selected: {midiFile.name}</p>
         )}
         <p className="mt-2 text-xs text-gray-500">
-          Upload a MIDI file so buyers can preview a short sample before download.
+          Upload a MIDI file so buyers can preview a short sample before download. You can skip this if you do not have a MIDI preview.
         </p>
       </div>
     </div>
