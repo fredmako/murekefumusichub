@@ -790,7 +790,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
           if (!open) handlePreviewClear();
         }}
       >
-        <DialogContent className="max-w-3xl border-white/10 bg-slate-950/95 text-foreground">
+        <DialogContent className="max-h-[85vh] w-[min(92vw,56rem)] max-w-[min(92vw,56rem)] overflow-y-auto border-white/10 bg-slate-950/95 text-foreground">
           {previewComposition ? (
             <>
               <DialogHeader className="space-y-1 text-left">
@@ -803,7 +803,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
               </DialogHeader>
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
                 <div className="space-y-4">
-                  <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                  <div className="relative aspect-[16/9] max-h-[40vh] overflow-hidden rounded-xl border border-white/10 bg-white/5">
                     {previewComposition.thumbnailUrl ? (
                       <img
                         src={previewComposition.thumbnailUrl}
