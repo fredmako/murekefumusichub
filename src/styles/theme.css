@@ -266,6 +266,10 @@
     @apply mx-auto w-full max-w-7xl px-4 py-14 sm:px-6 sm:py-16 lg:px-8;
   }
 
+  .dashboard-shell {
+    @apply mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8;
+  }
+
   .soft-kicker {
     @apply inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground;
   }
@@ -522,6 +526,31 @@
       );
     mix-blend-mode: screen;
     animation: route-vortex-glow 480ms ease-out both;
+  }
+
+  .dashboard-density [data-slot="card"] {
+    gap: 1rem;
+    border-radius: 1rem;
+  }
+
+  .dashboard-density [data-slot="card-header"] {
+    padding-left: 1rem;
+    padding-right: 1rem;
+    padding-top: 1rem;
+    padding-bottom: 0.75rem;
+  }
+
+  .dashboard-density [data-slot="card-content"] {
+    padding-left: 1rem;
+    padding-right: 1rem;
+    padding-bottom: 1rem;
+  }
+
+  .dashboard-density [data-slot="card-footer"] {
+    padding-left: 1rem;
+    padding-right: 1rem;
+    padding-bottom: 1rem;
+    padding-top: 0.75rem;
   }
 }
 

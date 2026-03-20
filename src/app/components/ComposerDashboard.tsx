@@ -42,6 +42,7 @@ import { Badge } from "@/app/components/ui/badge";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
 import { UploadComposition } from "@/app/components/UploadComposition";
+import { DashboardShell } from "@/app/components/DashboardShell";
 import { supabase } from "@/lib/supabase";
 import { compositionService } from "@/services/api";
 import { toast } from "sonner";
@@ -321,11 +322,6 @@ export function ComposerDashboard() {
         : "Track performance across your catalog.";
   const isArrangementsView = activeCategory === "arrangements";
   const isCompositionsView = activeCategory === "compositions";
-  const heroBadge = isArrangementsView
-    ? "Arrangements Workspace"
-    : isCompositionsView
-      ? "Compositions Workspace"
-      : "My Works";
   const heroTitle = isArrangementsView
     ? "My Arrangements"
     : isCompositionsView
@@ -462,63 +458,74 @@ export function ComposerDashboard() {
   };
 
   return (
-    <section className="section-shell">
-      <div className="space-y-8">
-        <div className="route-backdrop-panel route-backdrop-panel-strong motion-reveal overflow-hidden rounded-3xl border border-white/15 bg-card/20 text-white shadow-[0_24px_44px_-30px_rgba(15,23,42,0.9)]">
-          <div className="flex flex-col gap-6 p-6 sm:p-8 lg:flex-row lg:items-center lg:justify-between">
-            <div className="max-w-2xl">
-              <span className="inline-flex rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-white/95">
-                {heroBadge}
-              </span>
-              <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-                {heroTitle}
-              </h1>
-              <p className="mt-3 text-sm text-white/85 sm:text-base">
-                {heroDescription}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => navigate("/messenger")}
-              >
-                Support Messenger
+    <DashboardShell
+      title={heroTitle}
+      description={heroDescription}
+      navItems={[
+        {
+          id: "all",
+          label: "All Works",
+          path: "/composer",
+          icon: Music,
+          isActive: (location) =>
+            location.pathname === "/composer" &&
+            !["arrangements", "compositions"].includes(
+              new URLSearchParams(location.search).get("tab") || "",
+            ),
+        },
+        {
+          id: "arrangements",
+          label: "Arrangements",
+          path: "/composer?tab=arrangements",
+          icon: Music,
+        },
+        {
+          id: "compositions",
+          label: "Compositions",
+          path: "/composer?tab=compositions",
+          icon: Music,
+        },
+      ]}
+      actions={
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/messenger")}
+          >
+            Support Messenger
+          </Button>
+          <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="gap-2">
+                <Plus className="size-4" />
+                Upload New {entryLabel}
               </Button>
-              <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
-                <DialogTrigger asChild>
-                  <Button
-                    size="lg"
-                    className="bg-white text-[#0b4b56] shadow-[0_16px_30px_-20px_rgba(15,23,42,0.9)] hover:bg-white/90"
-                  >
-                    <Plus className="mr-2 size-5" />
-                    Upload New {entryLabel}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-h-[90vh] overflow-y-auto border-border/70 bg-card/95 sm:max-w-2xl">
-                  <DialogHeader>
-                    <DialogTitle>Upload New {entryLabel}</DialogTitle>
-                    <DialogDescription>
-                      Add a new choral {entryLabel.toLowerCase()} to the
-                      marketplace
-                    </DialogDescription>
-                  </DialogHeader>
-                  <UploadComposition
-                    onClose={() => setIsUploadOpen(false)}
-                    defaultCategoryName={
-                      isArrangementsView
-                        ? "arrangements"
-                        : isCompositionsView
-                          ? "compositions"
-                          : undefined
-                    }
-                    entryLabel={entryLabel}
-                  />
-                </DialogContent>
-              </Dialog>
-            </div>
-          </div>
-        </div>
+            </DialogTrigger>
+            <DialogContent className="max-h-[90vh] overflow-y-auto border-border/70 bg-card/95 sm:max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Upload New {entryLabel}</DialogTitle>
+                <DialogDescription>
+                  Add a new choral {entryLabel.toLowerCase()} to the marketplace
+                </DialogDescription>
+              </DialogHeader>
+              <UploadComposition
+                onClose={() => setIsUploadOpen(false)}
+                defaultCategoryName={
+                  isArrangementsView
+                    ? "arrangements"
+                    : isCompositionsView
+                      ? "compositions"
+                      : undefined
+                }
+                entryLabel={entryLabel}
+              />
+            </DialogContent>
+          </Dialog>
+        </>
+      }
+    >
 
         <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
           <DialogContent className="border-border/70 bg-card/95 sm:max-w-2xl">
@@ -749,7 +756,7 @@ export function ComposerDashboard() {
               <DollarSign className="size-5 text-white/95" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-semibold tracking-tight">
+              <div className="text-2xl font-semibold tracking-tight">
                 {formatKesAmount(totalRevenue)}
               </div>
               <p className="mt-1 text-xs text-white/80">From {totalSales} sales</p>
@@ -764,7 +771,7 @@ export function ComposerDashboard() {
               <Music className="size-5 text-white/95" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-semibold tracking-tight">
+              <div className="text-2xl font-semibold tracking-tight">
                 {publishedCount}
               </div>
               <p className="mt-1 text-xs text-white/80">
@@ -782,7 +789,7 @@ export function ComposerDashboard() {
               <TrendingUp className="size-5 text-white/95" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-semibold tracking-tight">
+              <div className="text-2xl font-semibold tracking-tight">
                 {formatKesAmount(averagePrice)}
               </div>
               <p className="mt-1 text-xs text-white/80">
@@ -793,7 +800,7 @@ export function ComposerDashboard() {
           </Card>
         </div>
 
-        <Card ref={compositionsSectionRef} className="lift-card overflow-hidden border border-border/70 bg-card/95 shadow-[0_24px_38px_-32px_rgba(15,23,42,0.85)]">
+        <Card ref={compositionsSectionRef} className="lift-card scroll-mt-28 overflow-hidden border border-border/70 bg-card/95 shadow-[0_24px_38px_-32px_rgba(15,23,42,0.85)]">
           <CardHeader className="border-b border-border/60 bg-gradient-to-r from-primary/12 via-secondary/20 to-transparent">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
@@ -948,8 +955,7 @@ export function ComposerDashboard() {
             )}
           </CardContent>
         </Card>
-      </div>
-    </section>
+      </DashboardShell>
   );
 }
 

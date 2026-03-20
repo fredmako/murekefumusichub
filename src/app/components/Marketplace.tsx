@@ -35,6 +35,7 @@ import {
 import { CompositionCard } from "@/app/components/ui/CompositionCard";
 import { MidiPreviewPlayer } from "@/app/components/MidiPreviewPlayer";
 import { ToggleGroup, ToggleGroupItem } from "@/app/components/ui/toggle-group";
+import { DashboardShell } from "@/app/components/DashboardShell";
 import {
   categoryService,
   compositionService,
@@ -334,70 +335,73 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
     "from-amber-500/60 to-orange-700/80",
   ];
 
+  const marketplaceNavItems = [
+    {
+      id: "all",
+      label: "All",
+      icon: Music2,
+      onSelect: () => setActiveFeed("all"),
+    },
+    {
+      id: "for-you",
+      label: "For You",
+      icon: Sparkles,
+      onSelect: () => setActiveFeed("for-you"),
+    },
+    {
+      id: "discover",
+      label: "Discover",
+      icon: TrendingUp,
+      onSelect: () => setActiveFeed("discover"),
+    },
+  ];
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-indigo-950/30 via-background to-background text-foreground">
-      <div className="section-shell space-y-10">
-        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-indigo-500/20 via-transparent to-transparent p-6 shadow-[0_30px_80px_-60px_rgba(76,29,149,0.8)] backdrop-blur md:p-10">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <span className="inline-flex rounded-full bg-primary/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
-                Music Hub
-              </span>
-              <h1 className="mt-3 text-3xl font-semibold text-foreground md:text-4xl">
-                Discover Choral Music
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                Browse and filter compositions and arrangements in one place.
-              </p>
+      <DashboardShell
+        title="Music Hub"
+        description="Browse and filter compositions and arrangements in one place."
+        navItems={marketplaceNavItems}
+        activeNavId={activeFeed}
+      >
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.6)] backdrop-blur">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+              <Sparkles className="size-3.5" />
+              {activeFeed === "for-you"
+                ? "For You"
+                : activeFeed === "discover"
+                  ? "Discover"
+                  : "Browse"}
             </div>
-
-            <div className="flex flex-wrap items-center gap-2 rounded-full border border-white/10 bg-white/5 p-1.5 backdrop-blur">
-              {([
-                { id: "all", label: "All" },
-                { id: "for-you", label: "For You" },
-                { id: "discover", label: "Discover More" },
-              ] as const).map((item) => (
-                <Button
-                  key={item.id}
-                  type="button"
-                  size="sm"
-                  variant={activeFeed === item.id ? "default" : "ghost"}
-                  className="rounded-full px-4 text-xs font-semibold"
-                  onClick={() => setActiveFeed(item.id)}
-                >
-                  {item.label}
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-6 max-w-xl">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search for compositions..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="h-12 border-white/15 bg-white/10 pl-12 pr-12 text-foreground placeholder:text-muted-foreground focus-visible:ring-primary/40"
-              />
-              {searchTerm ? (
-                <button
-                  type="button"
-                  onClick={() => setSearchTerm("")}
-                  className="absolute right-3 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-white/10 text-muted-foreground transition hover:text-foreground"
-                  aria-label="Clear search"
-                >
-                  <X className="size-4" />
-                </button>
-              ) : null}
+            <div className="w-full max-w-xl">
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search for compositions..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="h-10 border-white/15 bg-white/10 pl-10 pr-10 text-foreground placeholder:text-muted-foreground focus-visible:ring-primary/40"
+                />
+                {searchTerm ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm("")}
+                    className="absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-white/10 text-muted-foreground transition hover:text-foreground"
+                    aria-label="Clear search"
+                  >
+                    <X className="size-4" />
+                  </button>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
 
         {featuredCompositions.length > 0 && (
-          <section className="space-y-4">
+          <section className="space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-semibold">Featured</h2>
+              <h2 className="text-xl font-semibold">Featured</h2>
               <Button
                 variant="ghost"
                 className="text-muted-foreground hover:text-foreground"
@@ -406,7 +410,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                 Show all
               </Button>
             </div>
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-3">
               {featuredCompositions.map((composition, index) => {
                 const gradient =
                   featuredGradients[index % featuredGradients.length];
@@ -445,7 +449,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                       </Button>
                     </div>
                     </div>
-                    <div className="space-y-1 px-4 py-3">
+                    <div className="space-y-1 px-3 py-2">
                       <h3 className="truncate text-base font-semibold text-foreground">
                         {composition.title}
                       </h3>
@@ -461,7 +465,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         )}
 
       {activeFeed === "for-you" ? (
-        <div className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)] backdrop-blur">
+        <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 p-4 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)] backdrop-blur">
           {!appUser ? (
             <div className="flex flex-col gap-2">
               <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
@@ -480,7 +484,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                     <Sparkles className="size-3.5" />
                     Recommended
                   </div>
-                  <h2 className="mt-3 text-2xl font-semibold">For you</h2>
+                  <h2 className="mt-3 text-xl font-semibold">For you</h2>
                   <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
                     A quick mix of fresh picks and familiar favorites.
                   </p>
@@ -502,7 +506,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                     No recommendations yet. Check back after a few plays.
                   </p>
                 ) : (
-                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                     {recommendedCompositions.map((composition) => (
                       <div
                         key={`recommended-${composition.id}`}
@@ -520,12 +524,12 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
       ) : null}
 
       {trendingCompositions.length > 0 && (
-        <section className="space-y-4">
+        <section className="space-y-3">
           <div className="flex items-center gap-3">
             <TrendingUp className="size-5 text-emerald-400" />
-            <h2 className="text-2xl font-semibold">Trending Now</h2>
+            <h2 className="text-xl font-semibold">Trending Now</h2>
           </div>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {trendingCompositions.map((composition, index) => {
               const gradient =
                 featuredGradients[index % featuredGradients.length];
@@ -583,7 +587,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         </section>
       )}
 
-      <div className="mb-8 rounded-2xl border border-white/10 bg-white/5 p-6 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)] backdrop-blur">
+      <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 p-4 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)] backdrop-blur">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
             <SelectTrigger className="border-white/10 bg-white/10 text-foreground">
@@ -719,11 +723,11 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         </div>
       </div>
 
-      <div className="grid gap-6">
+      <div className="grid gap-4">
         <div>
           {loading && (
             <div
-              className={`grid grid-cols-1 gap-6 md:grid-cols-2 ${
+              className={`grid grid-cols-1 gap-4 md:grid-cols-2 ${
                 viewSize === "compact"
                   ? "lg:grid-cols-4 xl:grid-cols-5"
                   : viewSize === "large"
@@ -742,7 +746,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
 
           {!loading && filteredCompositions.length > 0 && (
             <div
-              className={`grid grid-cols-1 gap-6 md:grid-cols-2 ${
+              className={`grid grid-cols-1 gap-4 md:grid-cols-2 ${
                 viewSize === "compact"
                   ? "lg:grid-cols-4 xl:grid-cols-5"
                   : viewSize === "large"
@@ -905,7 +909,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
           ) : null}
         </DialogContent>
       </Dialog>
-      </div>
+      </DashboardShell>
     </main>
   );
 }

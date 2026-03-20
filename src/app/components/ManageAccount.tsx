@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
+import { DashboardShell } from "@/app/components/DashboardShell";
 import {
   Card,
   CardContent,
@@ -787,40 +788,51 @@ export function ManageAccount() {
       : []),
   ];
 
-  return (
-    <div className="texture-linen min-h-screen overflow-hidden py-12">
-      <div className="mx-auto max-w-5xl space-y-6 px-4">
-        {/* Header */}
-        <div className="route-backdrop-panel texture-speckle motion-reveal overflow-hidden rounded-3xl border border-white/45 bg-card/35 shadow-[0_28px_60px_-38px_rgba(15,23,42,0.75)] dark:border-white/10 dark:bg-card/30">
-          <div className="p-6 sm:p-8">
-            <span className="soft-kicker">Account Center</span>
-            <h1 className="mt-5 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-              Account Settings
-            </h1>
-            <p className="mt-3 text-sm text-muted-foreground sm:text-base">
-              Manage your profile, roles, and dashboard access.
-            </p>
-          </div>
-        </div>
+  const manageNavItems = [
+    { id: "profile", label: "Profile", path: "#profile", icon: UserRound },
+    { id: "appearance", label: "Appearance", path: "#appearance", icon: Sun },
+    { id: "roles", label: "Roles", path: "#roles", icon: Shield },
+    ...(dashboardOptions.length > 0
+      ? [
+          {
+            id: "dashboards",
+            label: "Dashboards",
+            path: "#dashboards",
+            icon: LayoutDashboard,
+          },
+        ]
+      : []),
+    { id: "danger", label: "Danger Zone", path: "#danger", icon: AlertCircle },
+  ];
 
+  return (
+    <div className="texture-linen min-h-screen overflow-hidden">
+      <DashboardShell
+        title="Account Settings"
+        description="Manage your profile, roles, and dashboard access."
+        navItems={manageNavItems}
+      >
         {/* Profile Card */}
-        <Card className="lift-card texture-speckle overflow-hidden border-border/70 bg-card/95">
+        <Card
+          id="profile"
+          className="lift-card texture-speckle scroll-mt-28 overflow-hidden border-border/70 bg-card/95"
+        >
           <CardHeader className="border-b border-border/70 bg-card/80">
-            <CardTitle className="flex items-center gap-3 text-2xl text-foreground">
-              <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <UserRound className="h-5 w-5" />
+            <CardTitle className="flex items-center gap-3 text-xl text-foreground">
+              <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <UserRound className="h-4 w-4" />
               </div>
               Profile Information
             </CardTitle>
           </CardHeader>
 
-          <CardContent className="pt-8 pb-8">
+          <CardContent className="pt-5 pb-5">
             {!isEditing ? (
-              <div className="space-y-8">
-                <div className="grid items-start gap-8 md:grid-cols-[auto_1fr]">
-                  <div className="flex flex-col items-center space-y-3">
+              <div className="space-y-5">
+                <div className="grid items-start gap-5 md:grid-cols-[auto_1fr]">
+                  <div className="flex flex-col items-center space-y-2">
                     <div className="relative group">
-                      <div className="flex h-40 w-40 items-center justify-center overflow-hidden rounded-3xl border border-border/70 bg-gradient-to-br from-[#0f766e] to-[#0b4a52] shadow-[0_18px_30px_-24px_rgba(15,23,42,0.9)] ring-4 ring-white/70">
+                      <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border border-border/70 bg-gradient-to-br from-[#0f766e] to-[#0b4a52] shadow-[0_18px_30px_-24px_rgba(15,23,42,0.9)] ring-2 ring-white/70">
                         {user?.avatar_url ? (
                           // display the URL that comes from server
                           <img
@@ -838,15 +850,15 @@ export function ManageAccount() {
                             decoding="async"
                           />
                         ) : (
-                          <UserRound className="h-16 w-16 text-white/90" />
+                          <UserRound className="h-8 w-8 text-white/90" />
                         )}
                       </div>
-                      <div className="absolute -bottom-2 -right-2 flex h-8 w-8 items-center justify-center rounded-full border-4 border-white bg-emerald-600 shadow-md">
-                        <CheckCircle className="w-4 h-4 text-white" />
+                      <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-emerald-600 shadow-md">
+                        <CheckCircle className="w-3 h-3 text-white" />
                       </div>
                     </div>
                     <div className="text-center">
-                      <p className="text-lg font-semibold text-foreground">
+                      <p className="text-base font-semibold text-foreground">
                         {user?.display_name || "User"}
                       </p>
                       <p className="text-sm text-muted-foreground">
@@ -855,12 +867,12 @@ export function ManageAccount() {
                     </div>
                   </div>
 
-                  <div className="grid gap-6 sm:grid-cols-2">
+                  <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         Display Name
                       </div>
-                      <p className="text-base font-medium text-foreground">
+                      <p className="text-sm font-medium text-foreground">
                         {user?.display_name || (
                           <span className="italic text-muted-foreground">
                             Not set
@@ -873,7 +885,7 @@ export function ManageAccount() {
                       <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         Email Address
                       </div>
-                      <p className="text-base font-medium text-foreground">
+                      <p className="text-sm font-medium text-foreground">
                         {user?.email}
                       </p>
                     </div>
@@ -882,7 +894,7 @@ export function ManageAccount() {
                       <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         Phone Number
                       </div>
-                      <p className="text-base font-medium text-foreground">
+                      <p className="text-sm font-medium text-foreground">
                         {user?.phone || (
                           <span className="italic text-muted-foreground">
                             Not set
@@ -923,7 +935,7 @@ export function ManageAccount() {
                       setIsEditing(true);
                     }}
                     className="w-full sm:w-auto"
-                    size="lg"
+                    size="sm"
                   >
                     <Edit2 className="w-4 h-4 mr-2" />
                     Edit Profile
@@ -931,10 +943,10 @@ export function ManageAccount() {
                 </div>
               </div>
             ) : (
-              <div className="space-y-8">
-                <div className="flex flex-col items-center space-y-4">
+              <div className="space-y-6">
+                <div className="flex flex-col items-center space-y-3">
                   <div className="relative group cursor-pointer">
-                    <div className="flex h-40 w-40 items-center justify-center overflow-hidden rounded-3xl border border-border/70 bg-gradient-to-br from-[#0f766e] to-[#0b4a52] shadow-[0_18px_30px_-24px_rgba(15,23,42,0.9)] ring-4 ring-white/70 transition-all group-hover:ring-secondary">
+                    <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border border-border/70 bg-gradient-to-br from-[#0f766e] to-[#0b4a52] shadow-[0_18px_30px_-24px_rgba(15,23,42,0.9)] ring-2 ring-white/70 transition-all group-hover:ring-secondary">
                       {avatarUrl ? (
                         <img
                           src={avatarUrl}
@@ -1038,8 +1050,8 @@ export function ManageAccount() {
                       setAvatarFile(null);
                     }}
                     variant="outline"
-                    className="flex-1 sm:flex-none sm:px-8"
-                    size="lg"
+                    className="flex-1 sm:flex-none sm:px-6"
+                    size="sm"
                   >
                     Cancel
                   </Button>
@@ -1049,21 +1061,24 @@ export function ManageAccount() {
           </CardContent>
         </Card>
 
-        <Card className="lift-card texture-speckle overflow-hidden border-border/70 bg-card/95">
+        <Card
+          id="appearance"
+          className="lift-card texture-speckle scroll-mt-28 overflow-hidden border-border/70 bg-card/95"
+        >
           <CardHeader className="border-b border-border/70 bg-card/80">
-            <CardTitle className="flex items-center gap-3 text-2xl text-foreground">
-              <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <CardTitle className="flex items-center gap-3 text-xl text-foreground">
+              <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 {currentThemeMode === "dark" ? (
-                  <Moon className="h-5 w-5" />
+                  <Moon className="h-4 w-4" />
                 ) : (
-                  <Sun className="h-5 w-5" />
+                  <Sun className="h-4 w-4" />
                 )}
               </div>
               Appearance
             </CardTitle>
           </CardHeader>
 
-          <CardContent className="pt-6 pb-6">
+          <CardContent className="pt-5 pb-5">
             <p className="mb-4 text-sm text-muted-foreground">
               Choose your preferred display mode. This preference is saved to your account.
             </p>
@@ -1093,19 +1108,22 @@ export function ManageAccount() {
         </Card>
 
         {/* Request Roles Card */}
-        <Card className="lift-card texture-speckle overflow-hidden border-border/70 bg-card/95">
+        <Card
+          id="roles"
+          className="lift-card texture-speckle scroll-mt-28 overflow-hidden border-border/70 bg-card/95"
+        >
           <CardHeader className="border-b border-border/70 bg-card/80">
-            <CardTitle className="flex items-center gap-3 text-2xl text-foreground">
-              <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <Shield className="w-5 h-5" />
+            <CardTitle className="flex items-center gap-3 text-xl text-foreground">
+              <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Shield className="w-4 h-4" />
               </div>
               Role Management
             </CardTitle>
           </CardHeader>
 
-          <CardContent className="pt-6 pb-6">
+          <CardContent className="pt-5 pb-5">
             <div className="grid sm:grid-cols-2 gap-4">
-              <div className="rounded-2xl border border-border/70 bg-card/80 p-6">
+              <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
                 <div className="flex items-start gap-4">
                   <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
                     <Music className="w-6 h-6" />
@@ -1271,7 +1289,7 @@ export function ManageAccount() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-border/70 bg-card/80 p-6">
+              <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
                 <div className="flex items-start gap-4">
                   <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700">
                     <Shield className="w-6 h-6" />
@@ -1331,16 +1349,19 @@ export function ManageAccount() {
         </Card>
 
         {dashboardOptions.length > 1 ? (
-          <Card className="lift-card texture-speckle overflow-hidden border-border/70 bg-card/95">
+          <Card
+            id="dashboards"
+            className="lift-card texture-speckle scroll-mt-28 overflow-hidden border-border/70 bg-card/95"
+          >
             <CardHeader className="border-b border-border/70 bg-card/80">
-              <CardTitle className="flex items-center gap-3 text-xl text-foreground">
-                <div className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <CardTitle className="flex items-center gap-3 text-lg text-foreground">
+                <div className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <LayoutDashboard className="w-4 h-4" />
                 </div>
                 Switch Dashboard
               </CardTitle>
             </CardHeader>
-            <CardContent className="pt-6 pb-6">
+            <CardContent className="pt-5 pb-5">
               <div className="grid sm:grid-cols-3 gap-3">
                 {dashboardOptions.map((item) => (
                   <Button
@@ -1358,17 +1379,20 @@ export function ManageAccount() {
         ) : null}
 
         {/* Danger Zone */}
-        <Card className="lift-card overflow-hidden border-destructive/35 bg-card/95">
+        <Card
+          id="danger"
+          className="lift-card scroll-mt-28 overflow-hidden border-destructive/35 bg-card/95"
+        >
           <CardHeader className="border-b border-destructive/30 bg-destructive/5">
             <CardTitle className="flex items-center gap-3 text-xl text-destructive">
-              <div className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-destructive/15 text-destructive">
-                <AlertCircle className="w-4 h-4" />
+              <div className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-destructive/15 text-destructive">
+                <AlertCircle className="w-3.5 h-3.5" />
               </div>
               Danger Zone
             </CardTitle>
           </CardHeader>
 
-          <CardContent className="pt-6 pb-6">
+          <CardContent className="pt-5 pb-5">
             <div className="mb-4 flex items-start gap-4 rounded-lg border border-destructive/25 bg-destructive/5 p-4">
               <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-destructive" />
               <div>
@@ -1392,7 +1416,6 @@ export function ManageAccount() {
             </Button>
           </CardContent>
         </Card>
-      </div>
 
       {/* Role Request Modal */}
       <AlertDialog
@@ -1454,6 +1477,7 @@ export function ManageAccount() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </DashboardShell>
     </div>
   );
 }

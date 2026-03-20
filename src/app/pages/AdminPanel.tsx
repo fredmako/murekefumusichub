@@ -96,6 +96,7 @@ import { ensureArray } from "@/lib/ensureArray";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 import { formatKesAmount } from "@/lib/currency";
 import { exportTableReportToPdf } from "@/lib/pdfReports";
+import { DashboardShell } from "@/app/components/DashboardShell";
 import loadingStringsDark from "@/app/components/images/bg_9.jpg";
 import loadingStringsLight from "@/app/components/images/bg_11.jpg";
 
@@ -2031,20 +2032,16 @@ export function AdminPanel() {
   }
 
   return (
-    <div className="space-y-4 overflow-x-hidden p-3 sm:space-y-6 sm:p-4 lg:p-6 xl:flex xl:h-screen xl:flex-col xl:overflow-hidden">
-      <div className="route-backdrop-panel texture-speckle motion-reveal overflow-hidden rounded-3xl border border-white/15 bg-card/20 p-4 shadow-[0_28px_60px_-38px_rgba(15,23,42,0.82)] dark:border-white/10 dark:bg-card/25 sm:p-5">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold sm:text-3xl">Admin Panel</h1>
-            <p className="text-sm text-muted-foreground sm:text-base">
-              Manage platform operations and monitor activity
-            </p>
-          </div>
-          <Button asChild variant="outline">
-            <Link to="/messenger">Talk to Us</Link>
-          </Button>
-        </div>
-      </div>
+    <DashboardShell
+      title="Admin Panel"
+      description="Manage platform operations and monitor activity."
+      actions={
+        <Button asChild variant="outline" size="sm">
+          <Link to="/messenger">Talk to Us</Link>
+        </Button>
+      }
+    >
+      <div className="space-y-4 overflow-x-hidden sm:space-y-6 xl:flex xl:h-screen xl:flex-col xl:overflow-hidden">
       <Card className="route-backdrop-panel border-white/15 bg-card/25 xl:hidden dark:border-white/10 dark:bg-card/25">
         <CardContent className="space-y-3 p-3">
           <div className="flex items-center justify-between gap-3">
@@ -4532,7 +4529,8 @@ export function AdminPanel() {
           </div>
         </div>
       </Tabs>
-    </div>
+      </div>
+    </DashboardShell>
   );
 }
 

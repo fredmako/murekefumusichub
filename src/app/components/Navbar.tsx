@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { navbarService } from "@/services/navbarService";
 import { buildProfileImageSrcSet, getOptimizedProfileImageUrl } from "@/services/profileImageService";
-import { useLocation, NavLink, useNavigate, Link } from "react-router-dom";
+import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { CartItem } from "@/app/types";
@@ -274,12 +274,18 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
       path: "/composer?tab=arrangements",
       showOn: ["any"],
       roles: ["composer"],
+      isActive: () =>
+        location.pathname === "/composer" &&
+        new URLSearchParams(location.search).get("tab") === "arrangements",
     },
     {
       label: "My Compositions",
       path: "/composer?tab=compositions",
       showOn: ["any"],
       roles: ["composer"],
+      isActive: () =>
+        location.pathname === "/composer" &&
+        new URLSearchParams(location.search).get("tab") === "compositions",
     },
     {
       label: "Admin",
@@ -288,6 +294,20 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
       roles: ["admin"],
     },
   ];
+
+  const isNavItemActive = (item: { path: string; isActive?: () => boolean }) => {
+    if (item.isActive) return item.isActive();
+    if (!item.path) return false;
+    const [rawPath, rawQuery] = item.path.split("?");
+    if (rawPath !== location.pathname) return false;
+    if (!rawQuery) return true;
+    const targetParams = new URLSearchParams(rawQuery);
+    const currentParams = new URLSearchParams(location.search);
+    for (const [key, value] of targetParams.entries()) {
+      if (currentParams.get(key) !== value) return false;
+    }
+    return true;
+  };
 
   const dashboardPaths = useMemo(() => {
     const dashboards: Array<{ label: string; path: string; role: string }> = [];
@@ -374,18 +394,17 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                 item.roles.some((role) => roles.includes(role));
               if (!isVisible || !hasRole) return null;
 
+              const isActive = isNavItemActive(item);
               return (
-                <NavLink key={item.path} to={item.path}>
-                  {({ isActive }) => (
-                    <Button
-                      variant={isActive ? "default" : "ghost"}
-                      size="sm"
-                      className={isActive ? "" : "text-muted-foreground"}
-                    >
-                      {item.label}
-                    </Button>
-                  )}
-                </NavLink>
+                <Link key={item.path} to={item.path}>
+                  <Button
+                    variant={isActive ? "default" : "ghost"}
+                    size="sm"
+                    className={isActive ? "" : "text-muted-foreground"}
+                  >
+                    {item.label}
+                  </Button>
+                </Link>
               );
             })}
           </div>
@@ -943,18 +962,17 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                 item.roles.some((role) => roles.includes(role));
               if (!isVisible || !hasRole) return null;
 
+              const isActive = isNavItemActive(item);
               return (
-                <NavLink key={`mobile-${item.path}`} to={item.path}>
-                  {({ isActive }) => (
-                    <Button
-                      variant={isActive ? "default" : "ghost"}
-                      size="sm"
-                      className={`rounded-full px-4 ${isActive ? "" : "text-muted-foreground"}`}
-                    >
-                      {item.label}
-                    </Button>
-                  )}
-                </NavLink>
+                <Link key={`mobile-${item.path}`} to={item.path}>
+                  <Button
+                    variant={isActive ? "default" : "ghost"}
+                    size="sm"
+                    className={`rounded-full px-4 ${isActive ? "" : "text-muted-foreground"}`}
+                  >
+                    {item.label}
+                  </Button>
+                </Link>
               );
             })}
           </div>
@@ -965,4 +983,3 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
 }
 
 export default Navbar;
-
