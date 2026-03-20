@@ -996,32 +996,15 @@ export function UploadComposition({
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="rounded-2xl border border-border/70 bg-card/70 p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          {[
-            { id: 1, label: "Upload" },
-            { id: 2, label: "Details" },
-            { id: 3, label: "Review" },
-          ].map((item) => {
-            const isActive = step === item.id;
-            const isComplete = step > item.id;
-            return (
-              <div
-                key={item.id}
-                className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] ${
-                  isActive
-                    ? "border-primary/60 bg-primary/10 text-primary"
-                    : isComplete
-                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600"
-                      : "border-border/70 bg-muted/30 text-muted-foreground"
-                }`}
-              >
-                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-current/40 text-[11px] font-bold">
-                  {item.id}
-                </span>
-                {item.label}
-              </div>
-            );
-          })}
+        <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          <span>Progress</span>
+          <span>{Math.round((step / 3) * 100)}%</span>
+        </div>
+        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted/40">
+          <div
+            className="h-full rounded-full bg-primary transition-all"
+            style={{ width: `${(step / 3) * 100}%` }}
+          />
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
           Save your progress at any time. You can resume later and re-select files.
@@ -1095,29 +1078,33 @@ export function UploadComposition({
         </div>
       )}
 
-      {isAiMode && (
+      {step === 1 && (
         <>
-          <div className="rounded-lg border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
-            Upload your PDF score and optional MIDI preview file. AI analysis will run automatically.
-          </div>
-          {renderPdfUploadSection()}
-          {renderMidiUploadSection()}
+          {isAiMode && (
+            <>
+              <div className="rounded-lg border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
+                Upload your PDF score and optional MIDI preview file. AI analysis will run automatically.
+              </div>
+              {renderPdfUploadSection()}
+              {renderMidiUploadSection()}
 
-          {analysisFailed && (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
-              AI analysis failed. Fill the required fields manually below.
-            </div>
-          )}
+              {analysisFailed && (
+                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+                  AI analysis failed. Fill the required fields manually below.
+                </div>
+              )}
 
-          {analysisAttempted && missingRequiredFields.length > 0 && (
-            <div className="rounded-lg border border-border/70 bg-card/60 p-3 text-sm">
-              <p className="font-medium text-foreground">
-                Complete required details before upload:
-              </p>
-              <p className="mt-1 text-muted-foreground">
-                {missingRequiredFields.join(", ")}
-              </p>
-            </div>
+              {analysisAttempted && missingRequiredFields.length > 0 && (
+                <div className="rounded-lg border border-border/70 bg-card/60 p-3 text-sm">
+                  <p className="font-medium text-foreground">
+                    Complete required details before upload:
+                  </p>
+                  <p className="mt-1 text-muted-foreground">
+                    {missingRequiredFields.join(", ")}
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </>
       )}
@@ -1494,7 +1481,7 @@ export function UploadComposition({
         </>
       )}
 
-      {isManualMode && (
+      {step === 1 && isManualMode && (
         <>
           <div className="rounded-lg border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
             Upload your PDF score and optional MIDI preview file.
