@@ -66,7 +66,6 @@ const MIDI_MIME_TYPES = new Set([
   "audio/mid",
   "application/x-midi",
 ]);
-const DRAFT_STORAGE_PREFIX = "choral-upload-draft";
 
 function isAllowedCategory(category: Partial<CompositionCategory> | null | undefined) {
   return ALLOWED_CATEGORY_NAMES.has(String(category?.name || "").trim().toLowerCase());
@@ -137,9 +136,6 @@ export function UploadComposition({
   const [isGeneratingBackground, setIsGeneratingBackground] = useState(false);
   const [categories, setCategories] = useState<CompositionCategory[]>([]);
   const [isCategoryLocked, setIsCategoryLocked] = useState(false);
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [draftKey, setDraftKey] = useState<string | null>(null);
-  const [draftSnapshot, setDraftSnapshot] = useState<any | null>(null);
 
   const voicePartOptions = [
     "Soprano",
@@ -186,32 +182,6 @@ export function UploadComposition({
     };
   }, [formData.categoryId, normalizedDefaultCategory]);
 
-  useEffect(() => {
-    let mounted = true;
-    const loadDraft = async () => {
-      if (typeof window === "undefined") return;
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const userId = sessionData?.session?.user?.id || "guest";
-        const key = `${DRAFT_STORAGE_PREFIX}:${userId}:${normalizedDefaultCategory || "all"}`;
-        if (!mounted) return;
-        setDraftKey(key);
-        const raw = window.localStorage.getItem(key);
-        if (!raw) return;
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === "object") {
-          setDraftSnapshot(parsed);
-        }
-      } catch (error) {
-        console.warn("[UploadComposition] draft load failed:", error);
-      }
-    };
-
-    void loadDraft();
-    return () => {
-      mounted = false;
-    };
-  }, [normalizedDefaultCategory]);
 
   const resolveCustomOrPreset = (
     selectedValue: SelectOrOther,
@@ -281,104 +251,6 @@ export function UploadComposition({
     missingRequiredFields.push("At least one voice part");
   }
   if (!pdfFile) missingRequiredFields.push("PDF score");
-
-  const saveDraft = () => {
-    if (!draftKey || typeof window === "undefined") {
-      toast.error("Draft storage is not ready yet.");
-      return;
-    }
-
-    const payload = {
-      step,
-      metadataMode,
-      formData,
-      isFreeDownload,
-      selectedBackgroundUrl,
-      backgroundPrompt,
-      savedAt: new Date().toISOString(),
-    };
-
-    try {
-      window.localStorage.setItem(draftKey, JSON.stringify(payload));
-      setDraftSnapshot(payload);
-      toast.success("Draft saved. Remember to re-select PDF/MIDI files later.");
-    } catch (error) {
-      console.error("[UploadComposition] failed to save draft:", error);
-      toast.error("Could not save draft right now.");
-    }
-  };
-
-  const resumeDraft = () => {
-    if (!draftSnapshot) return;
-    const draftForm = draftSnapshot.formData || {};
-    setFormData((prev) => ({
-      ...prev,
-      ...draftForm,
-      accompaniments: Array.isArray(draftForm.accompaniments)
-        ? draftForm.accompaniments
-        : prev.accompaniments,
-      voiceParts: Array.isArray(draftForm.voiceParts)
-        ? draftForm.voiceParts
-        : prev.voiceParts,
-    }));
-    setMetadataMode(draftSnapshot.metadataMode ?? null);
-    setIsFreeDownload(Boolean(draftSnapshot.isFreeDownload));
-    setSelectedBackgroundUrl(draftSnapshot.selectedBackgroundUrl || "");
-    setBackgroundPrompt(draftSnapshot.backgroundPrompt || "");
-    setStep([1, 2, 3].includes(draftSnapshot.step) ? draftSnapshot.step : 1);
-    setPdfFile(null);
-    setMidiFile(null);
-    setUploadProgress(0);
-    setAnalysisAttempted(false);
-    setAnalysisFailed(false);
-    setDraftSnapshot(null);
-    toast.success("Draft restored. Please re-select your PDF/MIDI files.");
-  };
-
-  const discardDraft = () => {
-    if (!draftKey || typeof window === "undefined") {
-      setDraftSnapshot(null);
-      return;
-    }
-    window.localStorage.removeItem(draftKey);
-    setDraftSnapshot(null);
-    toast.success("Draft cleared.");
-  };
-
-  const goToNextStep = () => {
-    if (step === 1) {
-      if (!metadataMode) {
-        toast.error("Select AI Analyze or Manual Fill to continue");
-        return;
-      }
-      if (!pdfFile) {
-        toast.error("Upload your PDF score to continue");
-        return;
-      }
-      if (isAiMode && !analysisAttempted && !analysisFailed) {
-        toast.error("Wait for AI analysis or switch to manual mode");
-        return;
-      }
-      setStep(2);
-      return;
-    }
-
-    if (step === 2) {
-      if (!shouldShowMetadataFields) {
-        toast.error("Complete your metadata section first");
-        return;
-      }
-      if (missingRequiredFields.length > 0) {
-        toast.error(`Complete required fields: ${missingRequiredFields.join(", ")}`);
-        return;
-      }
-      setStep(3);
-    }
-  };
-
-  const goToPreviousStep = () => {
-    setStep((prev) => (prev > 1 ? ((prev - 1) as 1 | 2 | 3) : prev));
-  };
 
   const handleAddCustomVoicePart = () => {
     const value = formData.customVoicePart.trim();
@@ -995,48 +867,7 @@ export function UploadComposition({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="rounded-2xl border border-border/70 bg-card/70 p-4">
-        <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          <span>Progress</span>
-          <span>{Math.round((step / 3) * 100)}%</span>
-        </div>
-        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted/40">
-          <div
-            className="h-full rounded-full bg-primary transition-all"
-            style={{ width: `${(step / 3) * 100}%` }}
-          />
-        </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Save your progress at any time. You can resume later and re-select files.
-        </p>
-      </div>
-
-      {draftSnapshot && (
-        <div className="rounded-2xl border border-border/70 bg-muted/30 p-4 text-sm">
-          <p className="font-medium text-foreground">
-            Draft found from{" "}
-            {draftSnapshot.savedAt
-              ? new Date(draftSnapshot.savedAt).toLocaleString()
-              : "an earlier session"}
-            .
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Resuming will restore your details, but you will need to re-select
-            your PDF and MIDI files.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button type="button" onClick={resumeDraft}>
-              Resume Draft
-            </Button>
-            <Button type="button" variant="outline" onClick={discardDraft}>
-              Discard Draft
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {step === 1 && (
-        <>
+      <>
           {/* Metadata Entry Mode */}
       <div>
         <Label>How would you like to fill composition details?</Label>
@@ -1078,44 +909,34 @@ export function UploadComposition({
         </div>
       )}
 
-      {step === 1 && (
+      {isAiMode && (
         <>
-          {isAiMode && (
-            <>
-              <div className="rounded-lg border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
-                Upload your PDF score and optional MIDI preview file. AI analysis will run automatically.
-              </div>
-              {renderPdfUploadSection()}
-              {renderMidiUploadSection()}
+          <div className="rounded-lg border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
+            Upload your PDF score and optional MIDI preview file. AI analysis will run automatically.
+          </div>
+          {renderPdfUploadSection()}
+          {renderMidiUploadSection()}
 
-              {analysisFailed && (
-                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
-                  AI analysis failed. Fill the required fields manually below.
-                </div>
-              )}
+          {analysisFailed && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+              AI analysis failed. Fill the required fields manually below.
+            </div>
+          )}
 
-              {analysisAttempted && missingRequiredFields.length > 0 && (
-                <div className="rounded-lg border border-border/70 bg-card/60 p-3 text-sm">
-                  <p className="font-medium text-foreground">
-                    Complete required details before upload:
-                  </p>
-                  <p className="mt-1 text-muted-foreground">
-                    {missingRequiredFields.join(", ")}
-                  </p>
-                </div>
-              )}
-            </>
+          {analysisAttempted && missingRequiredFields.length > 0 && (
+            <div className="rounded-lg border border-border/70 bg-card/60 p-3 text-sm">
+              <p className="font-medium text-foreground">
+                Complete required details before upload:
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                {missingRequiredFields.join(", ")}
+              </p>
+            </div>
           )}
         </>
       )}
 
-      {step === 2 && !shouldShowMetadataFields && (
-        <div className="rounded-lg border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
-          Complete the upload step first so we can fill in your details.
-        </div>
-      )}
-
-      {step === 2 && shouldShowMetadataFields && (
+      {shouldShowMetadataFields && (
         <>
       {/* Title */}
       <div>
@@ -1481,7 +1302,7 @@ export function UploadComposition({
         </>
       )}
 
-      {step === 1 && isManualMode && (
+      {isManualMode && (
         <>
           <div className="rounded-lg border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
             Upload your PDF score and optional MIDI preview file.
@@ -1490,134 +1311,29 @@ export function UploadComposition({
           {renderMidiUploadSection()}
         </>
       )}
-        </>
-      )}
 
-      {/* Submit Button */}
-      {step === 3 && (
-        <div className="rounded-2xl border border-border/70 bg-card/80 p-5">
-          <h3 className="text-lg font-semibold text-foreground">
-            Review & Publish
-          </h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Double-check everything before publishing to the marketplace.
-          </p>
-          <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-            <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Title
-              </p>
-              <p className="mt-1 font-semibold text-foreground">
-                {formData.title || "-"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Price
-              </p>
-              <p className="mt-1 font-semibold text-foreground">
-                {isFreeDownload ? "Free" : `KES ${formData.price || "-"}`}
-              </p>
-            </div>
-            <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Language
-              </p>
-              <p className="mt-1 font-semibold text-foreground">
-                {resolvedLanguage || "-"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Duration
-              </p>
-              <p className="mt-1 font-semibold text-foreground">
-                {formData.duration || "-"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                PDF Score
-              </p>
-              <p className="mt-1 font-semibold text-foreground">
-                {pdfFile?.name || "Selected earlier"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                MIDI Preview
-              </p>
-              <p className="mt-1 font-semibold text-foreground">
-                {midiFile?.name || "Not provided"}
-              </p>
-            </div>
-          </div>
-          {selectedBackgroundUrl && (
-            <div className="mt-4 overflow-hidden rounded-xl border border-border/60">
-              <img
-                src={selectedBackgroundUrl}
-                alt="Selected marketing background"
-                className="h-40 w-full object-cover"
-                loading="lazy"
-                decoding="async"
-              />
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-4">
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onClose}
-            disabled={isSubmitting}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={saveDraft}
-            disabled={isSubmitting}
-          >
-            Save Draft
-          </Button>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {step > 1 && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={goToPreviousStep}
-              disabled={isSubmitting}
-            >
-              Back
-            </Button>
-          )}
-          {step < 3 ? (
-            <Button
-              type="button"
-              onClick={goToNextStep}
-              disabled={isSubmitting}
-            >
-              Continue
-            </Button>
-          ) : (
-            <Button
-              type="submit"
-              disabled={
-                isSubmitting ||
-                !metadataMode ||
-                isAnalyzingPdf ||
-                (isAiMode && !shouldShowMetadataFields)
-              }
-            >
-              {isSubmitting ? "Uploading..." : `Publish ${entryLabel}`}
-            </Button>
-          )}
-        </div>
+      <div className="flex gap-3 pt-4">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onClose}
+          className="flex-1"
+          disabled={isSubmitting}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          disabled={
+            isSubmitting ||
+            !metadataMode ||
+            isAnalyzingPdf ||
+            (isAiMode && !shouldShowMetadataFields)
+          }
+          className="flex-1"
+        >
+          {isSubmitting ? "Uploading..." : `Upload ${entryLabel}`}
+        </Button>
       </div>
     </form>
   );
