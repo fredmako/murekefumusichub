@@ -43,6 +43,7 @@ import {
 import { toast } from "sonner";
 import { ensureArray } from "@/lib/ensureArray";
 import { parseAccompanimentList } from "@/lib/compositionMeta";
+import { buildApiUrl } from "@/lib/apiBase";
 import { useNavigate } from "react-router-dom";
 
 interface Composition {
@@ -100,6 +101,7 @@ interface MarketplaceProps {
 }
 
 function mapComposition(comp: any): Composition {
+  const hasMidi = Boolean(comp.midi_url);
   return {
     id: comp.id || comp.composition_id,
     title: comp.title || "Untitled",
@@ -116,7 +118,7 @@ function mapComposition(comp: any): Composition {
     accompaniment: parseAccompanimentList(comp.accompaniment),
     voiceParts: Array.isArray(comp.voice_parts) ? comp.voice_parts : [],
     pdfUrl: comp.pdf_url || undefined,
-    midiUrl: comp.midi_url || undefined,
+    midiUrl: hasMidi ? buildApiUrl(`/compositions/${comp.id || comp.composition_id}/midi`) : undefined,
     thumbnailUrl: comp.thumbnail_url || comp.thumbnailUrl || undefined,
     createdAt: comp.created_at || "",
     categoryId:
