@@ -80,6 +80,12 @@ const testimonials = [
       "Murekefu Sam, thank you for your incredible dedication to Maziwa Methodist Choir in the year 2018 all through covid season. You took a group of passionate but untrained singers and, through individual voice coaching, discipline, and strict time keeping, turned us into a confident and effective choir.\n\nYou helped Maziwa Methodist Choir grow from raw passion into a structured and confident choir through individual coaching and strong emphasis on time keeping.\n\nAll the best!",
     author: "Lilian, Maziwa Methodist Church (2018 - 2019)",
   },
+  {
+    id: "carol-kengen",
+    message:
+      "Murekefu Sam served as a vital part of the KenGen musical program between 2018 and 2020. As our music director, he demonstrated a rare combination of artistic brilliance and disciplined leadership that significantly elevated our corporate identity.\n\nDuring his tenure, Sam's contributions were twofold:\nVocal Excellence & Instruction: As our Music Instructor and Voice Coach, Sam transformed the KenGen Choir. Through his technical guidance, he refined the choir's vocal range and performance quality, leading them to successful presentations at various high-profile corporate functions. His ability to inspire a group of employees to perform at a professional level was exceptional.\n\nThe KenGen Anthem: Sam was the lead composer for the proposed KenGen Company Anthem. He worked diligently on this project, crafting a musical identity that reflected our corporate values. While the anthem is currently under review for formal adoption following the interruption caused by the COVID-19 pandemic in 2020, the foundation he built remains a testament to his skill as a composer.\n\nSam is a dedicated professional who can bridge the gap between creative artistry and corporate requirements. He is a disciplined director and a gifted mentor who we highly recommend for any large-scale musical or branding project.",
+    author: "Carol Sirali, KenGen Choir",
+  },
 ];
 
 const musicClasses: MusicClass[] = [
