@@ -806,7 +806,7 @@ export function ManageAccount() {
   ];
 
   return (
-    <div className="texture-linen min-h-screen overflow-hidden">
+    <div className="texture-linen min-h-screen">
       <DashboardShell
         title="Account Settings"
         description="Manage your profile, roles, and dashboard access."

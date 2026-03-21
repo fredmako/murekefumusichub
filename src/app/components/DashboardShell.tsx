@@ -1,5 +1,6 @@
-import { Link, useLocation } from "react-router-dom";
-import type { ComponentType, ReactNode } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import type { ComponentType, MouseEvent, ReactNode } from "react";
 
 type LocationLike = {
   pathname: string;
@@ -54,13 +55,47 @@ export function DashboardShell({
   className,
 }: DashboardShellProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   const hasNav = navItems.length > 0;
+  const [activeHash, setActiveHash] = useState(location.hash);
+
+  useEffect(() => {
+    setActiveHash(location.hash);
+  }, [location.hash]);
 
   const resolveActive = (item: DashboardNavItem) => {
     if (activeNavId) return item.id === activeNavId;
+    if (item.path?.startsWith("#")) return activeHash === item.path;
     if (item.isActive) return item.isActive(location);
     if (item.path) return isPathActive(item.path, location);
     return false;
+  };
+
+  const handleHashNavigation = (
+    event: MouseEvent<HTMLAnchorElement | HTMLButtonElement>,
+    item: DashboardNavItem,
+  ) => {
+    if (!item.path?.startsWith("#")) return;
+    event.preventDefault();
+    const targetId = item.path.slice(1);
+    const target = document.getElementById(targetId);
+    setActiveHash(item.path);
+    navigate(
+      {
+        pathname: location.pathname,
+        search: location.search,
+        hash: item.path,
+      },
+      { replace: false },
+    );
+    if (!target) return;
+
+    window.requestAnimationFrame(() => {
+      target.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
   };
 
   const renderNavItem = (item: DashboardNavItem, variant: "rail" | "pill") => {
@@ -94,7 +129,10 @@ export function DashboardShell({
           <a
             key={item.id}
             href={item.path}
-            onClick={item.onSelect}
+            onClick={(event) => {
+              item.onSelect?.();
+              handleHashNavigation(event, item);
+            }}
             className={baseClass}
           >
             {content}
@@ -158,12 +196,12 @@ export function DashboardShell({
 
         <div
           className={`grid gap-6 ${
-            hasNav ? "lg:grid-cols-[220px_minmax(0,1fr)]" : ""
+            hasNav ? "lg:grid-cols-[220px_minmax(0,1fr)] lg:items-start" : ""
           }`}
         >
           {hasNav ? (
-            <aside className="hidden lg:block">
-              <div className="sticky top-24 rounded-2xl border border-border/70 bg-card/80 p-3 shadow-sm">
+            <aside className="hidden lg:block lg:self-start">
+              <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto rounded-2xl border border-border/70 bg-card/80 p-3 shadow-sm">
                 <p className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Menu
                 </p>
