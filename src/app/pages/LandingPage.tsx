@@ -308,7 +308,7 @@ export const LandingPage = () => {
                 Featured
               </div>
               <h2 className="mt-5 text-3xl font-semibold leading-tight">
-                Built for choirs, conductors, and composers
+                Built for compositions and arrangements by Murekefu Sam
               </h2>
               <p className="mt-4 text-sm text-white/85 sm:text-base">
                 From first rehearsal to final upload, manage growth and
@@ -661,7 +661,7 @@ export const LandingPage = () => {
 
           <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-border/70 pt-6 text-xs text-muted-foreground sm:flex-row sm:items-center">
             <p>(c) {new Date().getFullYear()} Murekefu Music Hub. All rights reserved.</p>
-            <p>Built for choirs, composers, and students.</p>
+            <p>Built for compositions and arrangements by Murekefu Sam.</p>
           </div>
         </div>
       </footer>
