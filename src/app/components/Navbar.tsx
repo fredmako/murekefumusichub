@@ -5,6 +5,7 @@ import { buildProfileImageSrcSet, getOptimizedProfileImageUrl } from "@/services
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
+import { useLearnerStatus } from "@/hooks/useLearnerStatus";
 import { CartItem } from "@/app/types";
 import { formatKesAmount } from "@/lib/currency";
 import { toast } from "sonner";
@@ -23,6 +24,7 @@ import {
   MessageSquare,
   PanelTopClose,
   PanelTopOpen,
+  User,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -53,6 +55,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   const NAVBAR_MINIMIZED_KEY = "murekefu.navbar.minimized";
   // use appUser from your AuthContext (Supabase)
   const { appUser, signOut } = useAuth();
+  const { hasLearnerAccess } = useLearnerStatus();
   const { mode, setMode } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
@@ -293,6 +296,12 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
       roles: ["buyer"],
     },
     {
+      label: "Learner",
+      path: "/learner",
+      showOn: ["any"],
+      roles: [],
+    },
+    {
       label: "My Arrangements",
       path: "/composer?tab=arrangements",
       showOn: ["any"],
@@ -340,6 +349,12 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
         path: "/admin",
         role: "admin",
       });
+    if (hasLearnerAccess)
+      dashboards.push({
+        label: "Learner Dashboard",
+        path: "/learner",
+        role: "learner",
+      });
     if (roles.includes("composer")) {
       dashboards.push({
         label: "My Arrangements",
@@ -359,7 +374,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
         role: "buyer",
       });
     return dashboards;
-  }, [roles]);
+  }, [hasLearnerAccess, roles]);
 
   // helper: build avatar / initials
   const avatarUrl = appUser?.avatar_url ?? null;
@@ -429,7 +444,9 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
               const hasRole =
                 item.roles.length === 0 ||
                 item.roles.some((role) => roles.includes(role));
-              if (!isVisible || !hasRole) return null;
+              const requiresLearnerAccess =
+                item.path === "/learner" && !hasLearnerAccess;
+              if (!isVisible || !hasRole || requiresLearnerAccess) return null;
 
               const isActive = isNavItemActive(item);
               return (
@@ -488,6 +505,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                   navigate(buildLoginPath({ nextPath: currentPath }));
                 }}
               >
+                <User className="mr-2 size-4" />
                 Sign In
               </Button>
             )}
@@ -994,6 +1012,7 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                       navigate(buildLoginPath({ nextPath: currentPath }));
                     }}
                   >
+                    <User className="size-4 mr-2" />
                     Sign In
                   </DropdownMenuItem>
                 )}
@@ -1015,7 +1034,9 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
               const hasRole =
                 item.roles.length === 0 ||
                 item.roles.some((role) => roles.includes(role));
-              if (!isVisible || !hasRole) return null;
+              const requiresLearnerAccess =
+                item.path === "/learner" && !hasLearnerAccess;
+              if (!isVisible || !hasRole || requiresLearnerAccess) return null;
 
               const isActive = isNavItemActive(item);
               return (

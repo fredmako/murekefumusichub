@@ -119,6 +119,12 @@ const BuyerDashboard = React.lazy(() =>
   })),
 );
 
+const LearnerDashboard = React.lazy(() =>
+  import("./components/LearnerDashboard").then((m) => ({
+    default: (m as any).LearnerDashboard ?? (m as any).default,
+  })),
+);
+
 const CheckoutPage = React.lazy(() =>
   import("./pages/CheckoutPage").then((m) => ({
     default: (m as any).CheckoutPage ?? (m as any).default,
@@ -725,6 +731,17 @@ export default function App() {
                   element={
                     <DashboardWrapper
                       Component={BuyerDashboard}
+                      cart={cart}
+                      onClearCart={handleClearCart}
+                      onRemoveFromCart={handleRemoveFromCart}
+                    />
+                  }
+                />
+                <Route
+                  path="/learner"
+                  element={
+                    <DashboardWrapper
+                      Component={LearnerDashboard}
                       cart={cart}
                       onClearCart={handleClearCart}
                       onRemoveFromCart={handleRemoveFromCart}

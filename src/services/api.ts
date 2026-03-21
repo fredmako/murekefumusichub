@@ -790,6 +790,7 @@ export const enrollmentService = {
       method: "POST",
       body: JSON.stringify(payload),
       timeoutMs: 30000,
+      requiresAuth: true,
     });
   },
 
@@ -797,6 +798,7 @@ export const enrollmentService = {
     return await apiRequest<any[]>(`/enrollments/my?limit=${limit}`, {
       method: "GET",
       timeoutMs: 30000,
+      requiresAuth: true,
     });
   },
 };

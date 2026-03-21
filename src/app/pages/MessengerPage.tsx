@@ -12,6 +12,7 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  Users,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -28,7 +29,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { supabase } from "@/lib/supabase";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { CommunityLounge } from "@/app/components/messenger/CommunityLounge";
 
 function formatThreadTime(value?: string | null) {
   if (!value) return "";
@@ -93,7 +95,10 @@ export function MessengerPage() {
   const { mode } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isDarkMode = mode === "dark";
+  const activeWorkspace =
+    searchParams.get("tab") === "community" ? "community" : "support";
 
   const [threads, setThreads] = useState<SupportChatThread[]>([]);
   const [messages, setMessages] = useState<SupportChatMessage[]>([]);
@@ -320,31 +325,36 @@ export function MessengerPage() {
   );
 
   useEffect(() => {
+    if (activeWorkspace !== "support") return;
     if (!appUser?.id) return;
     void loadThreads(true, true);
-  }, [appUser?.id, loadThreads]);
+  }, [activeWorkspace, appUser?.id, loadThreads]);
 
   useEffect(() => {
+    if (activeWorkspace !== "support") return;
     if (!selectedThreadId) {
       setMessages([]);
       setMessagesError(null);
       return;
     }
     void loadMessages(selectedThreadId, true, true);
-  }, [selectedThreadId, loadMessages]);
+  }, [activeWorkspace, selectedThreadId, loadMessages]);
 
   useEffect(() => {
+    if (activeWorkspace !== "support") return;
     if (!selectedThreadId || loadingMessages) return;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [loadingMessages, messages, selectedThreadId]);
+  }, [activeWorkspace, loadingMessages, messages, selectedThreadId]);
 
   useEffect(() => {
+    if (activeWorkspace !== "support") return;
     if (!isCompactViewport && !selectedThreadId && !isComposingNewThread && threads.length > 0) {
       setSelectedThreadId(threads[0].id);
     }
-  }, [isCompactViewport, isComposingNewThread, selectedThreadId, threads]);
+  }, [activeWorkspace, isCompactViewport, isComposingNewThread, selectedThreadId, threads]);
 
   useEffect(() => {
+    if (activeWorkspace !== "support") return;
     if (!appUser?.id) return;
 
     const threadChannel = supabase
@@ -366,9 +376,10 @@ export function MessengerPage() {
     return () => {
       void supabase.removeChannel(threadChannel);
     };
-  }, [appUser?.id, loadThreads]);
+  }, [activeWorkspace, appUser?.id, loadThreads]);
 
   useEffect(() => {
+    if (activeWorkspace !== "support") return;
     if (!selectedThreadId) return;
 
     const messageChannel = supabase
@@ -391,7 +402,7 @@ export function MessengerPage() {
     return () => {
       void supabase.removeChannel(messageChannel);
     };
-  }, [selectedThreadId, loadMessages, loadThreads]);
+  }, [activeWorkspace, selectedThreadId, loadMessages, loadThreads]);
 
   const handleStartNewThread = async () => {
     const normalizedMessage = draftMessage.trim();
@@ -522,6 +533,16 @@ export function MessengerPage() {
     selectedThreadClosed ||
     !appUser?.id;
 
+  const switchWorkspace = (workspace: "support" | "community") => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("tab", workspace);
+    setSearchParams(nextParams, { replace: true });
+  };
+
+  if (activeWorkspace === "community") {
+    return <CommunityLounge />;
+  }
+
   return (
     <main className="min-h-[calc(100vh-4rem)] px-0 py-2 text-foreground sm:px-4 sm:py-4">
       <div className="app-shell">
@@ -532,10 +553,28 @@ export function MessengerPage() {
               Messenger
             </span>
             <p className="mt-2 text-sm text-muted-foreground">
-              A cleaner support workspace with mobile and desktop chat flows.
+              Switch between direct support and the public Murekefu community.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-full border border-border/70 bg-background/70 p-1">
+              <button
+                type="button"
+                onClick={() => switchWorkspace("support")}
+                className="rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground"
+              >
+                <LifeBuoy className="mr-2 inline size-4" />
+                Support
+              </button>
+              <button
+                type="button"
+                onClick={() => switchWorkspace("community")}
+                className="rounded-full px-4 py-2 text-xs font-semibold text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
+              >
+                <Users className="mr-2 inline size-4" />
+                Community
+              </button>
+            </div>
             <Button
               type="button"
               variant="outline"
