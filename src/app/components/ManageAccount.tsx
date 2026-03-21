@@ -306,21 +306,45 @@ export function ManageAccount() {
   };
 
   const currentThemeSettings = {
-    preset: user?.theme_settings?.preset || theme || "emerald",
+    preset: THEME_PRESETS.includes(user?.theme_settings?.preset as any)
+      ? (user?.theme_settings?.preset as (typeof THEME_PRESETS)[number])
+      : THEME_PRESETS.includes(theme as any)
+        ? (theme as (typeof THEME_PRESETS)[number])
+        : THEME_PRESETS[0],
     mode:
       user?.theme_settings?.mode === "dark" || mode === "dark" ? "dark" : "light",
-    uiScale: user?.theme_settings?.uiScale || uiScale,
-    iconScale: user?.theme_settings?.iconScale || iconScale,
-    layoutDensity: user?.theme_settings?.layoutDensity || layoutDensity,
-    surfaceStyle: user?.theme_settings?.surfaceStyle || surfaceStyle,
+    uiScale: THEME_UI_SCALES.includes(user?.theme_settings?.uiScale as any)
+      ? (user?.theme_settings?.uiScale as (typeof THEME_UI_SCALES)[number])
+      : THEME_UI_SCALES.includes(uiScale as any)
+        ? (uiScale as (typeof THEME_UI_SCALES)[number])
+        : THEME_UI_SCALES[1],
+    iconScale: THEME_ICON_SCALES.includes(user?.theme_settings?.iconScale as any)
+      ? (user?.theme_settings?.iconScale as (typeof THEME_ICON_SCALES)[number])
+      : THEME_ICON_SCALES.includes(iconScale as any)
+        ? (iconScale as (typeof THEME_ICON_SCALES)[number])
+        : THEME_ICON_SCALES[1],
+    layoutDensity: THEME_LAYOUT_DENSITIES.includes(
+      user?.theme_settings?.layoutDensity as any,
+    )
+      ? (user?.theme_settings?.layoutDensity as (typeof THEME_LAYOUT_DENSITIES)[number])
+      : THEME_LAYOUT_DENSITIES.includes(layoutDensity as any)
+        ? (layoutDensity as (typeof THEME_LAYOUT_DENSITIES)[number])
+        : THEME_LAYOUT_DENSITIES[1],
+    surfaceStyle: THEME_SURFACE_STYLES.includes(
+      user?.theme_settings?.surfaceStyle as any,
+    )
+      ? (user?.theme_settings?.surfaceStyle as (typeof THEME_SURFACE_STYLES)[number])
+      : THEME_SURFACE_STYLES.includes(surfaceStyle as any)
+        ? (surfaceStyle as (typeof THEME_SURFACE_STYLES)[number])
+        : THEME_SURFACE_STYLES[0],
   } as const;
 
-  const formatSettingLabel = (value: string) =>
-    value
+  const formatSettingLabel = (value?: string | null) =>
+    String(value || "")
       .split(/[-_]/)
       .filter(Boolean)
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
+      .join(" ") || "Default";
 
   const applyThemeSettingsToContext = (nextSettings: typeof currentThemeSettings) => {
     setTheme(nextSettings.preset);

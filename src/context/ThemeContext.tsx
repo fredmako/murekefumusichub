@@ -196,30 +196,42 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     useState<ThemeSurfaceStyle>(getStoredSurfaceStyle);
 
   const setTheme = useCallback((nextTheme: ThemePreset) => {
-    setThemeState(nextTheme);
+    setThemeState(isThemePreset(nextTheme) ? nextTheme : DEFAULT_THEME);
   }, []);
 
   const setMode = useCallback((nextMode: ThemeMode) => {
-    setModeState(nextMode);
+    setModeState(isThemeMode(nextMode) ? nextMode : DEFAULT_MODE);
   }, []);
 
   const setUiScale = useCallback((nextUiScale: ThemeUiScale) => {
-    setUiScaleState(nextUiScale);
+    setUiScaleState(
+      isThemeUiScale(nextUiScale) ? nextUiScale : DEFAULT_UI_SCALE,
+    );
   }, []);
 
   const setIconScale = useCallback((nextIconScale: ThemeIconScale) => {
-    setIconScaleState(nextIconScale);
+    setIconScaleState(
+      isThemeIconScale(nextIconScale) ? nextIconScale : DEFAULT_ICON_SCALE,
+    );
   }, []);
 
   const setLayoutDensity = useCallback(
     (nextLayoutDensity: ThemeLayoutDensity) => {
-      setLayoutDensityState(nextLayoutDensity);
+      setLayoutDensityState(
+        isThemeLayoutDensity(nextLayoutDensity)
+          ? nextLayoutDensity
+          : DEFAULT_LAYOUT_DENSITY,
+      );
     },
     [],
   );
 
   const setSurfaceStyle = useCallback((nextSurfaceStyle: ThemeSurfaceStyle) => {
-    setSurfaceStyleState(nextSurfaceStyle);
+    setSurfaceStyleState(
+      isThemeSurfaceStyle(nextSurfaceStyle)
+        ? nextSurfaceStyle
+        : DEFAULT_SURFACE_STYLE,
+    );
   }, []);
 
   useEffect(() => {
