@@ -3,12 +3,19 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   Award,
   BookOpen,
+  CirclePlay,
+  FileText,
   Guitar,
+  GraduationCap,
   Headphones,
   Keyboard,
+  LayoutDashboard,
+  MessageSquare,
   Mic,
   Music,
   Quote,
+  ShieldCheck,
+  SlidersHorizontal,
   Users,
   Wind,
 } from "lucide-react";
@@ -151,6 +158,78 @@ const highlights = [
     description:
       "Learn through in-person rehearsals and digital resources you can revisit anytime.",
     icon: <Headphones className="size-6 text-primary" />,
+  },
+];
+
+const platformRoles = [
+  {
+    title: "Learner Workspace",
+    description:
+      "Focused learning paths, enrollment progress, and a calmer dashboard for students.",
+    icon: <GraduationCap className="size-5 text-primary" />,
+  },
+  {
+    title: "Buyer Library",
+    description:
+      "Discover music, manage purchases, and keep approved downloads in one place.",
+    icon: <Headphones className="size-5 text-primary" />,
+  },
+  {
+    title: "Composer Studio",
+    description:
+      "Separate arrangements from compositions and manage uploads with cleaner workflows.",
+    icon: <Music className="size-5 text-primary" />,
+  },
+  {
+    title: "Admin Control Center",
+    description:
+      "Review users, enrollments, support, reports, and moderation from one operations hub.",
+    icon: <LayoutDashboard className="size-5 text-primary" />,
+  },
+];
+
+const platformFeatures = [
+  {
+    title: "MIDI Preview Marketplace",
+    description:
+      "Let buyers hear a short composition sample before moving into checkout and purchase.",
+    icon: <CirclePlay className="size-5 text-primary" />,
+    badge: "Preview-first",
+  },
+  {
+    title: "Public Community Chat",
+    description:
+      "Give learners, buyers, composers, and admins a shared lounge alongside direct support chat.",
+    icon: <MessageSquare className="size-5 text-primary" />,
+    badge: "Community",
+  },
+  {
+    title: "State-Aware Admin Actions",
+    description:
+      "Promote, demote, suspend, activate, verify, and moderate content with clearer system logic.",
+    icon: <ShieldCheck className="size-5 text-primary" />,
+    badge: "Operations",
+  },
+  {
+    title: "Branded PDF Reports",
+    description:
+      "Export users, requests, transactions, compositions, and enrollments with selectable fields.",
+    icon: <FileText className="size-5 text-primary" />,
+    badge: "Reporting",
+  },
+  {
+    title: "Adaptive Layout Controls",
+    description:
+      "Let every user personalize the whole system with theme, icon size, density, and surface styles.",
+    icon: <SlidersHorizontal className="size-5 text-primary" />,
+    badge: "Personalization",
+  },
+  {
+    title: "Role-Based Experiences",
+    description:
+      "Support learners, buyers, composers, and admins through dedicated journeys instead of one generic dashboard.",
+    icon: <Users className="size-5 text-primary" />,
+    badge: "Multi-role",
   },
 ];
 
@@ -333,6 +412,115 @@ export const LandingPage = () => {
       <ShowBanner onAccept={handleAcceptPrivacy} />
 
       <section className="section-shell motion-reveal pt-10">
+        <div className="mb-10">
+          <span className="soft-kicker">Platform Updates</span>
+          <h2 className="section-title">More than a landing page, this is a working music system</h2>
+          <p className="section-copy">
+            The platform now supports structured learning, music publishing,
+            buyer workflows, community chat, admin control, reporting, and
+            personalized layouts across devices.
+          </p>
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+          <Card
+            className="lift-card motion-reveal texture-speckle overflow-hidden border-border/70"
+            style={{
+              backgroundImage: `${
+                isDarkMode
+                  ? "linear-gradient(145deg, rgba(7,23,44,0.86), rgba(15,45,79,0.72))"
+                  : "linear-gradient(145deg, rgba(255,255,255,0.82), rgba(240,250,247,0.74))"
+              }, ${pickImageUrl(4) ? `url(${pickImageUrl(4)})` : "none"}`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }}
+          >
+            <CardContent className="p-6 sm:p-8">
+              <span className="soft-kicker bg-card/70">Role-Based Product Design</span>
+              <h3 className="mt-5 text-3xl font-semibold tracking-tight text-foreground">
+                One connected platform for learning, creating, buying, and managing
+              </h3>
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
+                Murekefu Music Hub now goes beyond discovery. It supports learners
+                who are enrolling and studying, composers publishing music,
+                buyers previewing and purchasing, and admins keeping the whole
+                system organized.
+              </p>
+
+              <div className="mt-6 flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
+                <span className="rounded-full border border-border/70 bg-card/75 px-3 py-1">
+                  Learner dashboard
+                </span>
+                <span className="rounded-full border border-border/70 bg-card/75 px-3 py-1">
+                  Community messenger
+                </span>
+                <span className="rounded-full border border-border/70 bg-card/75 px-3 py-1">
+                  MIDI preview
+                </span>
+                <span className="rounded-full border border-border/70 bg-card/75 px-3 py-1">
+                  Admin reporting
+                </span>
+              </div>
+
+              <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                {platformRoles.map((role, index) => (
+                  <div
+                    key={role.title}
+                    className="rounded-2xl border border-border/70 bg-card/70 p-4 backdrop-blur-sm"
+                    style={{ animationDelay: `${index * 90}ms` }}
+                  >
+                    <div className="mb-3 inline-flex rounded-full bg-primary/10 p-2">
+                      {role.icon}
+                    </div>
+                    <p className="text-sm font-semibold text-foreground">{role.title}</p>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      {role.description}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            {platformFeatures.map((feature, index) => (
+              <Card
+                key={feature.title}
+                className="lift-card motion-reveal texture-speckle overflow-hidden border-border/70"
+                style={{
+                  backgroundImage: `${
+                    isDarkMode
+                      ? "linear-gradient(150deg, rgba(9,23,40,0.9), rgba(13,34,58,0.74))"
+                      : "linear-gradient(150deg, rgba(255,255,255,0.88), rgba(244,249,255,0.68))"
+                  }, ${pickImageUrl(index + 8) ? `url(${pickImageUrl(index + 8)})` : "none"}`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                  animationDelay: `${index * 80}ms`,
+                }}
+              >
+                <CardContent className="p-5 sm:p-6">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="inline-flex rounded-full bg-primary/10 p-2">
+                      {feature.icon}
+                    </div>
+                    <span className="rounded-full border border-border/70 bg-card/70 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      {feature.badge}
+                    </span>
+                  </div>
+                  <h3 className="mt-4 text-lg font-semibold text-foreground">
+                    {feature.title}
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    {feature.description}
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="section-shell motion-reveal pt-2">
         <div className="mb-8">
           <span className="soft-kicker">Instrument Focus</span>
           <h2 className="section-title">Visuals centered on instruments</h2>
