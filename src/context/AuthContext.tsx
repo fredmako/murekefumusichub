@@ -10,7 +10,14 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { normalizeAvatarUrl } from "../lib/avatarUrl";
 import { API_BASE_URL } from "@/lib/apiBase";
-import type { ThemeMode, ThemePreset } from "./ThemeContext";
+import type {
+  ThemeIconScale,
+  ThemeLayoutDensity,
+  ThemeMode,
+  ThemePreset,
+  ThemeSurfaceStyle,
+  ThemeUiScale,
+} from "./ThemeContext";
 import { sanitizeRedirectPath } from "@/lib/authRedirect";
 
 const AUTH_SESSION_TIMEOUT_MS = 12000;
@@ -27,6 +34,10 @@ export interface AppUser {
   theme_settings?: {
     preset?: ThemePreset;
     mode?: ThemeMode;
+    uiScale?: ThemeUiScale;
+    iconScale?: ThemeIconScale;
+    layoutDensity?: ThemeLayoutDensity;
+    surfaceStyle?: ThemeSurfaceStyle;
   } | null;
   roles: string[];
   isComposer?: boolean;

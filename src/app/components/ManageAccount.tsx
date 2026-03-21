@@ -22,6 +22,14 @@ import {
   AlertDialogTitle,
 } from "@/app/components/ui/alert-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/app/components/ui/dialog";
+import {
   Trash2,
   Edit2,
   Camera,
@@ -34,8 +42,12 @@ import {
   UserRound,
   Sun,
   Moon,
+  Palette,
+  Rows3,
+  Scaling,
+  Sparkles,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   registrationService,
@@ -43,7 +55,14 @@ import {
   storageService,
 } from "@/services/api";
 import { API_BASE_URL } from "@/lib/apiBase";
-import { useTheme } from "@/context/ThemeContext";
+import {
+  THEME_ICON_SCALES,
+  THEME_LAYOUT_DENSITIES,
+  THEME_PRESETS,
+  THEME_SURFACE_STYLES,
+  THEME_UI_SCALES,
+  useTheme,
+} from "@/context/ThemeContext";
 import { getOptimizedProfileImageUrl } from "@/services/profileImageService";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 import { formatKesAmount } from "@/lib/currency";
@@ -67,7 +86,20 @@ const MAX_AVATAR_SIZE_BYTES = 8 * 1024 * 1024;
 
 export function ManageAccount() {
   const { appUser, signOut, getAuthToken, isLoading: authLoading } = useAuth();
-  const { mode, setMode, theme } = useTheme();
+  const {
+    mode,
+    setMode,
+    theme,
+    setTheme,
+    uiScale,
+    setUiScale,
+    iconScale,
+    setIconScale,
+    layoutDensity,
+    setLayoutDensity,
+    surfaceStyle,
+    setSurfaceStyle,
+  } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -113,6 +145,13 @@ export function ManageAccount() {
   const [phone, setPhone] = useState<string>("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [selfieDialogOpen, setSelfieDialogOpen] = useState(false);
+  const [selfieCaptureLoading, setSelfieCaptureLoading] = useState(false);
+  const [selfieError, setSelfieError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const selfieInputRef = useRef<HTMLInputElement | null>(null);
+  const selfieStreamRef = useRef<MediaStream | null>(null);
 
   // Combined loading for initial render
   const initialLoading = authLoading && !user;
@@ -256,6 +295,98 @@ export function ManageAccount() {
     }
   };
 
+  const stopSelfieCamera = () => {
+    if (selfieStreamRef.current) {
+      selfieStreamRef.current.getTracks().forEach((track) => track.stop());
+      selfieStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
+
+  const currentThemeSettings = {
+    preset: user?.theme_settings?.preset || theme || "emerald",
+    mode:
+      user?.theme_settings?.mode === "dark" || mode === "dark" ? "dark" : "light",
+    uiScale: user?.theme_settings?.uiScale || uiScale,
+    iconScale: user?.theme_settings?.iconScale || iconScale,
+    layoutDensity: user?.theme_settings?.layoutDensity || layoutDensity,
+    surfaceStyle: user?.theme_settings?.surfaceStyle || surfaceStyle,
+  } as const;
+
+  const formatSettingLabel = (value: string) =>
+    value
+      .split(/[-_]/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+
+  const applyThemeSettingsToContext = (nextSettings: typeof currentThemeSettings) => {
+    setTheme(nextSettings.preset);
+    setMode(nextSettings.mode);
+    setUiScale(nextSettings.uiScale);
+    setIconScale(nextSettings.iconScale);
+    setLayoutDensity(nextSettings.layoutDensity);
+    setSurfaceStyle(nextSettings.surfaceStyle);
+  };
+
+  const handleThemeSettingsUpdate = async (
+    partial: Partial<typeof currentThemeSettings>,
+    successMessage: string,
+  ) => {
+    if (!appUser) return;
+
+    const previousSettings = { ...currentThemeSettings };
+    const nextSettings = { ...currentThemeSettings, ...partial };
+
+    applyThemeSettingsToContext(nextSettings);
+    setThemeSaving(true);
+
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE_URL}/account`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          themeSettings: nextSettings,
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData?.message || "Failed to update appearance settings");
+      }
+
+      const updated = await res.json().catch(() => null);
+      const savedThemeSettings =
+        updated?.theme_settings && typeof updated.theme_settings === "object"
+          ? updated.theme_settings
+          : nextSettings;
+
+      setUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              theme_settings: savedThemeSettings,
+            }
+          : prev,
+      );
+
+      applyThemeSettingsToContext(savedThemeSettings as typeof currentThemeSettings);
+      toast.success(successMessage);
+    } catch (error: any) {
+      applyThemeSettingsToContext(previousSettings);
+      console.error("[handleThemeSettingsUpdate] error:", error);
+      toast.error(error?.message || "Failed to update appearance settings");
+    } finally {
+      setThemeSaving(false);
+    }
+  };
+
   // Keep request status in sync with known role assignments immediately.
   useEffect(() => {
     if (!user) {
@@ -299,6 +430,100 @@ export function ManageAccount() {
     applyAvatarFile(f);
     e.target.value = "";
   };
+
+  const openSelfieCapture = async () => {
+    if (
+      typeof window === "undefined" ||
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia ||
+      !window.isSecureContext
+    ) {
+      toast.info(
+        "Direct camera capture is not available here, so we opened image selection instead.",
+      );
+      selfieInputRef.current?.click();
+      return;
+    }
+
+    setSelfieError(null);
+    setSelfieDialogOpen(true);
+    setSelfieCaptureLoading(true);
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: "user",
+        },
+      });
+      selfieStreamRef.current = stream;
+
+      requestAnimationFrame(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          void videoRef.current.play().catch(() => null);
+        }
+      });
+    } catch (error: any) {
+      console.warn("[openSelfieCapture] camera unavailable:", error);
+      setSelfieDialogOpen(false);
+      toast.info(
+        "Camera access was unavailable, so we opened image selection instead.",
+      );
+      selfieInputRef.current?.click();
+    } finally {
+      setSelfieCaptureLoading(false);
+    }
+  };
+
+  const captureSelfieFrame = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) {
+      toast.error("Camera preview is not ready yet.");
+      return;
+    }
+
+    const width = video.videoWidth || 960;
+    const height = video.videoHeight || 1280;
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      toast.error("Could not capture your selfie.");
+      return;
+    }
+
+    context.drawImage(video, 0, 0, width, height);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          toast.error("Could not capture your selfie.");
+          return;
+        }
+
+        const capturedFile = new File([blob], `selfie-${Date.now()}.jpg`, {
+          type: "image/jpeg",
+        });
+        applyAvatarFile(capturedFile);
+        stopSelfieCamera();
+        setSelfieDialogOpen(false);
+        toast.success("Selfie captured. Save changes when you're ready.");
+      },
+      "image/jpeg",
+      0.92,
+    );
+  };
+
+  useEffect(() => {
+    if (!selfieDialogOpen) {
+      stopSelfieCamera();
+    }
+
+    return () => {
+      stopSelfieCamera();
+    };
+  }, [selfieDialogOpen]);
 
   const handleSaveProfile = async () => {
     if (!supabaseId || !appUser) {
@@ -571,62 +796,11 @@ export function ManageAccount() {
   };
 
   const handleThemeModeChange = async (nextMode: "light" | "dark") => {
-    if (!appUser) return;
-    if (mode === nextMode) return;
-
-    const previousMode = mode;
-    setMode(nextMode);
-    setThemeSaving(true);
-
-    try {
-      const token = await getAuthToken();
-      const preset = user?.theme_settings?.preset || theme || "emerald";
-
-      const res = await fetch(`${API_BASE_URL}/account`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          themeSettings: {
-            preset,
-            mode: nextMode,
-          },
-        }),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData?.message || "Failed to update theme mode");
-      }
-
-      const updated = await res.json().catch(() => null);
-      const nextThemeSettings =
-        updated?.theme_settings && typeof updated.theme_settings === "object"
-          ? updated.theme_settings
-          : {
-              preset,
-              mode: nextMode,
-            };
-
-      setUser((prev) =>
-        prev
-          ? {
-              ...prev,
-              theme_settings: nextThemeSettings,
-            }
-          : prev,
-      );
-
-      toast.success(`${nextMode === "dark" ? "Dark" : "Light"} mode enabled`);
-    } catch (error: any) {
-      setMode(previousMode as "light" | "dark");
-      console.error("[handleThemeModeChange] error:", error);
-      toast.error(error?.message || "Failed to update theme mode");
-    } finally {
-      setThemeSaving(false);
-    }
+    if (currentThemeSettings.mode === nextMode) return;
+    await handleThemeSettingsUpdate(
+      { mode: nextMode },
+      `${nextMode === "dark" ? "Dark" : "Light"} mode enabled`,
+    );
   };
 
   // Poll for role changes and refresh user record periodically
@@ -762,8 +936,6 @@ export function ManageAccount() {
   const composerCanRequestAccess =
     (!composerRequiresPayment || composerHasApprovedPayment) &&
     !composerInviteCanAccept;
-  const currentThemeMode: "light" | "dark" =
-    user?.theme_settings?.mode === "dark" || mode === "dark" ? "dark" : "light";
 
   const dashboardOptions = [
     ...(userRoles.includes("buyer")
@@ -976,22 +1148,29 @@ export function ManageAccount() {
                     <Camera className="h-4 w-4" />
                     Upload New Photo
                   </Label>
-                  <Label
-                    htmlFor="selfie-input"
-                    className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border/80 bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                  <input
+                    ref={selfieInputRef}
+                    id="selfie-input"
+                    type="file"
+                    accept="image/*"
+                    capture="user"
+                    onChange={handleSelfieChange}
+                    className="hidden"
+                    title="Take a selfie"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void openSelfieCapture()}
+                    className="inline-flex items-center gap-2"
                   >
-                    <input
-                      id="selfie-input"
-                      type="file"
-                      accept="image/*"
-                      capture="user"
-                      onChange={handleSelfieChange}
-                      className="hidden"
-                      title="Take a selfie"
-                    />
                     <UserRound className="h-4 w-4" />
                     Take Selfie
-                  </Label>
+                  </Button>
+                  <p className="text-center text-xs text-muted-foreground">
+                    We use the front camera when available, then fall back to your
+                    image picker if the device does not allow direct capture.
+                  </p>
                 </div>
 
                 <div className="grid gap-6 sm:grid-cols-2">
@@ -1068,7 +1247,7 @@ export function ManageAccount() {
           <CardHeader className="border-b border-border/70 bg-card/80">
             <CardTitle className="flex items-center gap-3 text-xl text-foreground">
               <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                {currentThemeMode === "dark" ? (
+                {currentThemeSettings.mode === "dark" ? (
                   <Moon className="h-4 w-4" />
                 ) : (
                   <Sun className="h-4 w-4" />
@@ -1079,30 +1258,229 @@ export function ManageAccount() {
           </CardHeader>
 
           <CardContent className="pt-5 pb-5">
-            <p className="mb-4 text-sm text-muted-foreground">
-              Choose your preferred display mode. This preference is saved to your account.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Button
-                type="button"
-                variant={currentThemeMode === "light" ? "default" : "outline"}
-                onClick={() => void handleThemeModeChange("light")}
-                disabled={themeSaving}
-                className="w-full"
-              >
-                <Sun className="mr-2 h-4 w-4" />
-                Light Mode
-              </Button>
-              <Button
-                type="button"
-                variant={currentThemeMode === "dark" ? "default" : "outline"}
-                onClick={() => void handleThemeModeChange("dark")}
-                disabled={themeSaving}
-                className="w-full"
-              >
-                <Moon className="mr-2 h-4 w-4" />
-                Dark Mode
-              </Button>
+            <div className="space-y-6">
+              <div className="rounded-2xl border border-border/70 bg-muted/35 p-4">
+                <p className="text-sm font-semibold text-foreground">
+                  Personalize the whole system
+                </p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Switch between lighter and denser layouts, adjust icon size,
+                  and choose a surface style that feels right for your device.
+                  Every change is saved to your account automatically.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  <span className="rounded-full border border-border/70 bg-card px-3 py-1">
+                    {formatSettingLabel(currentThemeSettings.preset)}
+                  </span>
+                  <span className="rounded-full border border-border/70 bg-card px-3 py-1">
+                    {currentThemeSettings.mode === "dark" ? "Dark Mode" : "Light Mode"}
+                  </span>
+                  <span className="rounded-full border border-border/70 bg-card px-3 py-1">
+                    {formatSettingLabel(currentThemeSettings.uiScale)} view
+                  </span>
+                  <span className="rounded-full border border-border/70 bg-card px-3 py-1">
+                    {formatSettingLabel(currentThemeSettings.iconScale)} icons
+                  </span>
+                  <span className="rounded-full border border-border/70 bg-card px-3 py-1">
+                    {formatSettingLabel(currentThemeSettings.layoutDensity)} layout
+                  </span>
+                  <span className="rounded-full border border-border/70 bg-card px-3 py-1">
+                    {formatSettingLabel(currentThemeSettings.surfaceStyle)} surfaces
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Palette className="h-4 w-4 text-primary" />
+                  Color Theme
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {THEME_PRESETS.map((preset) => (
+                    <Button
+                      key={preset}
+                      type="button"
+                      size="sm"
+                      variant={
+                        currentThemeSettings.preset === preset ? "default" : "outline"
+                      }
+                      onClick={() =>
+                        void handleThemeSettingsUpdate(
+                          { preset },
+                          `${formatSettingLabel(preset)} theme applied`,
+                        )
+                      }
+                      disabled={themeSaving}
+                    >
+                      {formatSettingLabel(preset)}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  {currentThemeSettings.mode === "dark" ? (
+                    <Moon className="h-4 w-4 text-primary" />
+                  ) : (
+                    <Sun className="h-4 w-4 text-primary" />
+                  )}
+                  Mode
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    variant={
+                      currentThemeSettings.mode === "light" ? "default" : "outline"
+                    }
+                    onClick={() => void handleThemeModeChange("light")}
+                    disabled={themeSaving}
+                    className="w-full"
+                  >
+                    <Sun className="mr-2 h-4 w-4" />
+                    Light Mode
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={
+                      currentThemeSettings.mode === "dark" ? "default" : "outline"
+                    }
+                    onClick={() => void handleThemeModeChange("dark")}
+                    disabled={themeSaving}
+                    className="w-full"
+                  >
+                    <Moon className="mr-2 h-4 w-4" />
+                    Dark Mode
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <Scaling className="h-4 w-4 text-primary" />
+                    View Size
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {THEME_UI_SCALES.map((size) => (
+                      <Button
+                        key={size}
+                        type="button"
+                        size="sm"
+                        variant={
+                          currentThemeSettings.uiScale === size ? "default" : "outline"
+                        }
+                        onClick={() =>
+                          void handleThemeSettingsUpdate(
+                            { uiScale: size },
+                            `${formatSettingLabel(size)} view size enabled`,
+                          )
+                        }
+                        disabled={themeSaving}
+                      >
+                        {formatSettingLabel(size)}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <UserRound className="h-4 w-4 text-primary" />
+                    Icon Size
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {THEME_ICON_SCALES.map((size) => (
+                      <Button
+                        key={size}
+                        type="button"
+                        size="sm"
+                        variant={
+                          currentThemeSettings.iconScale === size
+                            ? "default"
+                            : "outline"
+                        }
+                        onClick={() =>
+                          void handleThemeSettingsUpdate(
+                            { iconScale: size },
+                            `${formatSettingLabel(size)} icons enabled`,
+                          )
+                        }
+                        disabled={themeSaving}
+                      >
+                        {formatSettingLabel(size)}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <Rows3 className="h-4 w-4 text-primary" />
+                    Layout Density
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {THEME_LAYOUT_DENSITIES.map((density) => (
+                      <Button
+                        key={density}
+                        type="button"
+                        size="sm"
+                        variant={
+                          currentThemeSettings.layoutDensity === density
+                            ? "default"
+                            : "outline"
+                        }
+                        onClick={() =>
+                          void handleThemeSettingsUpdate(
+                            { layoutDensity: density },
+                            `${formatSettingLabel(density)} layout spacing applied`,
+                          )
+                        }
+                        disabled={themeSaving}
+                      >
+                        {formatSettingLabel(density)}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    Surface Style
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {THEME_SURFACE_STYLES.map((style) => (
+                      <Button
+                        key={style}
+                        type="button"
+                        size="sm"
+                        variant={
+                          currentThemeSettings.surfaceStyle === style
+                            ? "default"
+                            : "outline"
+                        }
+                        onClick={() =>
+                          void handleThemeSettingsUpdate(
+                            { surfaceStyle: style },
+                            `${formatSettingLabel(style)} surfaces enabled`,
+                          )
+                        }
+                        disabled={themeSaving}
+                      >
+                        {formatSettingLabel(style)}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {themeSaving ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Saving your appearance settings...
+                </div>
+              ) : null}
             </div>
           </CardContent>
         </Card>
@@ -1416,6 +1794,90 @@ export function ManageAccount() {
             </Button>
           </CardContent>
         </Card>
+
+      <Dialog
+        open={selfieDialogOpen}
+        onOpenChange={(open) => {
+          setSelfieDialogOpen(open);
+          if (!open) {
+            setSelfieError(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Take a selfie</DialogTitle>
+            <DialogDescription>
+              Use your front camera for a quick profile photo, or switch to your
+              file picker if your device blocks direct camera capture.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="overflow-hidden rounded-2xl border border-border/70 bg-black/90">
+              {selfieCaptureLoading ? (
+                <div className="flex aspect-[3/4] items-center justify-center text-white/80">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                </div>
+              ) : (
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  className="aspect-[3/4] w-full object-cover"
+                />
+              )}
+            </div>
+
+            {selfieError ? (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+                {selfieError}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Keep your face centered and tap <span className="font-semibold">Use Selfie</span>{" "}
+                when the preview looks right.
+              </p>
+            )}
+            <canvas ref={canvasRef} className="hidden" />
+          </div>
+
+          <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setSelfieDialogOpen(false);
+                setSelfieError(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  stopSelfieCamera();
+                  setSelfieDialogOpen(false);
+                  selfieInputRef.current?.click();
+                }}
+              >
+                Choose Photo Instead
+              </Button>
+              <Button
+                type="button"
+                onClick={captureSelfieFrame}
+                disabled={selfieCaptureLoading}
+              >
+                <Camera className="mr-2 h-4 w-4" />
+                Use Selfie
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Role Request Modal */}
       <AlertDialog

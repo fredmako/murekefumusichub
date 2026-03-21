@@ -15,7 +15,17 @@ import { ManageAccount } from "./components/ManageAccount";
 import AuthCallback from "@/app/pages/AuthCallback";
 import { ContactUs } from "./components/ContactUs";
 import { useAuth } from "@/context/AuthContext";
-import { THEME_MODES, THEME_PRESETS, ThemeMode, ThemePreset, useTheme } from "@/context/ThemeContext";
+import {
+  THEME_ICON_SCALES,
+  THEME_LAYOUT_DENSITIES,
+  THEME_MODES,
+  THEME_PRESETS,
+  THEME_SURFACE_STYLES,
+  THEME_UI_SCALES,
+  ThemeMode,
+  ThemePreset,
+  useTheme,
+} from "@/context/ThemeContext";
 import { toast } from "sonner";
 import { SESSION_EXPIRED_EVENT } from "@/lib/sessionEvents";
 import { APP_ERROR_EVENT, type AppErrorAction, type AppErrorDetail, dispatchAppError } from "@/lib/appErrorEvents";
@@ -110,6 +120,12 @@ const Marketplace = React.lazy(() =>
 const AboutPage = React.lazy(() =>
   import("./pages/AboutPage").then((m) => ({
     default: (m as any).AboutPage ?? (m as any).default,
+  })),
+);
+
+const HelpCenterPage = React.lazy(() =>
+  import("./pages/HelpCenterPage").then((m) => ({
+    default: (m as any).HelpCenterPage ?? (m as any).default,
   })),
 );
 
@@ -343,7 +359,15 @@ export default function App() {
   const location = useLocation();
   const prefersReducedMotion = useReducedMotion();
   const { appUser, signOut } = useAuth();
-  const { mode, setMode, setTheme } = useTheme();
+  const {
+    mode,
+    setMode,
+    setTheme,
+    setUiScale,
+    setIconScale,
+    setLayoutDensity,
+    setSurfaceStyle,
+  } = useTheme();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [appError, setAppError] = useState<AppErrorDetail | null>(null);
   const [appErrorOpen, setAppErrorOpen] = useState(false);
@@ -413,7 +437,41 @@ export default function App() {
     if (mode && THEME_MODES.includes(mode as ThemeMode)) {
       setMode(mode as ThemeMode);
     }
-  }, [appUser?.theme_settings?.mode, appUser?.theme_settings?.preset, setMode, setTheme]);
+    const uiScale = appUser?.theme_settings?.uiScale;
+    if (uiScale && THEME_UI_SCALES.includes(uiScale as any)) {
+      setUiScale(uiScale as any);
+    }
+    const iconScale = appUser?.theme_settings?.iconScale;
+    if (iconScale && THEME_ICON_SCALES.includes(iconScale as any)) {
+      setIconScale(iconScale as any);
+    }
+    const layoutDensity = appUser?.theme_settings?.layoutDensity;
+    if (layoutDensity && THEME_LAYOUT_DENSITIES.includes(layoutDensity as any)) {
+      setLayoutDensity(layoutDensity as any);
+    }
+    const surfaceStyle = appUser?.theme_settings?.surfaceStyle;
+    if (surfaceStyle && THEME_SURFACE_STYLES.includes(surfaceStyle as any)) {
+      setSurfaceStyle(surfaceStyle as any);
+    }
+  }, [
+    appUser?.theme_settings?.iconScale,
+    appUser?.theme_settings?.layoutDensity,
+    appUser?.theme_settings?.mode,
+    appUser?.theme_settings?.preset,
+    appUser?.theme_settings?.surfaceStyle,
+    appUser?.theme_settings?.uiScale,
+    setIconScale,
+    setLayoutDensity,
+    setMode,
+    setSurfaceStyle,
+    setTheme,
+    setUiScale,
+  ]);
+
+  const shouldHideNavbar =
+    location.pathname.startsWith("/login") ||
+    location.pathname.startsWith("/reset-password") ||
+    location.pathname.startsWith("/auth/callback");
 
   const handleAppErrorAction = (action: AppErrorAction, detail: AppErrorDetail | null) => {
     if (!detail) return;
@@ -638,7 +696,9 @@ export default function App() {
           }}
           aria-hidden="true"
         />
-        <Navbar cart={cart} onRemoveFromCart={handleRemoveFromCart} />
+        {shouldHideNavbar ? null : (
+          <Navbar cart={cart} onRemoveFromCart={handleRemoveFromCart} />
+        )}
         <AppErrorDialog
           open={appErrorOpen}
           detail={appError}
@@ -720,6 +780,7 @@ export default function App() {
                   element={<Marketplace onAddToCart={handleAddToCart} />}
                 />
                 <Route path="/about" element={<AboutPage />} />
+                <Route path="/help" element={<HelpCenterPage />} />
                 <Route path="/messenger" element={<MessengerPage />} />
                 <Route path="/privacy-policy" element={<PrivacyPolicy />} />
                 <Route path="/manage-account" element={<ManageAccount />} />

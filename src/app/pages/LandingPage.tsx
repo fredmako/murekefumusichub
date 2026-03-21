@@ -359,6 +359,11 @@ export const LandingPage = () => {
                   Explore Music Hub
                 </Button>
               </Link>
+              <Link to="/help">
+                <Button size="lg" variant="outline">
+                  User Manuals
+                </Button>
+              </Link>
             </div>
             <div className="mt-8 grid max-w-md grid-cols-3 gap-3 text-sm">
               <div className="rounded-xl border border-border/70 bg-card p-3">
@@ -813,6 +818,9 @@ export const LandingPage = () => {
                 </Link>
                 <Link to="/contact" className="block text-muted-foreground hover:text-foreground">
                   Contact
+                </Link>
+                <Link to="/help" className="block text-muted-foreground hover:text-foreground">
+                  Help &amp; Manuals
                 </Link>
                 <Link to="/privacy-policy" className="block text-muted-foreground hover:text-foreground">
                   Privacy Policy

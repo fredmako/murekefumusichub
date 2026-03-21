@@ -17,6 +17,13 @@ import {
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/app/components/ui/select";
 import { Separator } from "@/app/components/ui/separator";
 import { DashboardShell } from "@/app/components/DashboardShell";
 import { toast } from "sonner";
@@ -40,6 +47,9 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
     searchParams.get("tab") === "checkout" ? "checkout" : "library",
   );
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [sortMode, setSortMode] = useState<
+    "recent" | "oldest" | "title" | "composer" | "price-low" | "price-high"
+  >("recent");
   const [loading, setLoading] = useState(true);
   const [purchasedCompositions, setPurchasedCompositions] = useState<any[]>([]);
   const [totalSpent, setTotalSpent] = useState(0);
@@ -47,10 +57,19 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
     string | null
   >(null);
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
-  const [libraryFilter, setLibraryFilter] = useState<"all" | "compositions">(
+  const [libraryFilter, setLibraryFilter] = useState<
+    "all" | "compositions" | "arrangements"
+  >(
     "all",
   );
   const [librarySearch, setLibrarySearch] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(max-width: 768px)").matches) {
+      setViewMode("list");
+    }
+  }, []);
 
   useEffect(() => {
     const requestedTab =
@@ -190,9 +209,49 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
       if (libraryFilter === "compositions") {
         return !categoryName.includes("arrange");
       }
+      if (libraryFilter === "arrangements") {
+        return categoryName.includes("arrange");
+      }
       return true;
     });
   }, [libraryFilter, librarySearch, purchasedCompositions]);
+
+  const sortedFilteredPurchases = useMemo(() => {
+    const rows = [...filteredPurchases];
+    const resolvePurchasedAt = (purchase: any) =>
+      new Date(
+        purchase?.purchased_at || purchase?.created_at || purchase?.createdAt || 0,
+      ).getTime();
+    const resolveTitle = (purchase: any) =>
+      String(purchase?.composition?.title || "Untitled");
+    const resolveComposer = (purchase: any) =>
+      String(
+        purchase?.composition?.composerName ||
+          purchase?.composition?.composer_name ||
+          purchase?.composition?.composers?.users?.display_name ||
+          "Unknown",
+      );
+    const resolvePrice = (purchase: any) =>
+      Number(purchase?.price_paid || purchase?.composition?.price || 0);
+
+    switch (sortMode) {
+      case "oldest":
+        return rows.sort((a, b) => resolvePurchasedAt(a) - resolvePurchasedAt(b));
+      case "title":
+        return rows.sort((a, b) => resolveTitle(a).localeCompare(resolveTitle(b)));
+      case "composer":
+        return rows.sort((a, b) =>
+          resolveComposer(a).localeCompare(resolveComposer(b)),
+        );
+      case "price-low":
+        return rows.sort((a, b) => resolvePrice(a) - resolvePrice(b));
+      case "price-high":
+        return rows.sort((a, b) => resolvePrice(b) - resolvePrice(a));
+      case "recent":
+      default:
+        return rows.sort((a, b) => resolvePurchasedAt(b) - resolvePurchasedAt(a));
+    }
+  }, [filteredPurchases, sortMode]);
 
   const handleCheckout = () => {
     if (!appUser) {
@@ -322,10 +381,37 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
               >
                 Compositions
               </Button>
+              <Button
+                size="sm"
+                variant={libraryFilter === "arrangements" ? "default" : "outline"}
+                onClick={() => setLibraryFilter("arrangements")}
+              >
+                Arrangements
+              </Button>
             </div>
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Recent Purchases</h2>
-              <div className="flex gap-1">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Recent Purchases</h2>
+                <p className="text-sm text-muted-foreground">
+                  {sortedFilteredPurchases.length} item
+                  {sortedFilteredPurchases.length === 1 ? "" : "s"} in view
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Select value={sortMode} onValueChange={(value) => setSortMode(value as typeof sortMode)}>
+                  <SelectTrigger className="h-9 w-[170px] border-white/15 bg-white/10 text-foreground">
+                    <SelectValue placeholder="Sort library" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="recent">Newest First</SelectItem>
+                    <SelectItem value="oldest">Oldest First</SelectItem>
+                    <SelectItem value="title">Title A-Z</SelectItem>
+                    <SelectItem value="composer">Composer A-Z</SelectItem>
+                    <SelectItem value="price-low">Price: Low to High</SelectItem>
+                    <SelectItem value="price-high">Price: High to Low</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-1 rounded-full border border-white/10 bg-white/5 p-1">
                 <Button
                   variant="ghost"
                   size="icon"
@@ -346,6 +432,7 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
                 >
                   <Grid3x3 className="size-5" />
                 </Button>
+                </div>
               </div>
             </div>
 
@@ -353,7 +440,7 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
               <div className="flex min-h-[400px] items-center justify-center">
                 <Loader className="size-12 animate-spin text-muted-foreground" />
               </div>
-            ) : filteredPurchases.length === 0 ? (
+            ) : sortedFilteredPurchases.length === 0 ? (
               <div className="flex min-h-[400px] items-center justify-center">
                 <div className="text-center">
                   <Music className="mx-auto mb-4 size-16 text-muted-foreground" />
@@ -374,7 +461,7 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
               </div>
             ) : viewMode === "grid" ? (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                {filteredPurchases.map(
+                {sortedFilteredPurchases.map(
                   ({ composition, purchased_at, created_at, id }) => {
                     const title = composition?.title || "Untitled";
                     const composer =
@@ -465,7 +552,7 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
               </div>
             ) : (
               <div className="space-y-2">
-                {filteredPurchases.map(({ composition, purchased_at, created_at, id }) => {
+                {sortedFilteredPurchases.map(({ composition, purchased_at, created_at, id }) => {
                   const title = composition?.title || "Untitled";
                   const composer =
                     composition?.composerName ||

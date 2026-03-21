@@ -41,6 +41,15 @@ export function Login() {
     resetPassword,
   } = useAuth();
 
+  useEffect(() => {
+    const passwordResetState = searchParams.get("passwordReset");
+    if (passwordResetState === "updated") {
+      setSignupNotice(
+        "Password updated successfully. Sign in again with your new password.",
+      );
+    }
+  }, [searchParams]);
+
   /* ============================= */
   /* REDIRECT BASED ON ROLE */
   /* ============================= */
@@ -111,8 +120,10 @@ export function Login() {
     try {
       if (isForgot) {
         await resetPassword(email);
-        toast.success("Password reset email sent. Check your inbox.");
-        setSignupNotice("");
+        const resetMessage =
+          "Password reset link sent. Open your email inbox to continue.";
+        toast.success(resetMessage);
+        setSignupNotice(resetMessage);
       } else if (isSignUp) {
         await signUpWithEmail(email, password);
         const confirmationMessage =

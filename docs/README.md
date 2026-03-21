@@ -5,6 +5,7 @@ This folder contains the current documentation set for Murekefu Music Hub.
 Canonical documents:
 
 - [System Documentation](./MUREKEFU_MUSIC_HUB_SYSTEM_DOCUMENTATION.md)
+- [User Manual](./MUREKEFU_MUSIC_HUB_USER_MANUAL.md)
 - [Presentation Slides](./MUREKEFU_MUSIC_HUB_PRESENTATION_SLIDES.md)
 
 Notes:

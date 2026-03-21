@@ -4,6 +4,7 @@ import {
   Grid2x2,
   Grid3x3,
   LayoutGrid,
+  List,
   Loader2,
   Music2,
   Play,
@@ -15,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { flushSync } from "react-dom";
 import { Input } from "@/app/components/ui/input";
 import { Button } from "@/app/components/ui/button";
 import { Checkbox } from "@/app/components/ui/checkbox";
@@ -151,9 +153,13 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
   const [loading, setLoading] = useState(true);
   const [recommendationsLoading, setRecommendationsLoading] = useState(false);
   const [previewComposition, setPreviewComposition] = useState<Composition | null>(null);
+  const [layoutMode, setLayoutMode] = useState<"grid" | "list">("grid");
   const [viewSize, setViewSize] = useState<"compact" | "comfortable" | "large">(
     "comfortable",
   );
+  const [sortMode, setSortMode] = useState<
+    "popular" | "newest" | "oldest" | "title" | "price-low" | "price-high"
+  >("popular");
   const [recommendationMeta, setRecommendationMeta] = useState<RecommendationMeta>({
     mode: "idle",
     purchaseCount: 0,
@@ -190,6 +196,13 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
     };
 
     void fetchMarketplaceData();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(max-width: 768px)").matches) {
+      setLayoutMode("list");
+    }
   }, []);
 
   useEffect(() => {
@@ -278,6 +291,35 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
     searchTerm,
   ]);
 
+  const sortedFilteredCompositions = useMemo(() => {
+    const rows = [...filteredCompositions];
+    switch (sortMode) {
+      case "newest":
+        return rows.sort(
+          (a, b) =>
+            new Date(b.createdAt || 0).getTime() -
+            new Date(a.createdAt || 0).getTime(),
+        );
+      case "oldest":
+        return rows.sort(
+          (a, b) =>
+            new Date(a.createdAt || 0).getTime() -
+            new Date(b.createdAt || 0).getTime(),
+        );
+      case "title":
+        return rows.sort((a, b) => a.title.localeCompare(b.title));
+      case "price-low":
+        return rows.sort((a, b) => a.price - b.price);
+      case "price-high":
+        return rows.sort((a, b) => b.price - a.price);
+      case "popular":
+      default:
+        return rows.sort(
+          (a, b) => (b.stats?.purchases ?? 0) - (a.stats?.purchases ?? 0),
+        );
+    }
+  }, [filteredCompositions, sortMode]);
+
   const availableInitials = useMemo(() => {
     const initials = new Set<string>();
     compositions.forEach((comp) => {
@@ -308,11 +350,11 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
   useEffect(() => {
     if (!previewComposition) return;
     const source =
-      activeFeed === "for-you" ? recommendedCompositions : filteredCompositions;
+      activeFeed === "for-you" ? recommendedCompositions : sortedFilteredCompositions;
     if (!source.some((comp) => comp.id === previewComposition.id)) {
       setPreviewComposition(null);
     }
-  }, [activeFeed, filteredCompositions, previewComposition, recommendedCompositions]);
+  }, [activeFeed, previewComposition, recommendedCompositions, sortedFilteredCompositions]);
 
   const handlePreviewSelect = (composition: Composition) => {
     setPreviewComposition(composition);
@@ -323,9 +365,10 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
   };
 
   const handlePurchase = (composition: Composition) => {
-    if (onAddToCart) {
-      onAddToCart(composition);
-    }
+    flushSync(() => {
+      setPreviewComposition(null);
+      if (onAddToCart) onAddToCart(composition);
+    });
     navigate("/checkout");
   };
 
@@ -696,30 +739,71 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         <p className="text-sm font-medium text-muted-foreground">
           {loading
             ? "Loading compositions..."
-            : `${filteredCompositions.length} composition${filteredCompositions.length !== 1 ? "s" : ""} found`}
+            : `${sortedFilteredCompositions.length} composition${sortedFilteredCompositions.length !== 1 ? "s" : ""} found`}
         </p>
-        <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 p-1.5">
-          <span className="px-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            View
-          </span>
-          <ToggleGroup
-            type="single"
-            value={viewSize}
-            onValueChange={(value) => {
-              if (value) setViewSize(value as typeof viewSize);
-            }}
-            className="flex items-center"
-          >
-            <ToggleGroupItem value="compact" aria-label="Compact view">
-              <Grid3x3 className="size-4" />
-            </ToggleGroupItem>
-            <ToggleGroupItem value="comfortable" aria-label="Comfortable view">
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={sortMode} onValueChange={(value) => setSortMode(value as typeof sortMode)}>
+            <SelectTrigger className="h-10 w-[170px] border-white/10 bg-white/10 text-foreground">
+              <SelectValue placeholder="Sort results" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="popular">Most Popular</SelectItem>
+              <SelectItem value="newest">Newest First</SelectItem>
+              <SelectItem value="oldest">Oldest First</SelectItem>
+              <SelectItem value="title">Title A-Z</SelectItem>
+              <SelectItem value="price-low">Price: Low to High</SelectItem>
+              <SelectItem value="price-high">Price: High to Low</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1">
+            <Button
+              type="button"
+              variant={layoutMode === "list" ? "secondary" : "ghost"}
+              size="icon"
+              className="h-8 w-8 rounded-full"
+              onClick={() => setLayoutMode("list")}
+              aria-label="List view"
+            >
+              <List className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              variant={layoutMode === "grid" ? "secondary" : "ghost"}
+              size="icon"
+              className="h-8 w-8 rounded-full"
+              onClick={() => setLayoutMode("grid")}
+              aria-label="Grid view"
+            >
               <LayoutGrid className="size-4" />
-            </ToggleGroupItem>
-            <ToggleGroupItem value="large" aria-label="Large view">
-              <Grid2x2 className="size-4" />
-            </ToggleGroupItem>
-          </ToggleGroup>
+            </Button>
+          </div>
+
+          {layoutMode === "grid" ? (
+            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 p-1.5">
+              <span className="px-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                Size
+              </span>
+              <ToggleGroup
+                type="single"
+                value={viewSize}
+                onValueChange={(value) => {
+                  if (value) setViewSize(value as typeof viewSize);
+                }}
+                className="flex items-center"
+              >
+                <ToggleGroupItem value="compact" aria-label="Compact view">
+                  <Grid3x3 className="size-4" />
+                </ToggleGroupItem>
+                <ToggleGroupItem value="comfortable" aria-label="Comfortable view">
+                  <LayoutGrid className="size-4" />
+                </ToggleGroupItem>
+                <ToggleGroupItem value="large" aria-label="Large view">
+                  <Grid2x2 className="size-4" />
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -744,28 +828,104 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
             </div>
           )}
 
-          {!loading && filteredCompositions.length > 0 && (
-            <div
-              className={`grid grid-cols-1 gap-4 md:grid-cols-2 ${
-                viewSize === "compact"
-                  ? "lg:grid-cols-4 xl:grid-cols-5"
-                  : viewSize === "large"
-                    ? "lg:grid-cols-2 xl:grid-cols-3"
-                    : "lg:grid-cols-3 xl:grid-cols-4"
-              }`}
-            >
-              {filteredCompositions.map((composition) => (
-                <div
-                  key={composition.id}
-                  onClick={() => handlePreviewSelect(composition)}
-                >
-                  <CompositionCard composition={composition} showActions={false} />
-                </div>
-              ))}
-            </div>
+          {!loading && sortedFilteredCompositions.length > 0 && (
+            layoutMode === "list" ? (
+              <div className="space-y-2">
+                {sortedFilteredCompositions.map((composition) => (
+                  <div
+                    key={composition.id}
+                    className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 transition-all hover:bg-white/10 sm:p-4"
+                    onClick={() => handlePreviewSelect(composition)}
+                  >
+                    <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl bg-muted/30 shadow-lg sm:h-20 sm:w-20">
+                      {composition.thumbnailUrl ? (
+                        <img
+                          src={composition.thumbnailUrl}
+                          alt={composition.title}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-emerald-500/30 to-teal-500/20">
+                          <Music2 className="size-7 text-white/80" />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="truncate text-sm font-semibold text-foreground sm:text-base">
+                            {composition.title}
+                          </h3>
+                          <p className="truncate text-xs text-muted-foreground sm:text-sm">
+                            {composition.composerName}
+                          </p>
+                        </div>
+                        <p className="whitespace-nowrap text-sm font-semibold text-primary">
+                          {(composition.priceCurrency || "KES").trim()}{" "}
+                          {composition.price.toLocaleString()}
+                        </p>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground sm:text-xs">
+                        {composition.categoryName ? (
+                          <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                            {composition.categoryName}
+                          </span>
+                        ) : null}
+                        {composition.language ? (
+                          <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                            {composition.language}
+                          </span>
+                        ) : null}
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                          {(composition.stats?.views ?? 0).toLocaleString()} views
+                        </span>
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                          {(composition.stats?.purchases ?? 0).toLocaleString()} purchases
+                        </span>
+                      </div>
+                    </div>
+
+                    <Button
+                      type="button"
+                      size="icon"
+                      className="h-10 w-10 flex-shrink-0 rounded-full bg-emerald-500 shadow-xl transition-transform hover:scale-105 hover:bg-emerald-400"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handlePreviewSelect(composition);
+                      }}
+                      aria-label={`Preview ${composition.title}`}
+                    >
+                      <Play className="size-4 fill-white" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div
+                className={`grid grid-cols-1 gap-4 md:grid-cols-2 ${
+                  viewSize === "compact"
+                    ? "lg:grid-cols-4 xl:grid-cols-5"
+                    : viewSize === "large"
+                      ? "lg:grid-cols-2 xl:grid-cols-3"
+                      : "lg:grid-cols-3 xl:grid-cols-4"
+                }`}
+              >
+                {sortedFilteredCompositions.map((composition) => (
+                  <div
+                    key={composition.id}
+                    onClick={() => handlePreviewSelect(composition)}
+                  >
+                    <CompositionCard composition={composition} showActions={false} />
+                  </div>
+                ))}
+              </div>
+            )
           )}
 
-          {!loading && filteredCompositions.length === 0 && (
+          {!loading && sortedFilteredCompositions.length === 0 && (
             <div className="py-12 text-center">
               <p className="text-gray-500">
                 {compositions.length === 0
@@ -777,6 +937,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                   variant="link"
                   onClick={() => {
                     setSearchTerm("");
+                    setInitialFilters([]);
                     setCategoryFilter("all");
                     setLanguageFilter("all");
                     setAccompanimentFilter("all");

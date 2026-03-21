@@ -18,7 +18,7 @@ export function SetNewPassword() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const { updatePassword } = useAuth();
+  const { updatePassword, signOut } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -38,8 +38,11 @@ export function SetNewPassword() {
 
     try {
       await updatePassword(password);
-      toast.success("Password updated successfully! You can now log in with your new password.");
-      navigate("/login");
+      await signOut(false).catch(() => null);
+      toast.success(
+        "Password updated successfully. Please sign in again with your new password.",
+      );
+      navigate("/login?passwordReset=updated", { replace: true });
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Failed to update password.");

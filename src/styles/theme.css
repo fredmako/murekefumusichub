@@ -2,6 +2,21 @@
 
 :root {
   --font-size: 16px;
+  --app-icon-scale: 1;
+  --dashboard-card-gap: 1rem;
+  --dashboard-card-radius: 1rem;
+  --dashboard-card-header-x: 1rem;
+  --dashboard-card-header-top: 1rem;
+  --dashboard-card-header-bottom: 0.75rem;
+  --dashboard-card-content-x: 1rem;
+  --dashboard-card-content-bottom: 1rem;
+  --dashboard-card-footer-x: 1rem;
+  --dashboard-card-footer-top: 0.75rem;
+  --dashboard-card-footer-bottom: 1rem;
+  --surface-card-background: color-mix(in oklab, var(--card) 95%, transparent);
+  --surface-card-border: color-mix(in oklab, var(--border) 92%, transparent);
+  --surface-card-shadow: 0 20px 40px -32px rgba(15, 23, 42, 0.28);
+  --surface-card-blur: blur(0px);
   --route-backdrop-image: none;
   --route-backdrop-image-size: cover;
   --route-backdrop-image-repeat: no-repeat;
@@ -84,6 +99,46 @@
   --sidebar-accent-foreground: #deebff;
   --sidebar-border: #2d446b;
   --sidebar-ring: #b28aff;
+}
+
+:root[data-layout-density="compact"] {
+  --dashboard-card-gap: 0.8rem;
+  --dashboard-card-radius: 0.9rem;
+  --dashboard-card-header-x: 0.9rem;
+  --dashboard-card-header-top: 0.9rem;
+  --dashboard-card-header-bottom: 0.65rem;
+  --dashboard-card-content-x: 0.9rem;
+  --dashboard-card-content-bottom: 0.9rem;
+  --dashboard-card-footer-x: 0.9rem;
+  --dashboard-card-footer-top: 0.65rem;
+  --dashboard-card-footer-bottom: 0.9rem;
+}
+
+:root[data-layout-density="spacious"] {
+  --dashboard-card-gap: 1.2rem;
+  --dashboard-card-radius: 1.15rem;
+  --dashboard-card-header-x: 1.2rem;
+  --dashboard-card-header-top: 1.2rem;
+  --dashboard-card-header-bottom: 0.9rem;
+  --dashboard-card-content-x: 1.2rem;
+  --dashboard-card-content-bottom: 1.2rem;
+  --dashboard-card-footer-x: 1.2rem;
+  --dashboard-card-footer-top: 0.9rem;
+  --dashboard-card-footer-bottom: 1.2rem;
+}
+
+:root[data-surface-style="glass"] {
+  --surface-card-background: color-mix(in oklab, var(--card) 76%, transparent);
+  --surface-card-border: color-mix(in oklab, var(--border) 74%, white 26%);
+  --surface-card-shadow: 0 26px 52px -36px rgba(15, 23, 42, 0.36);
+  --surface-card-blur: blur(18px);
+}
+
+:root[data-surface-style="solid"] {
+  --surface-card-background: var(--card);
+  --surface-card-border: var(--border);
+  --surface-card-shadow: 0 16px 32px -28px rgba(15, 23, 42, 0.18);
+  --surface-card-blur: blur(0px);
 }
 
 @theme inline {
@@ -201,6 +256,11 @@
     background-attachment: fixed;
   }
 
+  .lucide {
+    transform: scale(var(--app-icon-scale));
+    transform-origin: center;
+  }
+
   /**
   * Default typography styles for HTML elements (h1-h4, p, label, button, input).
   * These are in @layer base, so Tailwind utility classes (like text-sm, text-lg) automatically override them.
@@ -293,7 +353,14 @@
       0 20px 34px -30px rgba(8, 20, 44, 0.9);
   }
 
-  .dark [data-slot="card"] {
+  [data-slot="card"] {
+    background: var(--surface-card-background);
+    border-color: var(--surface-card-border);
+    box-shadow: var(--surface-card-shadow);
+    backdrop-filter: var(--surface-card-blur);
+  }
+
+  :root[data-surface-style="soft"] .dark [data-slot="card"] {
     border-color: color-mix(in oklab, var(--border) 70%, #9b6bff 30%);
     background-image: linear-gradient(
       150deg,
@@ -529,28 +596,28 @@
   }
 
   .dashboard-density [data-slot="card"] {
-    gap: 1rem;
-    border-radius: 1rem;
+    gap: var(--dashboard-card-gap);
+    border-radius: var(--dashboard-card-radius);
   }
 
   .dashboard-density [data-slot="card-header"] {
-    padding-left: 1rem;
-    padding-right: 1rem;
-    padding-top: 1rem;
-    padding-bottom: 0.75rem;
+    padding-left: var(--dashboard-card-header-x);
+    padding-right: var(--dashboard-card-header-x);
+    padding-top: var(--dashboard-card-header-top);
+    padding-bottom: var(--dashboard-card-header-bottom);
   }
 
   .dashboard-density [data-slot="card-content"] {
-    padding-left: 1rem;
-    padding-right: 1rem;
-    padding-bottom: 1rem;
+    padding-left: var(--dashboard-card-content-x);
+    padding-right: var(--dashboard-card-content-x);
+    padding-bottom: var(--dashboard-card-content-bottom);
   }
 
   .dashboard-density [data-slot="card-footer"] {
-    padding-left: 1rem;
-    padding-right: 1rem;
-    padding-bottom: 1rem;
-    padding-top: 0.75rem;
+    padding-left: var(--dashboard-card-footer-x);
+    padding-right: var(--dashboard-card-footer-x);
+    padding-bottom: var(--dashboard-card-footer-bottom);
+    padding-top: var(--dashboard-card-footer-top);
   }
 }
 
