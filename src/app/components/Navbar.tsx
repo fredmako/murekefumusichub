@@ -21,6 +21,8 @@ import {
   Sun,
   Moon,
   MessageSquare,
+  PanelTopClose,
+  PanelTopOpen,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -48,6 +50,7 @@ interface NavbarProps {
 }
 
 export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
+  const NAVBAR_MINIMIZED_KEY = "murekefu.navbar.minimized";
   // use appUser from your AuthContext (Supabase)
   const { appUser, signOut } = useAuth();
   const { mode, setMode } = useTheme();
@@ -75,6 +78,14 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   const [processingNotification, setProcessingNotification] = useState<
     string | null
   >(null);
+  const [isNavbarMinimized, setIsNavbarMinimized] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(NAVBAR_MINIMIZED_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
   const previousNotificationCount = useRef(0);
 
   // Polling interval (ms) for navbar notifications
@@ -141,6 +152,18 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
       setMessengerUnreadCount(0);
     }
   }, [isAuthenticated, location.pathname]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        NAVBAR_MINIMIZED_KEY,
+        isNavbarMinimized ? "true" : "false",
+      );
+    } catch {
+      // ignore persistence errors
+    }
+  }, [isNavbarMinimized]);
 
   // Handle approve/reject actions
   const handleApproveRequest = async (
@@ -362,7 +385,11 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
   return (
     <nav className="texture-fabric sticky top-0 z-40 overflow-x-clip border-b border-border/80 bg-card/95">
       <div className="app-shell">
-        <div className="flex h-16 min-w-0 items-center justify-between gap-2 sm:gap-3">
+        <div
+          className={`flex min-w-0 items-center justify-between gap-2 transition-all duration-200 sm:gap-3 ${
+            isNavbarMinimized ? "h-14" : "h-16"
+          }`}
+        >
           {/* ================= Logo ================= */}
           <Link to="/" className="flex min-w-0 flex-1 items-center gap-2 lg:flex-none">
             <span className="inline-flex shrink-0 items-center rounded-xl border border-[#0a2e43]/20 bg-gradient-to-br from-[#0b2940] to-[#081e32] px-2 py-1 shadow-[0_10px_20px_-14px_rgba(2,24,39,0.95)]">
@@ -379,12 +406,22 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
               <h1 className="truncate text-sm font-semibold leading-tight tracking-tight text-foreground sm:hidden">
                 Music Hub
               </h1>
-              <p className="hidden truncate text-xs text-muted-foreground md:block">Choral Music Hub</p>
+              {!isNavbarMinimized ? (
+                <p className="hidden truncate text-xs text-muted-foreground md:block">
+                  Choral Music Hub
+                </p>
+              ) : null}
             </div>
           </Link>
 
           {/* ================= Main Navigation ================= */}
-          <div className="hidden lg:flex items-center gap-2 rounded-full border border-border/80 bg-background/70 p-1">
+          <div
+            className={`hidden lg:flex items-center gap-2 overflow-hidden rounded-full border border-border/80 bg-background/70 transition-all duration-200 ${
+              isNavbarMinimized
+                ? "max-w-0 border-transparent p-0 opacity-0"
+                : "max-w-[760px] p-1 opacity-100"
+            }`}
+          >
             {navItems.map((item) => {
               const isVisible =
                 item.showOn.includes("any") ||
@@ -411,6 +448,20 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
 
           {/* ================= Right Actions ================= */}
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => setIsNavbarMinimized((current) => !current)}
+              aria-label={isNavbarMinimized ? "Expand navigation" : "Minimize navigation"}
+              title={isNavbarMinimized ? "Expand navigation" : "Minimize navigation"}
+            >
+              {isNavbarMinimized ? (
+                <PanelTopOpen className="size-5" />
+              ) : (
+                <PanelTopClose className="size-5" />
+              )}
+            </Button>
             <Button
               type="button"
               variant="outline"
@@ -951,7 +1002,11 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
           </div>
         </div>
 
-        <div className="lg:hidden pb-3">
+        <div
+          className={`overflow-hidden transition-all duration-200 lg:hidden ${
+            isNavbarMinimized ? "max-h-0 pb-0 opacity-0" : "max-h-24 pb-3 opacity-100"
+          }`}
+        >
           <div className="flex gap-2 overflow-x-auto whitespace-nowrap rounded-full border border-border/70 bg-background/55 p-1">
             {navItems.map((item) => {
               const isVisible =
