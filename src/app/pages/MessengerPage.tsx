@@ -29,6 +29,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { supabase } from "@/lib/supabase";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
+import { emitMessengerInboxUpdated } from "@/lib/messengerEvents";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { CommunityLounge } from "@/app/components/messenger/CommunityLounge";
 
@@ -118,6 +119,7 @@ export function MessengerPage() {
   const [creatingThread, setCreatingThread] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [improvingDraft, setImprovingDraft] = useState(false);
+  const [markingAllRead, setMarkingAllRead] = useState(false);
 
   const [newSubject, setNewSubject] = useState("");
   const [draftMessage, setDraftMessage] = useState("");
@@ -533,6 +535,56 @@ export function MessengerPage() {
     selectedThreadClosed ||
     !appUser?.id;
 
+  const handleMarkAllRead = async () => {
+    const unreadThreadIds = threads
+      .filter((thread) => thread.is_user_unread)
+      .map((thread) => thread.id)
+      .filter(Boolean);
+
+    if (unreadThreadIds.length === 0 || markingAllRead) {
+      if (!markingAllRead && unreadThreadIds.length === 0) {
+        toast.info("There are no unread messenger chats right now.");
+      }
+      return;
+    }
+
+    setMarkingAllRead(true);
+    setThreads((current) =>
+      current.map((thread) =>
+        unreadThreadIds.includes(thread.id)
+          ? { ...thread, is_user_unread: false }
+          : thread,
+      ),
+    );
+
+    try {
+      const results = await Promise.allSettled(
+        unreadThreadIds.map((threadId) => supportService.markThreadRead(threadId)),
+      );
+      const successCount = results.filter((result) => result.status === "fulfilled").length;
+
+      if (successCount === 0) {
+        throw new Error("Could not mark messenger chats as read");
+      }
+
+      emitMessengerInboxUpdated();
+
+      if (successCount < unreadThreadIds.length) {
+        toast.success(`${successCount} chat${successCount === 1 ? "" : "s"} marked as read.`);
+        await loadThreads(true, true);
+        return;
+      }
+
+      toast.success("All messenger chats marked as read.");
+      await loadThreads(true, true);
+    } catch (error: any) {
+      await loadThreads(true, true);
+      toast.error(error?.message || "Failed to mark messenger chats as read.");
+    } finally {
+      setMarkingAllRead(false);
+    }
+  };
+
   const switchWorkspace = (workspace: "support" | "community") => {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set("tab", workspace);
@@ -584,6 +636,16 @@ export function MessengerPage() {
             >
               <RefreshCcw className="mr-2 size-4" />
               Refresh
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void handleMarkAllRead()}
+              disabled={markingAllRead || unreadCount === 0}
+            >
+              <CheckCheck className="mr-2 size-4" />
+              {markingAllRead ? "Marking..." : "Mark All Read"}
             </Button>
             <Button type="button" size="sm" onClick={openNewChatComposer}>
               <MessageSquarePlus className="mr-2 size-4" />

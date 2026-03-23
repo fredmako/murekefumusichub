@@ -101,6 +101,121 @@
   --sidebar-ring: #b28aff;
 }
 
+:root.dark[data-dark-hue="plum"] {
+  --background: #070f1d;
+  --foreground: #eef2ff;
+  --card: #0a182c;
+  --card-foreground: #e7edff;
+  --popover: #0b1a2f;
+  --popover-foreground: #eaf1ff;
+  --secondary: #132541;
+  --secondary-foreground: #dbe8ff;
+  --muted: #102137;
+  --muted-foreground: #9fb2d6;
+  --border: #2d446b;
+  --input: #172a47;
+  --sidebar: #0a1528;
+  --sidebar-foreground: #e8edff;
+  --sidebar-accent: #172845;
+  --sidebar-accent-foreground: #deebff;
+  --sidebar-border: #2d446b;
+  --route-backdrop-overlay: linear-gradient(145deg, rgba(88, 63, 150, 0.22), rgba(19, 35, 65, 0.7), rgba(8, 16, 31, 0.84));
+  --route-backdrop-scrim: linear-gradient(180deg, rgba(8, 12, 24, 0.16), rgba(9, 17, 33, 0.32), rgba(7, 15, 29, 0.52));
+  --route-panel-overlay: linear-gradient(135deg, rgba(19, 31, 56, 0.86), rgba(11, 24, 44, 0.9), rgba(8, 17, 33, 0.82));
+}
+
+:root.dark[data-dark-hue="midnight"] {
+  --background: #06111b;
+  --foreground: #edf6ff;
+  --card: #0d1c2b;
+  --card-foreground: #e7f2ff;
+  --popover: #0d2031;
+  --popover-foreground: #edf6ff;
+  --secondary: #11293b;
+  --secondary-foreground: #d7ebff;
+  --muted: #0f2130;
+  --muted-foreground: #97b3ca;
+  --border: #23415b;
+  --input: #14283b;
+  --sidebar: #091621;
+  --sidebar-foreground: #e8f5ff;
+  --sidebar-accent: #12283b;
+  --sidebar-accent-foreground: #d7ebff;
+  --sidebar-border: #23415b;
+  --route-backdrop-overlay: linear-gradient(145deg, rgba(33, 84, 133, 0.2), rgba(11, 31, 49, 0.74), rgba(6, 17, 27, 0.88));
+  --route-backdrop-scrim: linear-gradient(180deg, rgba(6, 17, 27, 0.12), rgba(8, 21, 35, 0.3), rgba(6, 17, 27, 0.56));
+  --route-panel-overlay: linear-gradient(135deg, rgba(16, 37, 57, 0.86), rgba(10, 27, 42, 0.92), rgba(7, 18, 28, 0.84));
+}
+
+:root.dark[data-dark-hue="graphite"] {
+  --background: #111418;
+  --foreground: #f3f5f7;
+  --card: #1a1f24;
+  --card-foreground: #f3f5f7;
+  --popover: #1c2228;
+  --popover-foreground: #f3f5f7;
+  --secondary: #20272e;
+  --secondary-foreground: #dde5ec;
+  --muted: #1a2026;
+  --muted-foreground: #9ca8b4;
+  --border: #36414d;
+  --input: #222a33;
+  --sidebar: #15191e;
+  --sidebar-foreground: #f3f5f7;
+  --sidebar-accent: #20262d;
+  --sidebar-accent-foreground: #e0e7ef;
+  --sidebar-border: #36414d;
+  --route-backdrop-overlay: linear-gradient(145deg, rgba(95, 111, 129, 0.16), rgba(29, 35, 41, 0.74), rgba(17, 20, 24, 0.88));
+  --route-backdrop-scrim: linear-gradient(180deg, rgba(17, 20, 24, 0.12), rgba(21, 25, 30, 0.28), rgba(17, 20, 24, 0.56));
+  --route-panel-overlay: linear-gradient(135deg, rgba(34, 40, 47, 0.88), rgba(24, 29, 35, 0.92), rgba(17, 20, 24, 0.84));
+}
+
+:root.dark[data-dark-hue="forest-night"] {
+  --background: #081511;
+  --foreground: #eefbf5;
+  --card: #10211b;
+  --card-foreground: #ebfbf3;
+  --popover: #11251e;
+  --popover-foreground: #eefbf5;
+  --secondary: #153128;
+  --secondary-foreground: #d9f7ea;
+  --muted: #10271f;
+  --muted-foreground: #97c5b2;
+  --border: #27463b;
+  --input: #17342a;
+  --sidebar: #0c1b16;
+  --sidebar-foreground: #eefbf5;
+  --sidebar-accent: #173026;
+  --sidebar-accent-foreground: #d7f6e8;
+  --sidebar-border: #27463b;
+  --route-backdrop-overlay: linear-gradient(145deg, rgba(31, 109, 74, 0.22), rgba(15, 39, 31, 0.74), rgba(8, 21, 17, 0.88));
+  --route-backdrop-scrim: linear-gradient(180deg, rgba(8, 21, 17, 0.12), rgba(10, 28, 22, 0.3), rgba(8, 21, 17, 0.56));
+  --route-panel-overlay: linear-gradient(135deg, rgba(18, 43, 34, 0.88), rgba(13, 34, 28, 0.92), rgba(8, 21, 17, 0.84));
+}
+
+:root.dark[data-dark-hue="ember"] {
+  --background: #16100c;
+  --foreground: #fff2eb;
+  --card: #231914;
+  --card-foreground: #fff1eb;
+  --popover: #271c16;
+  --popover-foreground: #fff2eb;
+  --secondary: #33211c;
+  --secondary-foreground: #ffe2d6;
+  --muted: #2a1d18;
+  --muted-foreground: #d0a896;
+  --border: #4d3426;
+  --input: #37231d;
+  --sidebar: #1a130f;
+  --sidebar-foreground: #fff2eb;
+  --sidebar-accent: #2e1f18;
+  --sidebar-accent-foreground: #ffe3d7;
+  --sidebar-border: #4d3426;
+  --route-backdrop-overlay: linear-gradient(145deg, rgba(176, 84, 26, 0.2), rgba(51, 30, 23, 0.74), rgba(22, 16, 12, 0.88));
+  --route-backdrop-scrim: linear-gradient(180deg, rgba(22, 16, 12, 0.12), rgba(28, 19, 14, 0.3), rgba(22, 16, 12, 0.56));
+  --route-panel-overlay: linear-gradient(135deg, rgba(42, 28, 21, 0.88), rgba(33, 23, 18, 0.92), rgba(22, 16, 12, 0.84));
+}
+
 :root[data-theme="emerald"] {
   --primary: #059669;
   --primary-foreground: #ecfdf5;

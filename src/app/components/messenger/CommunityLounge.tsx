@@ -1,15 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
+  AudioLines,
   BellRing,
+  FileText,
+  ImagePlus,
   Loader,
-  Paperclip,
+  Mic,
+  Plus,
   RefreshCcw,
   Search,
   Send,
   Settings2,
   ShieldCheck,
   Smile,
+  Square,
   Users,
   X,
 } from "lucide-react";
@@ -27,20 +32,31 @@ import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { ScrollArea } from "@/app/components/ui/scroll-area";
 import { Textarea } from "@/app/components/ui/textarea";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/app/components/ui/dropdown-menu";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 import { storageService } from "@/services/api";
 import {
+  buildProfileImageSrcSet,
+  getOptimizedProfileImageUrl,
+} from "@/services/profileImageService";
+import {
   communityService,
   DEFAULT_COMMUNITY_SETTINGS,
+  type CommunityAttachmentKind,
   type CommunityMessage,
   type CommunityRoom,
   type CommunitySettings,
   type CommunityUserPreview,
 } from "@/services/communityService";
-
-const EMOJIS = ["🙏", "🎼", "✨", "🔥", "👏", "💙", "🙌", "🎧"];
 
 function getInitials(value?: string | null) {
   const normalized = String(value || "").trim();
@@ -105,6 +121,218 @@ function getOwnBubbleClasses(tone: CommunitySettings["bubbleTone"]) {
   return "bg-primary text-primary-foreground";
 }
 
+type CommunityDraftAttachment = {
+  file: File;
+  kind: Exclude<CommunityAttachmentKind, "text">;
+  previewUrl: string | null;
+  mimeType: string;
+  fileSize: number;
+  durationMs?: number | null;
+};
+
+function detectCommunityAttachmentKind(
+  file: File,
+): Exclude<CommunityAttachmentKind, "text"> {
+  const mime = String(file.type || "").toLowerCase();
+  const name = String(file.name || "").toLowerCase();
+
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+  if (
+    [
+      ".pdf",
+      ".doc",
+      ".docx",
+      ".txt",
+      ".rtf",
+      ".csv",
+      ".xls",
+      ".xlsx",
+      ".ppt",
+      ".pptx",
+    ].some((extension) => name.endsWith(extension))
+  ) {
+    return "document";
+  }
+
+  return "document";
+}
+
+function createAttachmentPreviewUrl(
+  file: File,
+  kind: Exclude<CommunityAttachmentKind, "text">,
+) {
+  return ["image", "video", "audio"].includes(kind) ? URL.createObjectURL(file) : null;
+}
+
+function revokeAttachmentPreviewUrl(value?: string | null) {
+  if (value && value.startsWith("blob:")) {
+    URL.revokeObjectURL(value);
+  }
+}
+
+function formatFileSize(bytes?: number | null) {
+  const normalized = Number(bytes);
+  if (!Number.isFinite(normalized) || normalized <= 0) return "";
+  if (normalized >= 1024 * 1024) {
+    return `${(normalized / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  if (normalized >= 1024) {
+    return `${Math.round(normalized / 1024)} KB`;
+  }
+  return `${normalized} B`;
+}
+
+function formatDurationMs(value?: number | null) {
+  const totalSeconds = Math.max(0, Math.floor(Number(value || 0) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function renderCommunityAttachment(message: CommunityMessage) {
+  const attachmentUrl = message.attachment_url || undefined;
+  const attachmentName = message.attachment_name || "Attachment";
+  const mimeType = String(message.metadata?.mimeType || "").toLowerCase();
+  const fileSize = formatFileSize(message.metadata?.fileSize);
+
+  if (message.attachment_kind === "image" && attachmentUrl) {
+    return (
+      <div className="mt-3 overflow-hidden rounded-2xl border border-black/10 bg-background/15">
+        <img
+          src={attachmentUrl}
+          alt={attachmentName}
+          className="max-h-80 w-full object-cover"
+        />
+        <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs opacity-80">
+          <span className="truncate">{attachmentName}</span>
+          {fileSize ? <span className="shrink-0">{fileSize}</span> : null}
+        </div>
+      </div>
+    );
+  }
+
+  if (message.attachment_kind === "video" && attachmentUrl) {
+    return (
+      <div className="mt-3 overflow-hidden rounded-2xl border border-black/10 bg-background/15 p-2">
+        <video
+          controls
+          preload="metadata"
+          className="max-h-80 w-full rounded-xl bg-black"
+          src={attachmentUrl}
+        />
+        <div className="flex items-center justify-between gap-2 px-1 pt-2 text-xs opacity-80">
+          <span className="truncate">{attachmentName}</span>
+          {fileSize ? <span className="shrink-0">{fileSize}</span> : null}
+        </div>
+      </div>
+    );
+  }
+
+  if (message.attachment_kind === "audio" && attachmentUrl) {
+    return (
+      <div className="mt-3 rounded-2xl border border-black/10 bg-background/15 p-3">
+        <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+          <AudioLines className="size-4" />
+          <span className="truncate">{attachmentName}</span>
+        </div>
+        <audio controls preload="metadata" className="w-full" src={attachmentUrl} />
+        <div className="mt-2 flex items-center justify-between gap-2 text-xs opacity-80">
+          <span>{mimeType || "Audio attachment"}</span>
+          <span className="shrink-0">
+            {[fileSize, formatDurationMs(message.metadata?.durationMs)]
+              .filter(Boolean)
+              .join(" • ")}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (message.attachment_kind === "document") {
+    return (
+      <div className="mt-3 rounded-2xl border border-black/10 bg-background/15 p-3">
+        <div className="flex items-start gap-3">
+          <div className="rounded-xl bg-background/80 p-2">
+            <FileText className="size-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{attachmentName}</p>
+            <p className="mt-1 text-xs opacity-80">
+              {[mimeType || "Document", fileSize].filter(Boolean).join(" • ")}
+            </p>
+            {attachmentUrl ? (
+              <a
+                href={attachmentUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-flex items-center text-xs font-semibold underline-offset-4 hover:underline"
+              >
+                Open document
+              </a>
+            ) : (
+              <p className="mt-2 text-xs opacity-80">Document is preparing...</p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function getCommunityAvatarImage(
+  avatarUrl: string | null | undefined,
+  size: number,
+) {
+  return {
+    src:
+      getOptimizedProfileImageUrl(avatarUrl, {
+        width: size * 2,
+        height: size * 2,
+        resize: "cover",
+      }) ||
+      avatarUrl ||
+      undefined,
+    srcSet:
+      buildProfileImageSrcSet(avatarUrl, [size, size * 2], {
+        resize: "cover",
+      }) || undefined,
+    sizes: `${size}px`,
+  };
+}
+
+function CommunityAvatar({
+  user,
+  size,
+  className,
+  fallbackClassName,
+}: {
+  user: CommunityUserPreview | null | undefined;
+  size: number;
+  className?: string;
+  fallbackClassName?: string;
+}) {
+  const displayName = user?.display_name || user?.email || "Murekefu member";
+  const avatarImage = getCommunityAvatarImage(user?.avatar_url, size);
+
+  return (
+    <Avatar className={className}>
+      <AvatarImage
+        src={avatarImage.src}
+        srcSet={avatarImage.srcSet}
+        sizes={avatarImage.sizes}
+        alt={displayName}
+      />
+      <AvatarFallback className={fallbackClassName}>
+        {getInitials(displayName)}
+      </AvatarFallback>
+    </Avatar>
+  );
+}
+
 export function CommunityLounge() {
   const { appUser, isLoading: authLoading } = useAuth();
   const { mode } = useTheme();
@@ -125,11 +353,22 @@ export function CommunityLounge() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedProfile, setSelectedProfile] =
     useState<CommunityUserPreview | null>(null);
-  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
-  const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
+  const [draftAttachment, setDraftAttachment] =
+    useState<CommunityDraftAttachment | null>(null);
+  const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
+  const [showComposerEmojis, setShowComposerEmojis] = useState(false);
+  const [isRecordingAudio, setIsRecordingAudio] = useState(false);
+  const [recordingDurationMs, setRecordingDurationMs] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [showEtiquetteNotice, setShowEtiquetteNotice] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const mediaInputRef = useRef<HTMLInputElement | null>(null);
+  const audioInputRef = useRef<HTMLInputElement | null>(null);
+  const documentInputRef = useRef<HTMLInputElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingStartedAtRef = useRef<number | null>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -148,15 +387,17 @@ export function CommunityLounge() {
   ]);
 
   useEffect(() => {
-    if (!attachmentFile) {
-      setAttachmentPreview(null);
-      return undefined;
-    }
-
-    const previewUrl = URL.createObjectURL(attachmentFile);
-    setAttachmentPreview(previewUrl);
-    return () => URL.revokeObjectURL(previewUrl);
-  }, [attachmentFile]);
+    return () => {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+      mediaRecorderRef.current?.stream
+        ?.getTracks()
+        .forEach((track) => track.stop());
+      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+      revokeAttachmentPreviewUrl(draftAttachment?.previewUrl);
+    };
+  }, [draftAttachment?.previewUrl]);
 
   useEffect(() => {
     if (!appUser?.id) return;
@@ -234,7 +475,9 @@ export function CommunityLounge() {
     if (!query) return messages;
     return messages.filter((message) => {
       const sender = message.sender?.display_name || message.sender?.email || "";
-      return `${sender} ${message.message || ""}`.toLowerCase().includes(query);
+      return `${sender} ${message.message || ""} ${message.attachment_name || ""}`
+        .toLowerCase()
+        .includes(query);
     });
   }, [messages, searchQuery]);
 
@@ -268,29 +511,185 @@ export function CommunityLounge() {
     setShowEtiquetteNotice(false);
   };
 
+  const clearDraftAttachment = () => {
+    revokeAttachmentPreviewUrl(draftAttachment?.previewUrl);
+    setDraftAttachment(null);
+    setRecordingDurationMs(0);
+  };
+
+  const setDraftAttachmentFromFile = (
+    nextFile: File | null,
+    options?: { durationMs?: number | null },
+  ) => {
+    if (!nextFile) return;
+
+    const nextKind = detectCommunityAttachmentKind(nextFile);
+    const nextPreviewUrl = createAttachmentPreviewUrl(nextFile, nextKind);
+    revokeAttachmentPreviewUrl(draftAttachment?.previewUrl);
+    setDraftAttachment({
+      file: nextFile,
+      kind: nextKind,
+      previewUrl: nextPreviewUrl,
+      mimeType: nextFile.type || "",
+      fileSize: nextFile.size,
+      durationMs: options?.durationMs ?? null,
+    });
+  };
+
+  const stopRecordingTimer = () => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  };
+
+  const stopRecordingTracks = () => {
+    mediaRecorderRef.current?.stream?.getTracks().forEach((track) => track.stop());
+    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaRecorderRef.current = null;
+    recordingStreamRef.current = null;
+  };
+
+  const stopAudioRecording = async () => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === "inactive") return;
+
+    await new Promise<void>((resolve) => {
+      recorder.addEventListener(
+        "stop",
+        () => {
+          const blobType =
+            recorder.mimeType ||
+            recordingChunksRef.current[0]?.type ||
+            "audio/webm";
+          const extension = blobType.includes("mp4") ? "m4a" : "webm";
+          const recordedBlob = new Blob(recordingChunksRef.current, {
+            type: blobType,
+          });
+          const recordedFile = new File(
+            [recordedBlob],
+            `community-voice-note-${Date.now()}.${extension}`,
+            { type: blobType },
+          );
+          const startedAt = recordingStartedAtRef.current || Date.now();
+          setDraftAttachmentFromFile(recordedFile, {
+            durationMs: Math.max(0, Date.now() - startedAt),
+          });
+          recordingChunksRef.current = [];
+          recordingStartedAtRef.current = null;
+          stopRecordingTimer();
+          stopRecordingTracks();
+          setIsRecordingAudio(false);
+          resolve();
+        },
+        { once: true },
+      );
+      recorder.stop();
+    });
+  };
+
+  const startAudioRecording = async () => {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices ||
+      !navigator.mediaDevices.getUserMedia
+    ) {
+      toast.error("Audio recording is not supported on this device or browser.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      recordingChunksRef.current = [];
+      recordingStartedAtRef.current = Date.now();
+      recordingStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      setIsRecordingAudio(true);
+      setRecordingDurationMs(0);
+      setAttachmentMenuOpen(false);
+
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event.data && event.data.size > 0) {
+          recordingChunksRef.current.push(event.data);
+        }
+      });
+
+      recorder.start();
+      stopRecordingTimer();
+      recordingTimerRef.current = setInterval(() => {
+        if (!recordingStartedAtRef.current) return;
+        setRecordingDurationMs(Date.now() - recordingStartedAtRef.current);
+      }, 250);
+    } catch (err: any) {
+      toast.error(
+        err?.message || "Microphone access was not granted for voice recording.",
+      );
+      stopRecordingTimer();
+      stopRecordingTracks();
+      setIsRecordingAudio(false);
+    }
+  };
+
   const handleSend = async () => {
     if (!room?.id || !appUser?.id) return;
     const normalizedMessage = draftMessage.trim();
-    if (!normalizedMessage && !attachmentFile) {
-      toast.error("Add a message or image before sending.");
+    if (!normalizedMessage && !draftAttachment) {
+      toast.error("Add a message or attachment before sending.");
       return;
     }
 
     setSending(true);
+    const optimisticId = `community-pending-${Date.now()}`;
     try {
       let attachmentUrl: string | null = null;
       let attachmentName: string | null = null;
-      let attachmentKind: "text" | "image" = "text";
+      let attachmentKind: CommunityAttachmentKind = "text";
+      let attachmentMetadata: Record<string, any> = {};
 
-      if (attachmentFile) {
-        attachmentUrl = await storageService.uploadFile(
-          "thumbnails",
-          attachmentFile,
+      const optimisticMessage: CommunityMessage = {
+        id: optimisticId,
+        room_id: room.id,
+        sender_user_id: appUser.id,
+        message: normalizedMessage || null,
+        attachment_url: draftAttachment?.previewUrl || null,
+        attachment_name: draftAttachment?.file.name || null,
+        attachment_kind: draftAttachment?.kind || "text",
+        metadata: draftAttachment
+          ? {
+              mimeType: draftAttachment.mimeType,
+              fileSize: draftAttachment.fileSize,
+              durationMs: draftAttachment.durationMs ?? null,
+              pending: true,
+            }
+          : { pending: true },
+        created_at: new Date().toISOString(),
+        sender: {
+          id: appUser.id,
+          display_name: appUser.display_name,
+          email: appUser.email,
+          avatar_url: appUser.avatar_url,
+        },
+      };
+
+      setMessages((current) => [...current, optimisticMessage]);
+
+      if (draftAttachment) {
+        const uploadResult = await storageService.uploadCommunityAttachment(
+          draftAttachment.file,
           appUser.id,
-          { timeoutMs: 45000 },
+          { timeoutMs: 60000 },
         );
-        attachmentName = attachmentFile.name;
-        attachmentKind = "image";
+        attachmentUrl = uploadResult.url;
+        attachmentName = draftAttachment.file.name;
+        attachmentKind = draftAttachment.kind;
+        attachmentMetadata = {
+          mimeType: uploadResult.mimeType || draftAttachment.mimeType || null,
+          fileSize: draftAttachment.fileSize,
+          durationMs: draftAttachment.durationMs ?? null,
+          storageBucket: uploadResult.bucket,
+          storagePath: uploadResult.path,
+        };
       }
 
       const response = await communityService.sendMessage(room.id, {
@@ -298,19 +697,28 @@ export function CommunityLounge() {
         attachmentUrl,
         attachmentName,
         attachmentKind,
+        metadata: attachmentMetadata,
       });
 
       if (response?.message) {
-        setMessages((current) => [...current, response.message]);
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === optimisticId ? response.message : message,
+          ),
+        );
       } else {
         const refreshed = await communityService.getRoomMessages(room.id);
         setMessages(refreshed?.messages || []);
       }
 
       setDraftMessage("");
-      setAttachmentFile(null);
+      clearDraftAttachment();
+      setShowComposerEmojis(false);
       toast.success("Message sent");
     } catch (err: any) {
+      setMessages((current) =>
+        current.filter((message) => message.id !== optimisticId),
+      );
       toast.error(err?.message || "Failed to send community message");
     } finally {
       setSending(false);
@@ -526,9 +934,19 @@ export function CommunityLounge() {
                     ) : (
                       filteredMessages.map((message) => {
                         const isOwn = message.sender_user_id === appUser?.id;
+                        const senderProfile =
+                          message.sender ||
+                          (isOwn && appUser
+                            ? {
+                                id: appUser.id,
+                                display_name: appUser.display_name,
+                                email: appUser.email,
+                                avatar_url: appUser.avatar_url,
+                              }
+                            : null);
                         const senderName =
-                          message.sender?.display_name ||
-                          message.sender?.email ||
+                          senderProfile?.display_name ||
+                          senderProfile?.email ||
                           "Murekefu member";
 
                         return (
@@ -539,15 +957,15 @@ export function CommunityLounge() {
                             {!isOwn ? (
                               <button
                                 type="button"
-                                onClick={() => setSelectedProfile(message.sender)}
+                                onClick={() => setSelectedProfile(senderProfile)}
                                 className="mt-1 shrink-0"
                               >
-                                <Avatar className="size-10 border border-border/60">
-                                  <AvatarImage src={message.sender?.avatar_url || undefined} />
-                                  <AvatarFallback className="text-xs">
-                                    {getInitials(senderName)}
-                                  </AvatarFallback>
-                                </Avatar>
+                                <CommunityAvatar
+                                  user={senderProfile}
+                                  size={40}
+                                  className="size-10 border border-border/60"
+                                  fallbackClassName="text-xs"
+                                />
                               </button>
                             ) : null}
 
@@ -561,7 +979,7 @@ export function CommunityLounge() {
                               {!isOwn ? (
                                 <button
                                   type="button"
-                                  onClick={() => setSelectedProfile(message.sender)}
+                                  onClick={() => setSelectedProfile(senderProfile)}
                                   className="mb-1 text-left text-xs font-semibold opacity-80 hover:underline"
                                 >
                                   {senderName}
@@ -572,24 +990,28 @@ export function CommunityLounge() {
                                   {message.message}
                                 </p>
                               ) : null}
-                              {message.attachment_url ? (
-                                <div className="mt-3 overflow-hidden rounded-2xl border border-black/10 bg-background/15">
-                                  <img
-                                    src={message.attachment_url}
-                                    alt={message.attachment_name || "Attachment"}
-                                    className="max-h-72 w-full object-cover"
-                                  />
-                                  {message.attachment_name ? (
-                                    <div className="px-3 py-2 text-xs opacity-80">
-                                      {message.attachment_name}
-                                    </div>
-                                  ) : null}
-                                </div>
-                              ) : null}
+                              {renderCommunityAttachment(message)}
                               <div className="mt-2 text-right text-[11px] opacity-80">
-                                {formatTime(message.created_at)}
+                                {message.metadata?.pending
+                                  ? "Sending..."
+                                  : formatTime(message.created_at)}
                               </div>
                             </div>
+
+                            {isOwn ? (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedProfile(senderProfile)}
+                                className="mt-1 shrink-0"
+                              >
+                                <CommunityAvatar
+                                  user={senderProfile}
+                                  size={40}
+                                  className="size-10 border border-border/60"
+                                  fallbackClassName="text-xs"
+                                />
+                              </button>
+                            ) : null}
                           </div>
                         );
                       })
@@ -600,62 +1022,180 @@ export function CommunityLounge() {
               </div>
 
               <div className="border-t border-border/60 bg-background/88 px-3 py-3 backdrop-blur-md sm:px-4">
-                {attachmentPreview ? (
+                {draftAttachment ? (
                   <div className="mb-3 flex items-center gap-3 rounded-2xl border border-border/60 bg-card/80 p-3">
-                    <img
-                      src={attachmentPreview}
-                      alt={attachmentFile?.name || "Pending attachment"}
-                      className="h-16 w-16 rounded-xl object-cover"
-                    />
+                    {draftAttachment.kind === "image" && draftAttachment.previewUrl ? (
+                      <img
+                        src={draftAttachment.previewUrl}
+                        alt={draftAttachment.file.name || "Pending attachment"}
+                        className="h-16 w-16 rounded-xl object-cover"
+                      />
+                    ) : draftAttachment.kind === "video" && draftAttachment.previewUrl ? (
+                      <video
+                        src={draftAttachment.previewUrl}
+                        className="h-16 w-16 rounded-xl bg-black object-cover"
+                      />
+                    ) : draftAttachment.kind === "audio" ? (
+                      <div className="grid h-16 w-16 place-items-center rounded-xl bg-primary/10 text-primary">
+                        <AudioLines className="size-6" />
+                      </div>
+                    ) : (
+                      <div className="grid h-16 w-16 place-items-center rounded-xl bg-primary/10 text-primary">
+                        <FileText className="size-6" />
+                      </div>
+                    )}
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">
-                        {attachmentFile?.name || "Image attachment"}
+                        {draftAttachment.file.name || "Attachment"}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Ready to send with your message
+                        {[
+                          draftAttachment.kind,
+                          formatFileSize(draftAttachment.fileSize),
+                          draftAttachment.kind === "audio"
+                            ? formatDurationMs(draftAttachment.durationMs)
+                            : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" • ")}
                       </p>
                     </div>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setAttachmentFile(null)}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearDraftAttachment}
+                    >
                       Remove
                     </Button>
                   </div>
                 ) : null}
 
-                <div className="flex flex-wrap gap-2 pb-3">
-                  {COMMUNITY_QUICK_EMOJIS.map((emoji) => (
-                    <button
-                      key={`composer-${emoji}`}
-                      type="button"
-                      onClick={() => setDraftMessage((current) => `${current}${emoji}`)}
-                      className="rounded-full border border-border/60 bg-card/75 px-3 py-1 text-sm transition hover:bg-muted/50"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
+                {isRecordingAudio ? (
+                  <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-3">
+                    <div className="flex items-center gap-3">
+                      <span className="inline-flex size-2 rounded-full bg-red-500" />
+                      <div>
+                        <p className="text-sm font-medium">Recording voice note...</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDurationMs(recordingDurationMs)}
+                        </p>
+                      </div>
+                    </div>
+                    <Button type="button" size="sm" onClick={() => void stopAudioRecording()}>
+                      <Square className="mr-2 size-4" />
+                      Stop
+                    </Button>
+                  </div>
+                ) : null}
+
+                {showComposerEmojis ? (
+                  <div className="flex flex-wrap gap-2 pb-3">
+                    {COMMUNITY_QUICK_EMOJIS.map((emoji) => (
+                      <button
+                        key={`composer-${emoji}`}
+                        type="button"
+                        onClick={() => setDraftMessage((current) => `${current}${emoji}`)}
+                        className="rounded-full border border-border/60 bg-card/75 px-3 py-1 text-sm transition hover:bg-muted/50"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
 
                 <input
-                  ref={fileInputRef}
+                  ref={mediaInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/*,video/*"
                   className="hidden"
                   onChange={(event) => {
                     const nextFile = event.target.files?.[0] || null;
-                    setAttachmentFile(nextFile);
+                    if (nextFile) {
+                      setDraftAttachmentFromFile(nextFile);
+                    }
+                    setAttachmentMenuOpen(false);
+                    event.currentTarget.value = "";
+                  }}
+                />
+
+                <input
+                  ref={audioInputRef}
+                  type="file"
+                  accept="audio/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const nextFile = event.target.files?.[0] || null;
+                    if (nextFile) {
+                      setDraftAttachmentFromFile(nextFile);
+                    }
+                    setAttachmentMenuOpen(false);
+                    event.currentTarget.value = "";
+                  }}
+                />
+
+                <input
+                  ref={documentInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.txt,.rtf,.csv,.xls,.xlsx,.ppt,.pptx,application/pdf,text/plain,text/csv,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                  className="hidden"
+                  onChange={(event) => {
+                    const nextFile = event.target.files?.[0] || null;
+                    if (nextFile) {
+                      setDraftAttachmentFromFile(nextFile);
+                    }
+                    setAttachmentMenuOpen(false);
                     event.currentTarget.value = "";
                   }}
                 />
 
                 <div className="flex items-end gap-2 rounded-[1.65rem] border border-border/60 bg-card/80 p-2 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.72)]">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={sending || !room?.id}
-                  >
-                    <Paperclip className="size-4" />
-                  </Button>
+                  <DropdownMenu open={attachmentMenuOpen} onOpenChange={setAttachmentMenuOpen}>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        disabled={sending || !room?.id}
+                      >
+                        <Plus className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      side="top"
+                      align="start"
+                      className="w-64 rounded-2xl border border-border/70 bg-card/95 p-2"
+                    >
+                      <DropdownMenuLabel>Add to community message</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => mediaInputRef.current?.click()}>
+                        <ImagePlus className="size-4" />
+                        Photos and videos
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => audioInputRef.current?.click()}>
+                        <AudioLines className="size-4" />
+                        Audio file
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => documentInputRef.current?.click()}>
+                        <FileText className="size-4" />
+                        Document
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          isRecordingAudio
+                            ? void stopAudioRecording()
+                            : void startAudioRecording()
+                        }
+                      >
+                        {isRecordingAudio ? (
+                          <Square className="size-4" />
+                        ) : (
+                          <Mic className="size-4" />
+                        )}
+                        {isRecordingAudio ? "Stop voice note" : "Record voice note"}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
 
                   <div className="min-w-0 flex-1">
                     <Label htmlFor="community-message" className="sr-only">
@@ -675,10 +1215,20 @@ export function CommunityLounge() {
 
                   <Button
                     type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowComposerEmojis((current) => !current)}
+                    disabled={sending || !room?.id}
+                  >
+                    <Smile className="size-4" />
+                  </Button>
+
+                  <Button
+                    type="button"
                     size="icon"
                     className="h-11 w-11 shrink-0 rounded-full"
                     onClick={() => void handleSend()}
-                    disabled={sending || (!draftMessage.trim() && !attachmentFile)}
+                    disabled={sending || (!draftMessage.trim() && !draftAttachment)}
                   >
                     {sending ? (
                       <Loader className="size-4 animate-spin" />
@@ -766,14 +1316,11 @@ export function CommunityLounge() {
             {selectedProfile ? (
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <Avatar className="size-14 border border-border/60">
-                    <AvatarImage src={selectedProfile.avatar_url || undefined} />
-                    <AvatarFallback>
-                      {getInitials(
-                        selectedProfile.display_name || selectedProfile.email,
-                      )}
-                    </AvatarFallback>
-                  </Avatar>
+                  <CommunityAvatar
+                    user={selectedProfile}
+                    size={56}
+                    className="size-14 border border-border/60"
+                  />
                   <div>
                     <p className="text-base font-semibold">
                       {selectedProfile.display_name || "Murekefu member"}

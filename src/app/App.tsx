@@ -16,6 +16,7 @@ import AuthCallback from "@/app/pages/AuthCallback";
 import { ContactUs } from "./components/ContactUs";
 import { useAuth } from "@/context/AuthContext";
 import {
+  THEME_DARK_HUES,
   THEME_ICON_SCALES,
   THEME_LAYOUT_DENSITIES,
   THEME_MODES,
@@ -23,6 +24,7 @@ import {
   THEME_SURFACE_STYLES,
   THEME_UI_SCALES,
   ThemeMode,
+  ThemeDarkHue,
   ThemePreset,
   useTheme,
 } from "@/context/ThemeContext";
@@ -363,6 +365,7 @@ export default function App() {
     mode,
     setMode,
     setTheme,
+    setDarkHue,
     setUiScale,
     setIconScale,
     setLayoutDensity,
@@ -437,6 +440,10 @@ export default function App() {
     if (mode && THEME_MODES.includes(mode as ThemeMode)) {
       setMode(mode as ThemeMode);
     }
+    const darkHue = appUser?.theme_settings?.darkHue;
+    if (darkHue && THEME_DARK_HUES.includes(darkHue as ThemeDarkHue)) {
+      setDarkHue(darkHue as ThemeDarkHue);
+    }
     const uiScale = appUser?.theme_settings?.uiScale;
     if (uiScale && THEME_UI_SCALES.includes(uiScale as any)) {
       setUiScale(uiScale as any);
@@ -454,12 +461,14 @@ export default function App() {
       setSurfaceStyle(surfaceStyle as any);
     }
   }, [
+    appUser?.theme_settings?.darkHue,
     appUser?.theme_settings?.iconScale,
     appUser?.theme_settings?.layoutDensity,
     appUser?.theme_settings?.mode,
     appUser?.theme_settings?.preset,
     appUser?.theme_settings?.surfaceStyle,
     appUser?.theme_settings?.uiScale,
+    setDarkHue,
     setIconScale,
     setLayoutDensity,
     setMode,

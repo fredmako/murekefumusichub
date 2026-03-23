@@ -11,6 +11,7 @@ import { supabase } from "../lib/supabase";
 import { normalizeAvatarUrl } from "../lib/avatarUrl";
 import { API_BASE_URL } from "@/lib/apiBase";
 import type {
+  ThemeDarkHue,
   ThemeIconScale,
   ThemeLayoutDensity,
   ThemeMode,
@@ -34,6 +35,7 @@ export interface AppUser {
   theme_settings?: {
     preset?: ThemePreset;
     mode?: ThemeMode;
+    darkHue?: ThemeDarkHue;
     uiScale?: ThemeUiScale;
     iconScale?: ThemeIconScale;
     layoutDensity?: ThemeLayoutDensity;

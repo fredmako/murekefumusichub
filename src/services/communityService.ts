@@ -1,3 +1,4 @@
+import { normalizeAvatarInRecord } from "@/lib/avatarUrl";
 import { apiRequest } from "@/services/api";
 
 export interface CommunityRoom {
@@ -18,6 +19,22 @@ export interface CommunityUserPreview {
   avatar_url: string | null;
 }
 
+export type CommunityAttachmentKind =
+  | "text"
+  | "image"
+  | "video"
+  | "audio"
+  | "document";
+
+export interface CommunityMessageMetadata {
+  mimeType?: string | null;
+  fileSize?: number | null;
+  storageBucket?: string | null;
+  storagePath?: string | null;
+  durationMs?: number | null;
+  [key: string]: any;
+}
+
 export interface CommunityMessage {
   id: string;
   room_id: string;
@@ -25,8 +42,8 @@ export interface CommunityMessage {
   message: string | null;
   attachment_url: string | null;
   attachment_name: string | null;
-  attachment_kind: "text" | "image";
-  metadata?: Record<string, any> | null;
+  attachment_kind: CommunityAttachmentKind;
+  metadata?: CommunityMessageMetadata | null;
   created_at: string;
   updated_at?: string | null;
   sender: CommunityUserPreview | null;
@@ -44,6 +61,20 @@ export const DEFAULT_COMMUNITY_SETTINGS: CommunitySettings = {
   wallpaper: "aurora",
 };
 
+function normalizeCommunityUserPreview(
+  user: CommunityUserPreview | null | undefined,
+): CommunityUserPreview | null {
+  if (!user) return null;
+  return normalizeAvatarInRecord(user);
+}
+
+function normalizeCommunityMessage(message: CommunityMessage): CommunityMessage {
+  return {
+    ...message,
+    sender: normalizeCommunityUserPreview(message.sender),
+  };
+}
+
 export const communityService = {
   async getPrimaryRoom() {
     return await apiRequest<{
@@ -57,7 +88,7 @@ export const communityService = {
   },
 
   async getRoomMessages(roomId: string, limit: number = 150) {
-    return await apiRequest<{
+    const payload = await apiRequest<{
       room: CommunityRoom;
       messages: CommunityMessage[];
     }>(`/community/rooms/${roomId}/messages?limit=${limit}`, {
@@ -65,6 +96,13 @@ export const communityService = {
       requiresAuth: true,
       timeoutMs: 30000,
     });
+
+    return {
+      ...payload,
+      messages: Array.isArray(payload?.messages)
+        ? payload.messages.map(normalizeCommunityMessage)
+        : [],
+    };
   },
 
   async sendMessage(
@@ -73,11 +111,11 @@ export const communityService = {
       message?: string;
       attachmentUrl?: string | null;
       attachmentName?: string | null;
-      attachmentKind?: "text" | "image";
-      metadata?: Record<string, any>;
+      attachmentKind?: CommunityAttachmentKind;
+      metadata?: CommunityMessageMetadata;
     },
   ) {
-    return await apiRequest<{
+    const response = await apiRequest<{
       success: boolean;
       message: CommunityMessage;
     }>(`/community/rooms/${roomId}/messages`, {
@@ -86,6 +124,13 @@ export const communityService = {
       requiresAuth: true,
       timeoutMs: 30000,
     });
+
+    return response?.message
+      ? {
+          ...response,
+          message: normalizeCommunityMessage(response.message),
+        }
+      : response;
   },
 
   async getMySettings() {

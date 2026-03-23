@@ -19,6 +19,13 @@ const ALLOWED_THEME_PRESETS = new Set([
   "forest",
 ]);
 const ALLOWED_THEME_MODES = new Set(["light", "dark"]);
+const ALLOWED_DARK_HUES = new Set([
+  "plum",
+  "midnight",
+  "graphite",
+  "forest-night",
+  "ember",
+]);
 const ALLOWED_UI_SCALES = new Set(["compact", "standard", "large"]);
 const ALLOWED_ICON_SCALES = new Set(["small", "medium", "large"]);
 const ALLOWED_LAYOUT_DENSITIES = new Set(["compact", "balanced", "spacious"]);
@@ -31,6 +38,9 @@ function normalizeThemeSettings(themeSettings, existingThemeSettings = null) {
     .trim()
     .toLowerCase();
   const existingModeRaw = String(existingThemeSettings?.mode || "")
+    .trim()
+    .toLowerCase();
+  const existingDarkHueRaw = String(existingThemeSettings?.darkHue || "")
     .trim()
     .toLowerCase();
   const existingUiScaleRaw = String(existingThemeSettings?.uiScale || "")
@@ -50,6 +60,9 @@ function normalizeThemeSettings(themeSettings, existingThemeSettings = null) {
     ? existingPresetRaw
     : "emerald";
   let mode = ALLOWED_THEME_MODES.has(existingModeRaw) ? existingModeRaw : "light";
+  let darkHue = ALLOWED_DARK_HUES.has(existingDarkHueRaw)
+    ? existingDarkHueRaw
+    : "plum";
   let uiScale = ALLOWED_UI_SCALES.has(existingUiScaleRaw)
     ? existingUiScaleRaw
     : "standard";
@@ -66,6 +79,7 @@ function normalizeThemeSettings(themeSettings, existingThemeSettings = null) {
   const hasPreset = Object.prototype.hasOwnProperty.call(themeSettings, "preset");
   const hasMode = Object.prototype.hasOwnProperty.call(themeSettings, "mode");
   const hasUiScale = Object.prototype.hasOwnProperty.call(themeSettings, "uiScale");
+  const hasDarkHue = Object.prototype.hasOwnProperty.call(themeSettings, "darkHue");
   const hasIconScale = Object.prototype.hasOwnProperty.call(themeSettings, "iconScale");
   const hasLayoutDensity = Object.prototype.hasOwnProperty.call(
     themeSettings,
@@ -78,6 +92,7 @@ function normalizeThemeSettings(themeSettings, existingThemeSettings = null) {
   if (
     !hasPreset &&
     !hasMode &&
+    !hasDarkHue &&
     !hasUiScale &&
     !hasIconScale &&
     !hasLayoutDensity &&
@@ -100,6 +115,14 @@ function normalizeThemeSettings(themeSettings, existingThemeSettings = null) {
       .toLowerCase();
     if (!ALLOWED_THEME_MODES.has(modeRaw)) return null;
     mode = modeRaw;
+  }
+
+  if (hasDarkHue) {
+    const darkHueRaw = String(themeSettings.darkHue || "")
+      .trim()
+      .toLowerCase();
+    if (!ALLOWED_DARK_HUES.has(darkHueRaw)) return null;
+    darkHue = darkHueRaw;
   }
 
   if (hasUiScale) {
@@ -134,7 +157,7 @@ function normalizeThemeSettings(themeSettings, existingThemeSettings = null) {
     surfaceStyle = surfaceStyleRaw;
   }
 
-  return { preset, mode, uiScale, iconScale, layoutDensity, surfaceStyle };
+  return { preset, mode, darkHue, uiScale, iconScale, layoutDensity, surfaceStyle };
 }
 
 /**
@@ -179,7 +202,7 @@ router.put("/", verifySupabaseToken, async (req, res) => {
       if (!normalizedTheme) {
         return res.status(400).json({
           message:
-            "Invalid theme settings. Allowed presets: emerald, aurora, ocean, sunset, forest. Allowed modes: light, dark. Allowed uiScale: compact, standard, large. Allowed iconScale: small, medium, large. Allowed layoutDensity: compact, balanced, spacious. Allowed surfaceStyle: soft, glass, solid.",
+            "Invalid theme settings. Allowed presets: emerald, aurora, ocean, sunset, forest. Allowed modes: light, dark. Allowed darkHue: plum, midnight, graphite, forest-night, ember. Allowed uiScale: compact, standard, large. Allowed iconScale: small, medium, large. Allowed layoutDensity: compact, balanced, spacious. Allowed surfaceStyle: soft, glass, solid.",
         });
       }
       updates.theme_settings = normalizedTheme;

@@ -178,7 +178,7 @@ const actionManuals = [
     icon: Settings2,
     steps: [
       "Go to Manage Account and open the Appearance section.",
-      "Choose your preferred theme preset, light or dark mode, icon size, view scale, layout density, and surface style.",
+      "Choose your preferred theme preset, light or dark mode, dark hue, icon size, view scale, layout density, and surface style.",
       "The system saves the design to your account automatically.",
       "Use Take Selfie if you want a faster profile photo flow with front-camera support.",
     ],

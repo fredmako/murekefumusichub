@@ -1048,6 +1048,135 @@ export const reportService = {
 };
 
 export const storageService = {
+  async uploadCommunityAttachment(
+    file: File,
+    _userId: string,
+    options?: { timeoutMs?: number },
+  ): Promise<{
+    url: string;
+    path: string | null;
+    bucket: "community";
+    mimeType: string | null;
+  }> {
+    const tokenResult = await getAccessToken();
+    if (tokenResult.status !== "ok") {
+      if (tokenResult.status === "no_session") {
+        const err = new Error("Your session has expired. Please log in again.");
+        (err as any).status = 401;
+        throw err;
+      }
+      const err = new Error(
+        tokenResult.statusCode === 408
+          ? "Authentication timed out. Please check your connection and try again."
+          : "Authentication is temporarily unavailable. Please retry in a moment.",
+      );
+      (err as any).status = tokenResult.statusCode || 503;
+      throw err;
+    }
+
+    if (!file) {
+      throw new Error("No file selected for upload");
+    }
+
+    if (file.size > 30 * 1024 * 1024) {
+      throw new Error("Community attachment is too large. Please keep it under 30MB.");
+    }
+
+    const mime = String(file.type || "").toLowerCase();
+    const name = String(file.name || "").toLowerCase();
+    const documentExtensions = [
+      ".pdf",
+      ".doc",
+      ".docx",
+      ".txt",
+      ".rtf",
+      ".csv",
+      ".xls",
+      ".xlsx",
+      ".ppt",
+      ".pptx",
+    ];
+    const isDocumentMime =
+      mime === "application/pdf" ||
+      mime === "text/plain" ||
+      mime === "text/csv" ||
+      mime === "application/rtf" ||
+      mime === "application/msword" ||
+      mime ===
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      mime === "application/vnd.ms-excel" ||
+      mime ===
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+      mime === "application/vnd.ms-powerpoint" ||
+      mime ===
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    const isDocumentExtension = documentExtensions.some((ext) => name.endsWith(ext));
+    const isSupportedAttachment =
+      mime.startsWith("image/") ||
+      mime.startsWith("video/") ||
+      mime.startsWith("audio/") ||
+      isDocumentMime ||
+      isDocumentExtension;
+
+    if (!isSupportedAttachment) {
+      throw new Error(
+        "Use an image, video, audio file, or a document such as PDF, Word, Excel, PowerPoint, or text.",
+      );
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const url = buildApiUrl("/upload/community");
+    const timeoutMs = Math.max(5000, options?.timeoutMs ?? 45000);
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenResult.token}`,
+        },
+        body: formData,
+        signal: controller.signal,
+      });
+    } catch (error: any) {
+      if (error?.name === "AbortError") {
+        throw new Error("Upload timed out. Please check your network and try again.");
+      }
+      throw new Error(
+        error?.message || "Upload failed due to a network error. Please try again.",
+      );
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
+
+    if (!response.ok) {
+      let errorMessage = `Upload failed with status ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        // ignore parsing failures
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result: any = await response.json();
+    if (!result.success || !result.url) {
+      throw new Error("Server upload returned no URL");
+    }
+
+    return {
+      url: result.url,
+      path: result.path || null,
+      bucket: "community",
+      mimeType: result.mimeType || mime || null,
+    };
+  },
+
   async uploadFile(
     bucket: "compositions" | "thumbnails" | "avatars",
     file: File,

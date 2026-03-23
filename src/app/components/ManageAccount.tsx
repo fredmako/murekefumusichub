@@ -58,6 +58,7 @@ import {
 } from "@/services/api";
 import { API_BASE_URL } from "@/lib/apiBase";
 import {
+  THEME_DARK_HUES,
   THEME_ICON_SCALES,
   THEME_LAYOUT_DENSITIES,
   THEME_PRESETS,
@@ -94,6 +95,7 @@ const ACCOUNT_REPORT_FIELDS = [
   { key: "roles", label: "Roles" },
   { key: "theme", label: "Theme Preset" },
   { key: "mode", label: "Mode" },
+  { key: "darkHue", label: "Dark Hue" },
   { key: "uiScale", label: "View Size" },
   { key: "iconScale", label: "Icon Size" },
   { key: "layoutDensity", label: "Layout Density" },
@@ -142,6 +144,53 @@ const THEME_PREVIEW_SWATCHES: Record<
   },
 };
 
+const DARK_HUE_SWATCHES: Record<
+  (typeof THEME_DARK_HUES)[number],
+  {
+    panel: string;
+    card: string;
+    border: string;
+    glow: string;
+    label: string;
+  }
+> = {
+  plum: {
+    panel: "#070f1d",
+    card: "#0a182c",
+    border: "#2d446b",
+    glow: "#9867ff",
+    label: "Classic purple-tinted night workspace",
+  },
+  midnight: {
+    panel: "#06111b",
+    card: "#0d1c2b",
+    border: "#23415b",
+    glow: "#38bdf8",
+    label: "Deep blue-black surfaces with cool focus",
+  },
+  graphite: {
+    panel: "#111418",
+    card: "#1a1f24",
+    border: "#36414d",
+    glow: "#94a3b8",
+    label: "Neutral charcoal tones for a clean studio feel",
+  },
+  "forest-night": {
+    panel: "#081511",
+    card: "#10211b",
+    border: "#27463b",
+    glow: "#34d399",
+    label: "Green-black atmosphere with calm low-light contrast",
+  },
+  ember: {
+    panel: "#16100c",
+    card: "#231914",
+    border: "#4d3426",
+    glow: "#fb923c",
+    label: "Warm bronze-black mood with subtle ember glow",
+  },
+};
+
 export function ManageAccount() {
   const { appUser, signOut, getAuthToken, isLoading: authLoading } = useAuth();
   const {
@@ -149,6 +198,8 @@ export function ManageAccount() {
     setMode,
     theme,
     setTheme,
+    darkHue,
+    setDarkHue,
     uiScale,
     setUiScale,
     iconScale,
@@ -370,6 +421,11 @@ export function ManageAccount() {
         ? (user?.theme_settings?.preset as (typeof THEME_PRESETS)[number])
         : THEME_PRESETS[0],
     mode: mode === "dark" ? "dark" : "light",
+    darkHue: THEME_DARK_HUES.includes(darkHue as any)
+      ? (darkHue as (typeof THEME_DARK_HUES)[number])
+      : THEME_DARK_HUES.includes(user?.theme_settings?.darkHue as any)
+        ? (user?.theme_settings?.darkHue as (typeof THEME_DARK_HUES)[number])
+        : THEME_DARK_HUES[0],
     uiScale: THEME_UI_SCALES.includes(uiScale as any)
       ? (uiScale as (typeof THEME_UI_SCALES)[number])
       : THEME_UI_SCALES.includes(user?.theme_settings?.uiScale as any)
@@ -402,6 +458,7 @@ export function ManageAccount() {
   const applyThemeSettingsToContext = (nextSettings: typeof currentThemeSettings) => {
     setTheme(nextSettings.preset);
     setMode(nextSettings.mode);
+    setDarkHue(nextSettings.darkHue);
     setUiScale(nextSettings.uiScale);
     setIconScale(nextSettings.iconScale);
     setLayoutDensity(nextSettings.layoutDensity);
@@ -1044,6 +1101,7 @@ export function ManageAccount() {
     roles: userRoles.length > 0 ? userRoles.join(", ") : "User",
     theme: formatSettingLabel(currentThemeSettings.preset),
     mode: formatSettingLabel(currentThemeSettings.mode),
+    darkHue: formatSettingLabel(currentThemeSettings.darkHue),
     uiScale: formatSettingLabel(currentThemeSettings.uiScale),
     iconScale: formatSettingLabel(currentThemeSettings.iconScale),
     layoutDensity: formatSettingLabel(currentThemeSettings.layoutDensity),
@@ -1440,6 +1498,9 @@ export function ManageAccount() {
                     {currentThemeSettings.mode === "dark" ? "Dark Mode" : "Light Mode"}
                   </span>
                   <span className="rounded-full border border-border/70 bg-card px-3 py-1">
+                    {formatSettingLabel(currentThemeSettings.darkHue)} dark hue
+                  </span>
+                  <span className="rounded-full border border-border/70 bg-card px-3 py-1">
                     {formatSettingLabel(currentThemeSettings.uiScale)} view
                   </span>
                   <span className="rounded-full border border-border/70 bg-card px-3 py-1">
@@ -1474,14 +1535,28 @@ export function ManageAccount() {
                         {formatSettingLabel(currentThemeSettings.preset)}
                       </span>
                     </div>
-                    <div className="mt-4 rounded-2xl border border-border/70 bg-background/70 p-4">
+                    <div
+                      className="mt-4 rounded-2xl border border-border/70 bg-background/70 p-4"
+                      style={
+                        currentThemeSettings.mode === "dark"
+                          ? {
+                              backgroundColor:
+                                DARK_HUE_SWATCHES[currentThemeSettings.darkHue].panel,
+                              borderColor:
+                                DARK_HUE_SWATCHES[currentThemeSettings.darkHue].border,
+                            }
+                          : undefined
+                      }
+                    >
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="text-sm font-semibold text-foreground">
                             Dashboard Preview
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            {THEME_PREVIEW_SWATCHES[currentThemeSettings.preset].label}
+                            {currentThemeSettings.mode === "dark"
+                              ? DARK_HUE_SWATCHES[currentThemeSettings.darkHue].label
+                              : THEME_PREVIEW_SWATCHES[currentThemeSettings.preset].label}
                           </p>
                         </div>
                         <div className="flex gap-2">
@@ -1503,13 +1578,34 @@ export function ManageAccount() {
                             className="h-4 w-4 rounded-full border border-white/60 shadow-sm"
                             style={{
                               backgroundColor:
-                                THEME_PREVIEW_SWATCHES[currentThemeSettings.preset].surface,
+                                currentThemeSettings.mode === "dark"
+                                  ? DARK_HUE_SWATCHES[currentThemeSettings.darkHue].card
+                                  : THEME_PREVIEW_SWATCHES[currentThemeSettings.preset].surface,
+                            }}
+                          />
+                          <span
+                            className="h-4 w-4 rounded-full border border-white/60 shadow-sm"
+                            style={{
+                              backgroundColor:
+                                DARK_HUE_SWATCHES[currentThemeSettings.darkHue].glow,
                             }}
                           />
                         </div>
                       </div>
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-xl border border-border/70 bg-card p-3 shadow-sm">
+                        <div
+                          className="rounded-xl border border-border/70 bg-card p-3 shadow-sm"
+                          style={
+                            currentThemeSettings.mode === "dark"
+                              ? {
+                                  backgroundColor:
+                                    DARK_HUE_SWATCHES[currentThemeSettings.darkHue].card,
+                                  borderColor:
+                                    DARK_HUE_SWATCHES[currentThemeSettings.darkHue].border,
+                                }
+                              : undefined
+                          }
+                        >
                           <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
                             Primary action
                           </p>
@@ -1522,7 +1618,19 @@ export function ManageAccount() {
                             Save Appearance
                           </div>
                         </div>
-                        <div className="rounded-xl border border-border/70 bg-card p-3 shadow-sm">
+                        <div
+                          className="rounded-xl border border-border/70 bg-card p-3 shadow-sm"
+                          style={
+                            currentThemeSettings.mode === "dark"
+                              ? {
+                                  backgroundColor:
+                                    DARK_HUE_SWATCHES[currentThemeSettings.darkHue].card,
+                                  borderColor:
+                                    DARK_HUE_SWATCHES[currentThemeSettings.darkHue].border,
+                                }
+                              : undefined
+                          }
+                        >
                           <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
                             Surface
                           </p>
@@ -1530,10 +1638,13 @@ export function ManageAccount() {
                             className="mt-3 rounded-xl border border-border/70 px-3 py-2 text-sm text-foreground"
                             style={{
                               backgroundColor:
-                                THEME_PREVIEW_SWATCHES[currentThemeSettings.preset].surface,
+                                currentThemeSettings.mode === "dark"
+                                  ? DARK_HUE_SWATCHES[currentThemeSettings.darkHue].panel
+                                  : THEME_PREVIEW_SWATCHES[currentThemeSettings.preset].surface,
                             }}
                           >
                             {currentThemeSettings.mode === "dark" ? "Dark" : "Light"} mode,
+                            {" "}{formatSettingLabel(currentThemeSettings.darkHue)} hue,
                             {" "}{formatSettingLabel(currentThemeSettings.layoutDensity)} layout,
                             {" "}{formatSettingLabel(currentThemeSettings.iconScale)} icons
                           </div>
@@ -1624,6 +1735,61 @@ export function ManageAccount() {
                     <Moon className="mr-2 h-4 w-4" />
                     Dark Mode
                   </Button>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Palette className="h-4 w-4 text-primary" />
+                  Dark Mode Hue
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Change the base shade of your dark workspace without losing your main accent theme.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {THEME_DARK_HUES.map((hue) => (
+                    <button
+                      key={hue}
+                      type="button"
+                      onClick={() =>
+                        void handleThemeSettingsUpdate(
+                          { darkHue: hue },
+                          `${formatSettingLabel(hue)} dark hue applied`,
+                        )
+                      }
+                      disabled={themeSaving}
+                      className={`rounded-2xl border p-3 text-left transition ${
+                        currentThemeSettings.darkHue === hue
+                          ? "border-primary bg-primary/10 shadow-sm"
+                          : "border-border/70 bg-card/70 hover:bg-muted/40"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">
+                            {formatSettingLabel(hue)}
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {DARK_HUE_SWATCHES[hue].label}
+                          </p>
+                        </div>
+                        <div className="flex gap-1.5">
+                          <span
+                            className="h-3.5 w-3.5 rounded-full border border-white/15"
+                            style={{ backgroundColor: DARK_HUE_SWATCHES[hue].panel }}
+                          />
+                          <span
+                            className="h-3.5 w-3.5 rounded-full border border-white/15"
+                            style={{ backgroundColor: DARK_HUE_SWATCHES[hue].card }}
+                          />
+                          <span
+                            className="h-3.5 w-3.5 rounded-full border border-white/15"
+                            style={{ backgroundColor: DARK_HUE_SWATCHES[hue].glow }}
+                          />
+                        </div>
+                      </div>
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -2030,7 +2196,7 @@ export function ManageAccount() {
                 />
               </div>
               <div className="mt-4 rounded-xl border border-border/60 bg-muted/35 px-3 py-2 text-sm text-muted-foreground">
-                Includes profile identity, theme preset, and display density settings.
+                Includes profile identity, theme preset, dark hue, and display density settings.
               </div>
             </div>
 

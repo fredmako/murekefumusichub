@@ -19,6 +19,15 @@ export type ThemePreset = (typeof THEME_PRESETS)[number];
 export const THEME_MODES = ["light", "dark"] as const;
 export type ThemeMode = (typeof THEME_MODES)[number];
 
+export const THEME_DARK_HUES = [
+  "plum",
+  "midnight",
+  "graphite",
+  "forest-night",
+  "ember",
+] as const;
+export type ThemeDarkHue = (typeof THEME_DARK_HUES)[number];
+
 export const THEME_UI_SCALES = ["compact", "standard", "large"] as const;
 export type ThemeUiScale = (typeof THEME_UI_SCALES)[number];
 
@@ -37,12 +46,14 @@ export type ThemeSurfaceStyle = (typeof THEME_SURFACE_STYLES)[number];
 
 const PRESET_STORAGE_KEY = "murekefu_theme_preset";
 const MODE_STORAGE_KEY = "murekefu_theme_mode";
+const DARK_HUE_STORAGE_KEY = "murekefu_theme_dark_hue";
 const UI_SCALE_STORAGE_KEY = "murekefu_theme_ui_scale";
 const ICON_SCALE_STORAGE_KEY = "murekefu_theme_icon_scale";
 const LAYOUT_DENSITY_STORAGE_KEY = "murekefu_theme_layout_density";
 const SURFACE_STYLE_STORAGE_KEY = "murekefu_theme_surface_style";
 const DEFAULT_THEME: ThemePreset = "emerald";
 const DEFAULT_MODE: ThemeMode = "light";
+const DEFAULT_DARK_HUE: ThemeDarkHue = "plum";
 const DEFAULT_UI_SCALE: ThemeUiScale = "standard";
 const DEFAULT_ICON_SCALE: ThemeIconScale = "medium";
 const DEFAULT_LAYOUT_DENSITY: ThemeLayoutDensity = "balanced";
@@ -51,12 +62,14 @@ const DEFAULT_SURFACE_STYLE: ThemeSurfaceStyle = "soft";
 interface ThemeContextType {
   theme: ThemePreset;
   mode: ThemeMode;
+  darkHue: ThemeDarkHue;
   uiScale: ThemeUiScale;
   iconScale: ThemeIconScale;
   layoutDensity: ThemeLayoutDensity;
   surfaceStyle: ThemeSurfaceStyle;
   setTheme: (theme: ThemePreset) => void;
   setMode: (mode: ThemeMode) => void;
+  setDarkHue: (darkHue: ThemeDarkHue) => void;
   setUiScale: (uiScale: ThemeUiScale) => void;
   setIconScale: (iconScale: ThemeIconScale) => void;
   setLayoutDensity: (layoutDensity: ThemeLayoutDensity) => void;
@@ -71,6 +84,10 @@ function isThemePreset(value: unknown): value is ThemePreset {
 
 function isThemeMode(value: unknown): value is ThemeMode {
   return typeof value === "string" && THEME_MODES.includes(value as ThemeMode);
+}
+
+function isThemeDarkHue(value: unknown): value is ThemeDarkHue {
+  return typeof value === "string" && THEME_DARK_HUES.includes(value as ThemeDarkHue);
 }
 
 function isThemeUiScale(value: unknown): value is ThemeUiScale {
@@ -101,6 +118,7 @@ function isThemeSurfaceStyle(value: unknown): value is ThemeSurfaceStyle {
 function applyThemeToDom(
   theme: ThemePreset,
   mode: ThemeMode,
+  darkHue: ThemeDarkHue,
   uiScale: ThemeUiScale,
   iconScale: ThemeIconScale,
   layoutDensity: ThemeLayoutDensity,
@@ -109,6 +127,7 @@ function applyThemeToDom(
   if (typeof document === "undefined") return;
   const root = document.documentElement;
   root.setAttribute("data-theme", theme);
+  root.setAttribute("data-dark-hue", darkHue);
   root.setAttribute("data-ui-scale", uiScale);
   root.setAttribute("data-icon-scale", iconScale);
   root.setAttribute("data-layout-density", layoutDensity);
@@ -141,6 +160,16 @@ function getStoredMode(): ThemeMode {
     return isThemeMode(value) ? value : DEFAULT_MODE;
   } catch {
     return DEFAULT_MODE;
+  }
+}
+
+function getStoredDarkHue(): ThemeDarkHue {
+  if (typeof window === "undefined") return DEFAULT_DARK_HUE;
+  try {
+    const value = window.localStorage.getItem(DARK_HUE_STORAGE_KEY);
+    return isThemeDarkHue(value) ? value : DEFAULT_DARK_HUE;
+  } catch {
+    return DEFAULT_DARK_HUE;
   }
 }
 
@@ -187,6 +216,7 @@ function getStoredSurfaceStyle(): ThemeSurfaceStyle {
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<ThemePreset>(getStoredTheme);
   const [mode, setModeState] = useState<ThemeMode>(getStoredMode);
+  const [darkHue, setDarkHueState] = useState<ThemeDarkHue>(getStoredDarkHue);
   const [uiScale, setUiScaleState] = useState<ThemeUiScale>(getStoredUiScale);
   const [iconScale, setIconScaleState] =
     useState<ThemeIconScale>(getStoredIconScale);
@@ -201,6 +231,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setMode = useCallback((nextMode: ThemeMode) => {
     setModeState(isThemeMode(nextMode) ? nextMode : DEFAULT_MODE);
+  }, []);
+
+  const setDarkHue = useCallback((nextDarkHue: ThemeDarkHue) => {
+    setDarkHueState(isThemeDarkHue(nextDarkHue) ? nextDarkHue : DEFAULT_DARK_HUE);
   }, []);
 
   const setUiScale = useCallback((nextUiScale: ThemeUiScale) => {
@@ -238,6 +272,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     applyThemeToDom(
       theme,
       mode,
+      darkHue,
       uiScale,
       iconScale,
       layoutDensity,
@@ -246,6 +281,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     try {
       window.localStorage.setItem(PRESET_STORAGE_KEY, theme);
       window.localStorage.setItem(MODE_STORAGE_KEY, mode);
+      window.localStorage.setItem(DARK_HUE_STORAGE_KEY, darkHue);
       window.localStorage.setItem(UI_SCALE_STORAGE_KEY, uiScale);
       window.localStorage.setItem(ICON_SCALE_STORAGE_KEY, iconScale);
       window.localStorage.setItem(LAYOUT_DENSITY_STORAGE_KEY, layoutDensity);
@@ -253,18 +289,20 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // ignore storage failures
     }
-  }, [theme, mode, uiScale, iconScale, layoutDensity, surfaceStyle]);
+  }, [theme, mode, darkHue, uiScale, iconScale, layoutDensity, surfaceStyle]);
 
   const value = useMemo(
     () => ({
       theme,
       mode,
+      darkHue,
       uiScale,
       iconScale,
       layoutDensity,
       surfaceStyle,
       setTheme,
       setMode,
+      setDarkHue,
       setUiScale,
       setIconScale,
       setLayoutDensity,
@@ -273,12 +311,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     [
       theme,
       mode,
+      darkHue,
       uiScale,
       iconScale,
       layoutDensity,
       surfaceStyle,
       setTheme,
       setMode,
+      setDarkHue,
       setUiScale,
       setIconScale,
       setLayoutDensity,

@@ -11,6 +11,7 @@ import { formatKesAmount } from "@/lib/currency";
 import { toast } from "sonner";
 import { ensureArray } from "@/lib/ensureArray";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
+import { MESSENGER_INBOX_UPDATED_EVENT } from "@/lib/messengerEvents";
 import {
   ShoppingCart,
   LogOut,
@@ -156,6 +157,41 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
       setMessengerUnreadCount(0);
     }
   }, [isAuthenticated, location.pathname]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !isAuthenticated) return undefined;
+
+    let cancelled = false;
+    const handleMessengerInboxUpdated = async () => {
+      try {
+        const refreshed = await navbarService.fetchNotifications({ isAdmin });
+        if (cancelled) return;
+        setNotifications(
+          ensureArray<any>(refreshed?.notificationItems, ["notifications"]),
+        );
+        setMessengerUnreadCount(
+          Math.max(0, Number(refreshed?.messengerUnreadCount || 0)),
+        );
+      } catch (err) {
+        if (!cancelled) {
+          console.warn("Messenger badge refresh error:", err);
+        }
+      }
+    };
+
+    window.addEventListener(
+      MESSENGER_INBOX_UPDATED_EVENT,
+      handleMessengerInboxUpdated,
+    );
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(
+        MESSENGER_INBOX_UPDATED_EVENT,
+        handleMessengerInboxUpdated,
+      );
+    };
+  }, [isAdmin, isAuthenticated]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
