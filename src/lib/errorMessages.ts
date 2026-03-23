@@ -33,6 +33,13 @@ export function simplifyErrorMessage(message: string, status?: number) {
   if (status === 503 || lower.includes("network") || lower.includes("failed to fetch")) {
     return "We could not reach the server. Please check your connection and try again.";
   }
+  if (
+    lower.includes("run migration") ||
+    lower.includes("tables are missing") ||
+    lower.includes("settings are missing")
+  ) {
+    return cleaned;
+  }
   if (status && status >= 500) {
     return "The server hit an error. Please try again or refresh the page.";
   }

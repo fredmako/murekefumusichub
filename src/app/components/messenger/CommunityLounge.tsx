@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
+  BellRing,
   Loader,
   Paperclip,
   RefreshCcw,
   Search,
   Send,
   Settings2,
+  ShieldCheck,
   Smile,
   Users,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/app/components/ui/avatar";
@@ -45,6 +48,27 @@ function getInitials(value?: string | null) {
   const parts = normalized.split(/\s+/);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0] || ""}${parts[parts.length - 1][0] || ""}`.toUpperCase();
+}
+
+const COMMUNITY_QUICK_EMOJIS = [
+  "\u{1F64F}",
+  "\u{1F3BC}",
+  "\u2728",
+  "\u{1F525}",
+  "\u{1F44F}",
+  "\u{1F499}",
+  "\u{1F64C}",
+  "\u{1F3A7}",
+];
+
+const COMMUNITY_ETIQUETTE = [
+  "Welcome new members warmly and keep the tone respectful.",
+  "Share music, ideas, and feedback without spamming the lounge.",
+  "Avoid harmful, abusive, or misleading content when posting publicly.",
+];
+
+function getEtiquetteStorageKey(userId?: string | null) {
+  return `community-etiquette-seen:${String(userId || "guest")}`;
 }
 
 function formatTime(value?: string | null) {
@@ -104,6 +128,7 @@ export function CommunityLounge() {
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showEtiquetteNotice, setShowEtiquetteNotice] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -133,6 +158,19 @@ export function CommunityLounge() {
     return () => URL.revokeObjectURL(previewUrl);
   }, [attachmentFile]);
 
+  useEffect(() => {
+    if (!appUser?.id) return;
+    const storageKey = getEtiquetteStorageKey(appUser.id);
+    const hasSeenNotice = localStorage.getItem(storageKey) === "true";
+    setShowEtiquetteNotice(!hasSeenNotice);
+    if (!hasSeenNotice) {
+      toast("Community etiquette", {
+        description:
+          "Be respectful, welcome others, and keep the lounge helpful for everyone.",
+      });
+    }
+  }, [appUser?.id]);
+
   const loadCommunity = async (showRefreshing = false) => {
     if (!appUser?.id) return;
     if (showRefreshing) setRefreshing(true);
@@ -141,7 +179,10 @@ export function CommunityLounge() {
     try {
       const [roomPayload, settingsPayload] = await Promise.all([
         communityService.getPrimaryRoom(),
-        communityService.getMySettings(),
+        communityService.getMySettings().catch((settingsError) => {
+          console.warn("[community-lounge] settings fallback:", settingsError);
+          return DEFAULT_COMMUNITY_SETTINGS;
+        }),
       ]);
       const nextRoom = roomPayload?.room || null;
       setRoom(nextRoom);
@@ -218,6 +259,13 @@ export function CommunityLounge() {
     } catch (err: any) {
       toast.error(err?.message || "Could not save community settings");
     }
+  };
+
+  const handleDismissEtiquette = () => {
+    if (appUser?.id) {
+      localStorage.setItem(getEtiquetteStorageKey(appUser.id), "true");
+    }
+    setShowEtiquetteNotice(false);
   };
 
   const handleSend = async () => {
@@ -351,7 +399,7 @@ export function CommunityLounge() {
                   Quick emoji
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {EMOJIS.map((emoji) => (
+                  {COMMUNITY_QUICK_EMOJIS.map((emoji) => (
                     <button
                       key={emoji}
                       type="button"
@@ -363,6 +411,48 @@ export function CommunityLounge() {
                   ))}
                 </div>
               </div>
+
+              {showEtiquetteNotice ? (
+                <div className="mt-4 rounded-[1.4rem] border border-primary/20 bg-primary/10 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 text-sm font-semibold">
+                        <BellRing className="size-4 text-primary" />
+                        Community etiquette
+                      </div>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        A quick note for everyone joining the lounge.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      onClick={handleDismissEtiquette}
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {COMMUNITY_ETIQUETTE.map((rule) => (
+                      <div key={rule} className="flex items-start gap-2 text-sm">
+                        <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />
+                        <span className="text-muted-foreground">{rule}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-4"
+                    onClick={handleDismissEtiquette}
+                  >
+                    Got it
+                  </Button>
+                </div>
+              ) : null}
             </aside>
 
             <section className="min-h-0">
@@ -405,7 +495,27 @@ export function CommunityLounge() {
                       </div>
                     ) : error ? (
                       <div className="mx-auto max-w-lg rounded-[1.4rem] border border-destructive/20 bg-destructive/10 p-5 text-sm text-foreground">
-                        {error}
+                        <p>{error}</p>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void loadCommunity(true)}
+                            disabled={refreshing || loading}
+                          >
+                            <RefreshCcw className="mr-2 size-4" />
+                            Refresh
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => navigate("/messenger?tab=support")}
+                          >
+                            Contact support
+                          </Button>
+                        </div>
                       </div>
                     ) : filteredMessages.length === 0 ? (
                       <div className="mx-auto max-w-lg rounded-[1.4rem] border border-border/60 bg-card/88 p-5 text-center text-sm text-muted-foreground">
@@ -512,7 +622,7 @@ export function CommunityLounge() {
                 ) : null}
 
                 <div className="flex flex-wrap gap-2 pb-3">
-                  {EMOJIS.map((emoji) => (
+                  {COMMUNITY_QUICK_EMOJIS.map((emoji) => (
                     <button
                       key={`composer-${emoji}`}
                       type="button"
