@@ -33,6 +33,13 @@ const shouldRejectEnvApiBase = (candidate: string): boolean => {
     if (!isLoopbackHost(appUrl.hostname) && isLoopbackHost(apiUrl.hostname)) {
       return true;
     }
+
+    // In hosted browser environments, prefer the current-origin `/api` proxy.
+    // This avoids stale provider URLs in deployment env vars from bypassing
+    // the active rewrite contract (for example Vercel -> Render).
+    if (!isLoopbackHost(appUrl.hostname) && apiUrl.origin !== appUrl.origin) {
+      return true;
+    }
   } catch {
     // Ignore parse failures and let normal fallback rules handle it.
   }
