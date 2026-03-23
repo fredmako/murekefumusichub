@@ -25,6 +25,7 @@ import {
   PanelTopClose,
   PanelTopOpen,
   User,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -270,63 +271,6 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     }
   };
 
-  const navItems = [
-    {
-      label: "Learn Music",
-      path: "/",
-      showOn: ["/"],
-      roles: [],
-    },
-    {
-      label: "About Us",
-      path: "/about",
-      showOn: ["/"],
-      roles: [],
-    },
-    {
-      label: "Music Hub",
-      path: "/marketplace",
-      showOn: ["any"],
-      roles: [],
-    },
-    {
-      label: "My Library",
-      path: "/buyer",
-      showOn: ["any"],
-      roles: ["buyer"],
-    },
-    {
-      label: "Learner",
-      path: "/learner",
-      showOn: ["any"],
-      roles: [],
-    },
-    {
-      label: "My Arrangements",
-      path: "/composer?tab=arrangements",
-      showOn: ["any"],
-      roles: ["composer"],
-      isActive: () =>
-        location.pathname === "/composer" &&
-        new URLSearchParams(location.search).get("tab") === "arrangements",
-    },
-    {
-      label: "My Compositions",
-      path: "/composer?tab=compositions",
-      showOn: ["any"],
-      roles: ["composer"],
-      isActive: () =>
-        location.pathname === "/composer" &&
-        new URLSearchParams(location.search).get("tab") === "compositions",
-    },
-    {
-      label: "Admin",
-      path: "/admin",
-      showOn: ["any"],
-      roles: ["admin"],
-    },
-  ];
-
   const isNavItemActive = (item: { path: string; isActive?: () => boolean }) => {
     if (item.isActive) return item.isActive();
     if (!item.path) return false;
@@ -340,6 +284,29 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     }
     return true;
   };
+
+  const homeMenuItems = [
+    { label: "Home", path: "/" },
+    { label: "About Us", path: "/about" },
+    { label: "Testimonials", path: "/#testimonials" },
+    { label: "Help", path: "/help" },
+    { label: "Contact Us", path: "/contact" },
+  ];
+
+  const serviceMenuItems = [
+    { label: "Learn Music", path: "/enroll" },
+    { label: "Music Hub", path: "/marketplace" },
+  ];
+
+  const isHomeMenuActive =
+    location.pathname === "/" ||
+    location.pathname === "/about" ||
+    location.pathname === "/help" ||
+    location.pathname === "/contact" ||
+    location.hash === "#testimonials";
+
+  const isServicesMenuActive =
+    location.pathname === "/enroll" || location.pathname === "/marketplace";
 
   const dashboardPaths = useMemo(() => {
     const dashboards: Array<{ label: string; path: string; role: string }> = [];
@@ -369,12 +336,16 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     }
     if (roles.includes("buyer"))
       dashboards.push({
-        label: "Buyer Dashboard",
+        label: "My Library",
         path: "/buyer",
         role: "buyer",
       });
     return dashboards;
   }, [hasLearnerAccess, roles]);
+
+  const isDashboardsMenuActive = dashboardPaths.some((dashboard) =>
+    isNavItemActive({ path: dashboard.path }),
+  );
 
   // helper: build avatar / initials
   const avatarUrl = appUser?.avatar_url ?? null;
@@ -396,6 +367,10 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
     if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   })();
+
+  const handleMenuNavigation = (path: string) => {
+    navigate(path);
+  };
 
   return (
     <nav className="texture-fabric sticky top-0 z-40 overflow-x-clip border-b border-border/80 bg-card/95">
@@ -437,30 +412,76 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
                 : "max-w-[760px] p-1 opacity-100"
             }`}
           >
-            {navItems.map((item) => {
-              const isVisible =
-                item.showOn.includes("any") ||
-                item.showOn.includes(location.pathname);
-              const hasRole =
-                item.roles.length === 0 ||
-                item.roles.some((role) => roles.includes(role));
-              const requiresLearnerAccess =
-                item.path === "/learner" && !hasLearnerAccess;
-              if (!isVisible || !hasRole || requiresLearnerAccess) return null;
-
-              const isActive = isNavItemActive(item);
-              return (
-                <Link key={item.path} to={item.path}>
-                  <Button
-                    variant={isActive ? "default" : "ghost"}
-                    size="sm"
-                    className={isActive ? "" : "text-muted-foreground"}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant={isHomeMenuActive ? "default" : "ghost"}
+                  size="sm"
+                  className={isHomeMenuActive ? "" : "text-muted-foreground"}
+                >
+                  Home
+                  <ChevronDown className="ml-2 size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="center" className="w-52">
+                {homeMenuItems.map((item) => (
+                  <DropdownMenuItem
+                    key={item.path}
+                    onClick={() => handleMenuNavigation(item.path)}
                   >
                     {item.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant={isServicesMenuActive ? "default" : "ghost"}
+                  size="sm"
+                  className={isServicesMenuActive ? "" : "text-muted-foreground"}
+                >
+                  Services
+                  <ChevronDown className="ml-2 size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="center" className="w-52">
+                {serviceMenuItems.map((item) => (
+                  <DropdownMenuItem
+                    key={item.path}
+                    onClick={() => handleMenuNavigation(item.path)}
+                  >
+                    {item.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {isAuthenticated && dashboardPaths.length > 0 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={isDashboardsMenuActive ? "default" : "ghost"}
+                    size="sm"
+                    className={isDashboardsMenuActive ? "" : "text-muted-foreground"}
+                  >
+                    Dashboards
+                    <ChevronDown className="ml-2 size-4" />
                   </Button>
-                </Link>
-              );
-            })}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center" className="w-56">
+                  {dashboardPaths.map((dashboard) => (
+                    <DropdownMenuItem
+                      key={dashboard.role}
+                      onClick={() => handleMenuNavigation(dashboard.path)}
+                    >
+                      {dashboard.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
           </div>
 
           {/* ================= Right Actions ================= */}
@@ -1027,30 +1048,78 @@ export function Navbar({ cart = [], onRemoveFromCart }: NavbarProps) {
           }`}
         >
           <div className="flex gap-2 overflow-x-auto whitespace-nowrap rounded-full border border-border/70 bg-background/55 p-1">
-            {navItems.map((item) => {
-              const isVisible =
-                item.showOn.includes("any") ||
-                item.showOn.includes(location.pathname);
-              const hasRole =
-                item.roles.length === 0 ||
-                item.roles.some((role) => roles.includes(role));
-              const requiresLearnerAccess =
-                item.path === "/learner" && !hasLearnerAccess;
-              if (!isVisible || !hasRole || requiresLearnerAccess) return null;
-
-              const isActive = isNavItemActive(item);
-              return (
-                <Link key={`mobile-${item.path}`} to={item.path}>
-                  <Button
-                    variant={isActive ? "default" : "ghost"}
-                    size="sm"
-                    className={`rounded-full px-4 ${isActive ? "" : "text-muted-foreground"}`}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant={isHomeMenuActive ? "default" : "ghost"}
+                  size="sm"
+                  className={`rounded-full px-4 ${isHomeMenuActive ? "" : "text-muted-foreground"}`}
+                >
+                  Home
+                  <ChevronDown className="ml-2 size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-52">
+                {homeMenuItems.map((item) => (
+                  <DropdownMenuItem
+                    key={`mobile-${item.path}`}
+                    onClick={() => handleMenuNavigation(item.path)}
                   >
                     {item.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant={isServicesMenuActive ? "default" : "ghost"}
+                  size="sm"
+                  className={`rounded-full px-4 ${isServicesMenuActive ? "" : "text-muted-foreground"}`}
+                >
+                  Services
+                  <ChevronDown className="ml-2 size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-52">
+                {serviceMenuItems.map((item) => (
+                  <DropdownMenuItem
+                    key={`mobile-service-${item.path}`}
+                    onClick={() => handleMenuNavigation(item.path)}
+                  >
+                    {item.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {isAuthenticated && dashboardPaths.length > 0 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={isDashboardsMenuActive ? "default" : "ghost"}
+                    size="sm"
+                    className={`rounded-full px-4 ${
+                      isDashboardsMenuActive ? "" : "text-muted-foreground"
+                    }`}
+                  >
+                    Dashboards
+                    <ChevronDown className="ml-2 size-4" />
                   </Button>
-                </Link>
-              );
-            })}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  {dashboardPaths.map((dashboard) => (
+                    <DropdownMenuItem
+                      key={`mobile-dashboard-${dashboard.role}`}
+                      onClick={() => handleMenuNavigation(dashboard.path)}
+                    >
+                      {dashboard.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
           </div>
         </div>
       </div>

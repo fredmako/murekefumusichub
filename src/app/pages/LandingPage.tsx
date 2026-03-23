@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Award,
   CirclePlay,
@@ -207,6 +207,7 @@ const LANDING_DARK_IMAGES: LandingImage[] = [
 
 export const LandingPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { mode } = useTheme();
   const isDarkMode = mode === "dark";
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
@@ -219,6 +220,17 @@ export const LandingPage = () => {
     const accepted = localStorage.getItem("privacyAccepted");
     setIsPrivacyOpen(accepted !== "true");
   }, []);
+
+  useEffect(() => {
+    if (!location.hash) return;
+    const targetId = location.hash.replace(/^#/, "");
+    const target = document.getElementById(targetId);
+    if (!target) return;
+
+    window.requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [location.hash]);
 
   const pickImage = (index: number): LandingImage | null =>
     landingImages.length > 0
@@ -574,7 +586,7 @@ export const LandingPage = () => {
         </div>
       </section>
 
-      <section className="section-shell">
+      <section id="testimonials" className="section-shell">
         <div className="mb-10">
           <span className="soft-kicker">Success Stories</span>
           <h2 className="section-title">What choirs say</h2>
