@@ -10,5 +10,5 @@ Canonical documents:
 
 Notes:
 
-- These files reflect the current React + Vite frontend, Express backend, Supabase platform, Railway backend deployment, and Vercel frontend deployment.
+- These files reflect the current React + Vite frontend, Express backend, Supabase platform, Render backend deployment, and Vercel frontend deployment.
 - Some older documentation files in the project root are still useful as historical setup notes, but they should not be treated as the primary source of truth for the current system.

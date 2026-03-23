@@ -12,15 +12,56 @@ The platform supports:
 - composers
 - administrators
 
-## 2. Main Navigation Areas
+## 2. Main Navigation and Menus
+
+The top navigation now uses grouped menus so users can find pages faster without
+having too many items in one row.
+
+### Home Menu
+
+Use the `Home` menu for public platform information:
+
+- Home
+- About Us
+- Testimonials
+- Help
+- Contact Us
+
+### Services Menu
+
+Use the `Services` menu for the main platform entry points:
+
+- Learn Music
+- Music Hub
+
+### Dashboards Menu
+
+When a user is signed in, role-based workspaces are grouped under
+`Dashboards`. The system only shows the dashboards that match the current user.
+
+Possible dashboard links include:
+
+- Learner Dashboard
+- My Library
+- My Arrangements
+- My Compositions
+- Admin Panel
+
+### Profile Menu
+
+Use the profile or avatar menu for personal account actions:
+
+- Manage Account
+- appearance and profile settings
+- sign out
 
 ### Landing Page
 
 Use the landing page to:
 
 - learn what the platform offers
-- open the Music Hub marketplace
-- start learning or enrollment
+- use the `Home` menu for platform information
+- use the `Services` menu to enter Learn Music or Music Hub
 - open Help and Manuals
 
 ### Music Hub
@@ -58,6 +99,7 @@ Use the composer area to:
 
 Use Manage Account to:
 
+- open it from the profile or avatar menu
 - update your profile
 - take a selfie or upload a profile photo
 - request roles
@@ -87,7 +129,7 @@ Use the admin panel to:
 
 ### Buy a Composition
 
-1. Open `Music Hub`.
+1. Open `Services`, then select `Music Hub`.
 2. Search or filter the listings.
 3. Tap a composition to open the preview panel.
 4. Review the details and play the MIDI sample if available.
@@ -97,35 +139,37 @@ Use the admin panel to:
 
 ### Upload a Composition or Arrangement
 
-1. Open `My Arrangements` or `My Compositions`.
-2. Select `Upload New`.
-3. Fill in the title, description, pricing, and file details.
-4. Save or publish the work.
-5. Return to your listing area to monitor views, sales, and status.
+1. Open `Dashboards`.
+2. Choose `My Arrangements` or `My Compositions`.
+3. Select `Upload New`.
+4. Fill in the title, description, pricing, and file details.
+5. Save or publish the work.
+6. Return to your listing area to monitor views, sales, and status.
 
 ### Change System Appearance
 
-1. Open `Manage Account`.
-2. Go to `Appearance`.
-3. Choose:
+1. Open the profile or avatar menu.
+2. Select `Manage Account`.
+3. Go to `Appearance`.
+4. Choose:
    - theme preset
    - light or dark mode
    - view size
    - icon size
    - layout density
    - surface style
-4. The platform saves your preferences automatically.
+5. The platform saves your preferences automatically.
 
 ### Start a Support Conversation
 
-1. Open `Messenger`.
+1. Open `Messenger` from the top navigation.
 2. Choose the `Support` workspace.
 3. Start a new conversation or continue an existing one.
 4. Send your message and wait for response updates.
 
 ### Join the Community
 
-1. Open `Messenger`.
+1. Open `Messenger` from the top navigation.
 2. Switch to `Community`.
 3. Read messages, send your own, and join the public conversation.
 
