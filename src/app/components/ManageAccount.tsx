@@ -106,6 +106,42 @@ const ACCOUNT_ACCESS_REPORT_FIELDS = [
   { key: "path", label: "Path" },
 ] as const;
 
+const THEME_PREVIEW_SWATCHES: Record<
+  (typeof THEME_PRESETS)[number],
+  { primary: string; accent: string; surface: string; label: string }
+> = {
+  emerald: {
+    primary: "#059669",
+    accent: "#0f766e",
+    surface: "#ecfdf5",
+    label: "Clean green and calm choral surfaces",
+  },
+  aurora: {
+    primary: "#8b5cf6",
+    accent: "#ec4899",
+    surface: "#f5f3ff",
+    label: "Vibrant purple and rose highlights",
+  },
+  ocean: {
+    primary: "#0284c7",
+    accent: "#06b6d4",
+    surface: "#ecfeff",
+    label: "Cool blue tones for a crisp workspace",
+  },
+  sunset: {
+    primary: "#ea580c",
+    accent: "#f43f5e",
+    surface: "#fff7ed",
+    label: "Warm orange and coral energy",
+  },
+  forest: {
+    primary: "#3f6212",
+    accent: "#65a30d",
+    surface: "#f7fee7",
+    label: "Earthy green focus with grounded contrast",
+  },
+};
+
 export function ManageAccount() {
   const { appUser, signOut, getAuthToken, isLoading: authLoading } = useAuth();
   const {
@@ -328,36 +364,31 @@ export function ManageAccount() {
   };
 
   const currentThemeSettings = {
-    preset: THEME_PRESETS.includes(user?.theme_settings?.preset as any)
-      ? (user?.theme_settings?.preset as (typeof THEME_PRESETS)[number])
-      : THEME_PRESETS.includes(theme as any)
-        ? (theme as (typeof THEME_PRESETS)[number])
+    preset: THEME_PRESETS.includes(theme as any)
+      ? (theme as (typeof THEME_PRESETS)[number])
+      : THEME_PRESETS.includes(user?.theme_settings?.preset as any)
+        ? (user?.theme_settings?.preset as (typeof THEME_PRESETS)[number])
         : THEME_PRESETS[0],
-    mode:
-      user?.theme_settings?.mode === "dark" || mode === "dark" ? "dark" : "light",
-    uiScale: THEME_UI_SCALES.includes(user?.theme_settings?.uiScale as any)
-      ? (user?.theme_settings?.uiScale as (typeof THEME_UI_SCALES)[number])
-      : THEME_UI_SCALES.includes(uiScale as any)
-        ? (uiScale as (typeof THEME_UI_SCALES)[number])
+    mode: mode === "dark" ? "dark" : "light",
+    uiScale: THEME_UI_SCALES.includes(uiScale as any)
+      ? (uiScale as (typeof THEME_UI_SCALES)[number])
+      : THEME_UI_SCALES.includes(user?.theme_settings?.uiScale as any)
+        ? (user?.theme_settings?.uiScale as (typeof THEME_UI_SCALES)[number])
         : THEME_UI_SCALES[1],
-    iconScale: THEME_ICON_SCALES.includes(user?.theme_settings?.iconScale as any)
-      ? (user?.theme_settings?.iconScale as (typeof THEME_ICON_SCALES)[number])
-      : THEME_ICON_SCALES.includes(iconScale as any)
-        ? (iconScale as (typeof THEME_ICON_SCALES)[number])
+    iconScale: THEME_ICON_SCALES.includes(iconScale as any)
+      ? (iconScale as (typeof THEME_ICON_SCALES)[number])
+      : THEME_ICON_SCALES.includes(user?.theme_settings?.iconScale as any)
+        ? (user?.theme_settings?.iconScale as (typeof THEME_ICON_SCALES)[number])
         : THEME_ICON_SCALES[1],
-    layoutDensity: THEME_LAYOUT_DENSITIES.includes(
-      user?.theme_settings?.layoutDensity as any,
-    )
-      ? (user?.theme_settings?.layoutDensity as (typeof THEME_LAYOUT_DENSITIES)[number])
-      : THEME_LAYOUT_DENSITIES.includes(layoutDensity as any)
-        ? (layoutDensity as (typeof THEME_LAYOUT_DENSITIES)[number])
+    layoutDensity: THEME_LAYOUT_DENSITIES.includes(layoutDensity as any)
+      ? (layoutDensity as (typeof THEME_LAYOUT_DENSITIES)[number])
+      : THEME_LAYOUT_DENSITIES.includes(user?.theme_settings?.layoutDensity as any)
+        ? (user?.theme_settings?.layoutDensity as (typeof THEME_LAYOUT_DENSITIES)[number])
         : THEME_LAYOUT_DENSITIES[1],
-    surfaceStyle: THEME_SURFACE_STYLES.includes(
-      user?.theme_settings?.surfaceStyle as any,
-    )
-      ? (user?.theme_settings?.surfaceStyle as (typeof THEME_SURFACE_STYLES)[number])
-      : THEME_SURFACE_STYLES.includes(surfaceStyle as any)
-        ? (surfaceStyle as (typeof THEME_SURFACE_STYLES)[number])
+    surfaceStyle: THEME_SURFACE_STYLES.includes(surfaceStyle as any)
+      ? (surfaceStyle as (typeof THEME_SURFACE_STYLES)[number])
+      : THEME_SURFACE_STYLES.includes(user?.theme_settings?.surfaceStyle as any)
+        ? (user?.theme_settings?.surfaceStyle as (typeof THEME_SURFACE_STYLES)[number])
         : THEME_SURFACE_STYLES[0],
   } as const;
 
@@ -1428,26 +1459,134 @@ export function ManageAccount() {
                   <Palette className="h-4 w-4 text-primary" />
                   Color Theme
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {THEME_PRESETS.map((preset) => (
-                    <Button
-                      key={preset}
-                      type="button"
-                      size="sm"
-                      variant={
-                        currentThemeSettings.preset === preset ? "default" : "outline"
-                      }
-                      onClick={() =>
-                        void handleThemeSettingsUpdate(
-                          { preset },
-                          `${formatSettingLabel(preset)} theme applied`,
-                        )
-                      }
-                      disabled={themeSaving}
-                    >
-                      {formatSettingLabel(preset)}
-                    </Button>
-                  ))}
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                  <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">
+                          Live Preview
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Theme changes now preview instantly before the save finishes.
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-border/70 bg-background px-3 py-1 text-xs text-muted-foreground">
+                        {formatSettingLabel(currentThemeSettings.preset)}
+                      </span>
+                    </div>
+                    <div className="mt-4 rounded-2xl border border-border/70 bg-background/70 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">
+                            Dashboard Preview
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {THEME_PREVIEW_SWATCHES[currentThemeSettings.preset].label}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <span
+                            className="h-4 w-4 rounded-full border border-white/60 shadow-sm"
+                            style={{
+                              backgroundColor:
+                                THEME_PREVIEW_SWATCHES[currentThemeSettings.preset].primary,
+                            }}
+                          />
+                          <span
+                            className="h-4 w-4 rounded-full border border-white/60 shadow-sm"
+                            style={{
+                              backgroundColor:
+                                THEME_PREVIEW_SWATCHES[currentThemeSettings.preset].accent,
+                            }}
+                          />
+                          <span
+                            className="h-4 w-4 rounded-full border border-white/60 shadow-sm"
+                            style={{
+                              backgroundColor:
+                                THEME_PREVIEW_SWATCHES[currentThemeSettings.preset].surface,
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-xl border border-border/70 bg-card p-3 shadow-sm">
+                          <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                            Primary action
+                          </p>
+                          <div className="mt-3 inline-flex rounded-full px-3 py-1.5 text-xs font-semibold text-white"
+                            style={{
+                              backgroundColor:
+                                THEME_PREVIEW_SWATCHES[currentThemeSettings.preset].primary,
+                            }}
+                          >
+                            Save Appearance
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-border/70 bg-card p-3 shadow-sm">
+                          <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                            Surface
+                          </p>
+                          <div
+                            className="mt-3 rounded-xl border border-border/70 px-3 py-2 text-sm text-foreground"
+                            style={{
+                              backgroundColor:
+                                THEME_PREVIEW_SWATCHES[currentThemeSettings.preset].surface,
+                            }}
+                          >
+                            {currentThemeSettings.mode === "dark" ? "Dark" : "Light"} mode,
+                            {" "}{formatSettingLabel(currentThemeSettings.layoutDensity)} layout,
+                            {" "}{formatSettingLabel(currentThemeSettings.iconScale)} icons
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                    {THEME_PRESETS.map((preset) => (
+                      <button
+                        key={`preview-${preset}`}
+                        type="button"
+                        onClick={() =>
+                          void handleThemeSettingsUpdate(
+                            { preset },
+                            `${formatSettingLabel(preset)} theme applied`,
+                          )
+                        }
+                        disabled={themeSaving}
+                        className={`rounded-2xl border p-3 text-left transition ${
+                          currentThemeSettings.preset === preset
+                            ? "border-primary bg-primary/10 shadow-sm"
+                            : "border-border/70 bg-card/70 hover:bg-muted/40"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">
+                              {formatSettingLabel(preset)}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {THEME_PREVIEW_SWATCHES[preset].label}
+                            </p>
+                          </div>
+                          <div className="flex gap-1.5">
+                            <span
+                              className="h-3.5 w-3.5 rounded-full"
+                              style={{ backgroundColor: THEME_PREVIEW_SWATCHES[preset].primary }}
+                            />
+                            <span
+                              className="h-3.5 w-3.5 rounded-full"
+                              style={{ backgroundColor: THEME_PREVIEW_SWATCHES[preset].accent }}
+                            />
+                            <span
+                              className="h-3.5 w-3.5 rounded-full border border-border/60"
+                              style={{ backgroundColor: THEME_PREVIEW_SWATCHES[preset].surface }}
+                            />
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 

@@ -101,6 +101,91 @@
   --sidebar-ring: #b28aff;
 }
 
+:root[data-theme="emerald"] {
+  --primary: #059669;
+  --primary-foreground: #ecfdf5;
+  --secondary: #e6f9f1;
+  --secondary-foreground: #0f3d34;
+  --accent: #ccfbf1;
+  --accent-foreground: #134e4a;
+}
+
+:root.dark[data-theme="emerald"] {
+  --primary: #34d399;
+  --primary-foreground: #06281f;
+  --accent: #14b8a6;
+  --accent-foreground: #e6fffb;
+  --ring: #5eead4;
+}
+
+:root[data-theme="aurora"] {
+  --primary: #8b5cf6;
+  --primary-foreground: #faf5ff;
+  --secondary: #f5f3ff;
+  --secondary-foreground: #4c1d95;
+  --accent: #fce7f3;
+  --accent-foreground: #9d174d;
+}
+
+:root.dark[data-theme="aurora"] {
+  --primary: #a78bfa;
+  --primary-foreground: #1e133d;
+  --accent: #ec4899;
+  --accent-foreground: #fff1f8;
+  --ring: #f472b6;
+}
+
+:root[data-theme="ocean"] {
+  --primary: #0284c7;
+  --primary-foreground: #effbff;
+  --secondary: #e0f2fe;
+  --secondary-foreground: #0c4a6e;
+  --accent: #cffafe;
+  --accent-foreground: #155e75;
+}
+
+:root.dark[data-theme="ocean"] {
+  --primary: #38bdf8;
+  --primary-foreground: #082435;
+  --accent: #06b6d4;
+  --accent-foreground: #ecfeff;
+  --ring: #67e8f9;
+}
+
+:root[data-theme="sunset"] {
+  --primary: #ea580c;
+  --primary-foreground: #fff7ed;
+  --secondary: #ffedd5;
+  --secondary-foreground: #9a3412;
+  --accent: #ffe4e6;
+  --accent-foreground: #be123c;
+}
+
+:root.dark[data-theme="sunset"] {
+  --primary: #fb923c;
+  --primary-foreground: #341709;
+  --accent: #f43f5e;
+  --accent-foreground: #fff1f2;
+  --ring: #fdba74;
+}
+
+:root[data-theme="forest"] {
+  --primary: #4d7c0f;
+  --primary-foreground: #f7fee7;
+  --secondary: #ecfccb;
+  --secondary-foreground: #365314;
+  --accent: #d9f99d;
+  --accent-foreground: #3f6212;
+}
+
+:root.dark[data-theme="forest"] {
+  --primary: #84cc16;
+  --primary-foreground: #172409;
+  --accent: #65a30d;
+  --accent-foreground: #f7fee7;
+  --ring: #bef264;
+}
+
 :root[data-layout-density="compact"] {
   --dashboard-card-gap: 0.8rem;
   --dashboard-card-radius: 0.9rem;

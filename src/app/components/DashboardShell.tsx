@@ -204,8 +204,8 @@ export function DashboardShell({
           }`}
         >
           {hasNav ? (
-            <aside className="hidden lg:block lg:self-start">
-              <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto rounded-2xl border border-border/70 bg-card/80 p-3 shadow-sm">
+            <aside className="hidden lg:sticky lg:top-24 lg:block lg:h-[calc(100vh-7rem)] lg:self-start">
+              <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/80 p-3 shadow-sm">
                 <div className="border-b border-border/60 px-2 pb-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     {menuTitle}
@@ -216,7 +216,7 @@ export function DashboardShell({
                     </p>
                   ) : null}
                 </div>
-                <div className="space-y-1">
+                <div className="mt-3 flex-1 space-y-1 overflow-y-auto pr-1">
                   {navItems.map((item) => renderNavItem(item, "rail"))}
                 </div>
               </div>
