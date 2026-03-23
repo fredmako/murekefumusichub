@@ -5,6 +5,7 @@ import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { DashboardShell } from "@/app/components/DashboardShell";
+import { PdfFieldExportMenu } from "@/app/components/PdfFieldExportMenu";
 import {
   Card,
   CardContent,
@@ -33,6 +34,7 @@ import {
   Trash2,
   Edit2,
   Camera,
+  FileDown,
   Shield,
   LayoutDashboard,
   CheckCircle,
@@ -66,6 +68,7 @@ import {
 import { getOptimizedProfileImageUrl } from "@/services/profileImageService";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 import { formatKesAmount } from "@/lib/currency";
+import { exportTableReportToPdf } from "@/lib/pdfReports";
 
 type RoleRequestState = "none" | "pending" | "approved" | "rejected";
 type InviteAvailability = {
@@ -83,6 +86,25 @@ type InviteAvailability = {
   };
 } | null;
 const MAX_AVATAR_SIZE_BYTES = 8 * 1024 * 1024;
+
+const ACCOUNT_REPORT_FIELDS = [
+  { key: "displayName", label: "Display Name" },
+  { key: "email", label: "Email" },
+  { key: "phone", label: "Phone" },
+  { key: "roles", label: "Roles" },
+  { key: "theme", label: "Theme Preset" },
+  { key: "mode", label: "Mode" },
+  { key: "uiScale", label: "View Size" },
+  { key: "iconScale", label: "Icon Size" },
+  { key: "layoutDensity", label: "Layout Density" },
+  { key: "surfaceStyle", label: "Surface Style" },
+] as const;
+
+const ACCOUNT_ACCESS_REPORT_FIELDS = [
+  { key: "workspace", label: "Workspace" },
+  { key: "status", label: "Status" },
+  { key: "path", label: "Path" },
+] as const;
 
 export function ManageAccount() {
   const { appUser, signOut, getAuthToken, isLoading: authLoading } = useAuth();
@@ -984,10 +1006,85 @@ export function ManageAccount() {
       : []),
   ];
 
+  const accountReportRow = {
+    displayName: user?.display_name || "Not set",
+    email: user?.email || "-",
+    phone: user?.phone || "Not set",
+    roles: userRoles.length > 0 ? userRoles.join(", ") : "User",
+    theme: formatSettingLabel(currentThemeSettings.preset),
+    mode: formatSettingLabel(currentThemeSettings.mode),
+    uiScale: formatSettingLabel(currentThemeSettings.uiScale),
+    iconScale: formatSettingLabel(currentThemeSettings.iconScale),
+    layoutDensity: formatSettingLabel(currentThemeSettings.layoutDensity),
+    surfaceStyle: formatSettingLabel(currentThemeSettings.surfaceStyle),
+  };
+
+  const accountAccessRows = [
+    { workspace: "Manage Account", status: "Available", path: "/manage-account" },
+    ...dashboardOptions.map((item) => ({
+      workspace: item.label,
+      status: "Available",
+      path: item.path,
+    })),
+  ];
+
+  const jumpToSection = (hash: string) => {
+    navigate(
+      {
+        pathname: location.pathname,
+        search: location.search,
+        hash,
+      },
+      { replace: false },
+    );
+
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(hash.replace(/^#/, ""));
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  const exportAccountSummaryReport = async (selectedKeys: string[]) => {
+    const selectedFields = ACCOUNT_REPORT_FIELDS.filter((field) =>
+      selectedKeys.includes(field.key),
+    );
+
+    await exportTableReportToPdf({
+      title: "Account Summary Report",
+      subtitle: "Profile, appearance, and role summary",
+      fileName: "account_summary_report.pdf",
+      columns: selectedFields.map((field) => field.label),
+      rows: [
+        selectedFields.map((field) =>
+          String(accountReportRow[field.key as keyof typeof accountReportRow] ?? "-"),
+        ),
+      ],
+    });
+  };
+
+  const exportAccountAccessReport = async (selectedKeys: string[]) => {
+    const selectedFields = ACCOUNT_ACCESS_REPORT_FIELDS.filter((field) =>
+      selectedKeys.includes(field.key),
+    );
+
+    await exportTableReportToPdf({
+      title: "Dashboard Access Report",
+      subtitle: `${accountAccessRows.length} accessible workspace${accountAccessRows.length === 1 ? "" : "s"}`,
+      fileName: "dashboard_access_report.pdf",
+      columns: selectedFields.map((field) => field.label),
+      rows: accountAccessRows.map((row) =>
+        selectedFields.map((field) =>
+          String(row[field.key as keyof typeof row] ?? "-"),
+        ),
+      ),
+    });
+  };
+
   const manageNavItems = [
     { id: "profile", label: "Profile", path: "#profile", icon: UserRound },
     { id: "appearance", label: "Appearance", path: "#appearance", icon: Sun },
     { id: "roles", label: "Roles", path: "#roles", icon: Shield },
+    { id: "reports", label: "Reporting", path: "#reports", icon: FileDown },
     ...(dashboardOptions.length > 0
       ? [
           {
@@ -1007,6 +1104,18 @@ export function ManageAccount() {
         title="Account Settings"
         description="Manage your profile, roles, and dashboard access."
         navItems={manageNavItems}
+        menuDescription="Use the account menu to move between profile, appearance, access, and reporting."
+        actions={
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => jumpToSection("#reports")}
+          >
+            <FileDown className="mr-2 h-4 w-4" />
+            Reports
+          </Button>
+        }
       >
         {/* Profile Card */}
         <Card
@@ -1745,6 +1854,68 @@ export function ManageAccount() {
                     )}
                   </div>
                 </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card
+          id="reports"
+          className="lift-card texture-speckle scroll-mt-28 overflow-hidden border-border/70 bg-card/95"
+        >
+          <CardHeader className="border-b border-border/70 bg-card/80">
+            <CardTitle className="flex items-center gap-3 text-lg text-foreground">
+              <div className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <FileDown className="w-4 h-4" />
+              </div>
+              Reporting
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 pt-5 pb-5 lg:grid-cols-2">
+            <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-foreground">Account Summary</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Export your profile, appearance settings, and role summary as a branded PDF.
+                  </p>
+                </div>
+                <PdfFieldExportMenu
+                  disabled={!user}
+                  fields={[...ACCOUNT_REPORT_FIELDS]}
+                  storageKey="manageAccount.summaryReportPdfFields"
+                  buttonLabel="Export Summary"
+                  menuLabel="Choose account summary fields"
+                  exportLabel="Download Summary PDF"
+                  onExport={(selectedKeys) => exportAccountSummaryReport(selectedKeys)}
+                />
+              </div>
+              <div className="mt-4 rounded-xl border border-border/60 bg-muted/35 px-3 py-2 text-sm text-muted-foreground">
+                Includes profile identity, theme preset, and display density settings.
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-foreground">Access Report</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Export the dashboards and workspaces currently available to this account.
+                  </p>
+                </div>
+                <PdfFieldExportMenu
+                  disabled={accountAccessRows.length === 0}
+                  fields={[...ACCOUNT_ACCESS_REPORT_FIELDS]}
+                  storageKey="manageAccount.accessReportPdfFields"
+                  buttonLabel="Export Access"
+                  menuLabel="Choose dashboard access fields"
+                  exportLabel="Download Access PDF"
+                  onExport={(selectedKeys) => exportAccountAccessReport(selectedKeys)}
+                />
+              </div>
+              <div className="mt-4 rounded-xl border border-border/60 bg-muted/35 px-3 py-2 text-sm text-muted-foreground">
+                {accountAccessRows.length} workspace
+                {accountAccessRows.length === 1 ? "" : "s"} visible from this account right now.
               </div>
             </div>
           </CardContent>

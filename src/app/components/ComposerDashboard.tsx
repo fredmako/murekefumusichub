@@ -2,8 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
+  BarChart3,
   Plus,
   DollarSign,
+  FileDown,
   Music,
   TrendingUp,
   Eye,
@@ -52,11 +54,13 @@ import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
 import { UploadComposition } from "@/app/components/UploadComposition";
 import { DashboardShell } from "@/app/components/DashboardShell";
+import { PdfFieldExportMenu } from "@/app/components/PdfFieldExportMenu";
 import { supabase } from "@/lib/supabase";
 import { compositionService } from "@/services/api";
 import { toast } from "sonner";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 import { formatKesAmount } from "@/lib/currency";
+import { exportTableReportToPdf } from "@/lib/pdfReports";
 
 interface CompositionWithStats {
   id: string;
@@ -88,6 +92,25 @@ interface ComposerStats {
   purchases: Array<{ composition_id?: string | null; price_paid?: number | null }>;
   loading: boolean;
 }
+
+const COMPOSER_LISTINGS_REPORT_FIELDS = [
+  { key: "title", label: "Title" },
+  { key: "category", label: "Category" },
+  { key: "price", label: "Price (KES)" },
+  { key: "status", label: "Status" },
+  { key: "language", label: "Language" },
+  { key: "views", label: "Views" },
+  { key: "purchases", label: "Purchases" },
+  { key: "created", label: "Created" },
+] as const;
+
+const COMPOSER_SALES_REPORT_FIELDS = [
+  { key: "title", label: "Title" },
+  { key: "category", label: "Category" },
+  { key: "sales", label: "Sales" },
+  { key: "revenue", label: "Revenue (KES)" },
+  { key: "avgPrice", label: "Average Price (KES)" },
+] as const;
 
 export function ComposerDashboard() {
   const { appUser, isLoading: authLoading } = useAuth();
@@ -127,6 +150,7 @@ export function ComposerDashboard() {
   const [sortMode, setSortMode] = useState<
     "newest" | "oldest" | "title" | "price-low" | "price-high" | "views" | "purchases"
   >("newest");
+  const reportsSectionRef = useRef<HTMLDivElement | null>(null);
   const resolveCategoryTab = () => {
     const tab = new URLSearchParams(location.search).get("tab");
     if (tab === "arrangements" || tab === "compositions") return tab;
@@ -392,6 +416,106 @@ export function ComposerDashboard() {
       block: "start",
     });
   };
+  const scrollToReports = () => {
+    reportsSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
+  const jumpToSection = (hash: string) => {
+    navigate(
+      {
+        pathname: location.pathname,
+        search: location.search,
+        hash,
+      },
+      { replace: false },
+    );
+
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(hash.replace(/^#/, ""));
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  const listingReportRows = sortedFilteredCompositions.map((composition) => {
+    const listingStats = composition.composition_stats?.[0] || {
+      views: 0,
+      purchases: 0,
+    };
+
+    return {
+      title: String(composition.title || "Untitled"),
+      category: resolveCategoryName(composition) || "-",
+      price: Number(composition.price || 0),
+      status: composition.is_published ? "Published" : "Draft",
+      language: composition.language || "-",
+      views: Number(listingStats.views || 0),
+      purchases: Number(listingStats.purchases || 0),
+      created: String(composition.created_at || ""),
+    };
+  });
+
+  const salesReportRows = sortedFilteredCompositions.map((composition) => {
+    const compositionPurchases = scopedPurchases.filter(
+      (purchase) => String(purchase.composition_id || "") === String(composition.id),
+    );
+    const sales = compositionPurchases.length;
+    const revenue = compositionPurchases.reduce(
+      (sum, purchase) => sum + Number(purchase.price_paid || 0),
+      0,
+    );
+
+    return {
+      title: String(composition.title || "Untitled"),
+      category: resolveCategoryName(composition) || "-",
+      sales,
+      revenue,
+      avgPrice: sales > 0 ? revenue / sales : Number(composition.price || 0),
+    };
+  });
+
+  const exportComposerListingsReport = async (selectedKeys: string[]) => {
+    const selectedFields = COMPOSER_LISTINGS_REPORT_FIELDS.filter((field) =>
+      selectedKeys.includes(field.key),
+    );
+
+    await exportTableReportToPdf({
+      title: `${heroTitle} Listings Report`,
+      subtitle: `${listingReportRows.length} listing${listingReportRows.length === 1 ? "" : "s"} in view`,
+      fileName: `${heroTitle.toLowerCase().replace(/\s+/g, "_")}_listings_report.pdf`,
+      columns: selectedFields.map((field) => field.label),
+      rows: listingReportRows.map((row) =>
+        selectedFields.map((field) => {
+          if (field.key === "price") return formatKesAmount(row.price);
+          if (field.key === "created") {
+            return row.created ? new Date(row.created).toLocaleDateString() : "-";
+          }
+          return String(row[field.key as keyof typeof row] ?? "-");
+        }),
+      ),
+    });
+  };
+
+  const exportComposerSalesReport = async (selectedKeys: string[]) => {
+    const selectedFields = COMPOSER_SALES_REPORT_FIELDS.filter((field) =>
+      selectedKeys.includes(field.key),
+    );
+
+    await exportTableReportToPdf({
+      title: `${heroTitle} Sales Report`,
+      subtitle: `${salesReportRows.length} listing${salesReportRows.length === 1 ? "" : "s"} with sales visibility`,
+      fileName: `${heroTitle.toLowerCase().replace(/\s+/g, "_")}_sales_report.pdf`,
+      columns: selectedFields.map((field) => field.label),
+      rows: salesReportRows.map((row) =>
+        selectedFields.map((field) => {
+          if (field.key === "revenue") return formatKesAmount(row.revenue);
+          if (field.key === "avgPrice") return formatKesAmount(row.avgPrice);
+          return String(row[field.key as keyof typeof row] ?? "-");
+        }),
+      ),
+    });
+  };
   const handleViewComposition = (composition: CompositionWithStats) => {
     setSelectedComposition(composition);
     setIsViewOpen(true);
@@ -506,29 +630,25 @@ export function ComposerDashboard() {
       description={heroDescription}
       navItems={[
         {
-          id: "all",
-          label: "All Works",
-          path: "/composer",
-          icon: Music,
-          isActive: (location) =>
-            location.pathname === "/composer" &&
-            !["arrangements", "compositions"].includes(
-              new URLSearchParams(location.search).get("tab") || "",
-            ),
+          id: "overview",
+          label: "Overview",
+          path: "#composer-overview",
+          icon: BarChart3,
         },
         {
-          id: "arrangements",
-          label: "Arrangements",
-          path: "/composer?tab=arrangements",
+          id: "listings",
+          label: activeCategoryTitle,
+          path: "#composer-listings",
           icon: Music,
         },
         {
-          id: "compositions",
-          label: "Compositions",
-          path: "/composer?tab=compositions",
-          icon: Music,
+          id: "reports",
+          label: "Reporting",
+          path: "#composer-reports",
+          icon: FileDown,
         },
       ]}
+      menuDescription="Use the composer menu to move between overview, listings, and report exports inside this workspace."
       actions={
         <>
           <Button
@@ -538,6 +658,15 @@ export function ComposerDashboard() {
             onClick={() => navigate("/messenger")}
           >
             Support Messenger
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => jumpToSection("#composer-reports")}
+          >
+            <FileDown className="mr-2 size-4" />
+            Reports
           </Button>
           <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
             <DialogTrigger asChild>
@@ -790,7 +919,10 @@ export function ComposerDashboard() {
           </DialogContent>
         </Dialog>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <section
+          id="composer-overview"
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
+        >
           <Card role="button" tabIndex={0} onClick={scrollToCompositions} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); scrollToCompositions(); } }} className="texture-speckle lift-card hover:cursor-pointer border-0 bg-gradient-to-br from-[#0f766e] to-[#0b4a52] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)]">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-white/90">
@@ -824,7 +956,7 @@ export function ComposerDashboard() {
             </CardContent>
           </Card>
 
-          <Card role="button" tabIndex={0} onClick={scrollToCompositions} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); scrollToCompositions(); } }} className="texture-speckle lift-card hover:cursor-pointer border-0 bg-gradient-to-br from-[#7c4a03] to-[#b45309] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)] sm:col-span-2 xl:col-span-1">
+          <Card role="button" tabIndex={0} onClick={() => jumpToSection("#composer-reports")} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); jumpToSection("#composer-reports"); } }} className="texture-speckle lift-card hover:cursor-pointer border-0 bg-gradient-to-br from-[#7c4a03] to-[#b45309] text-white shadow-[0_24px_40px_-34px_rgba(15,23,42,0.95)] sm:col-span-2 xl:col-span-1">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-white/90">
                 Average Price
@@ -841,9 +973,9 @@ export function ComposerDashboard() {
               </p>
             </CardContent>
           </Card>
-        </div>
+        </section>
 
-        <Card ref={compositionsSectionRef} className="lift-card scroll-mt-28 overflow-hidden border border-border/70 bg-card/95 shadow-[0_24px_38px_-32px_rgba(15,23,42,0.85)]">
+        <Card id="composer-listings" ref={compositionsSectionRef} className="lift-card scroll-mt-28 overflow-hidden border border-border/70 bg-card/95 shadow-[0_24px_38px_-32px_rgba(15,23,42,0.85)]">
           <CardHeader className="border-b border-border/60 bg-gradient-to-r from-primary/12 via-secondary/20 to-transparent">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
@@ -1142,6 +1274,68 @@ export function ComposerDashboard() {
                 </Table>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        <Card
+          id="composer-reports"
+          ref={reportsSectionRef}
+          className="lift-card scroll-mt-28 overflow-hidden border border-border/70 bg-card/95"
+        >
+          <CardHeader className="border-b border-border/60 bg-gradient-to-r from-primary/12 via-secondary/20 to-transparent">
+            <CardTitle>Reporting</CardTitle>
+            <CardDescription>
+              Export branded listing and sales reports using the same field-picking pattern as the admin dashboard.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 p-4 xl:grid-cols-2">
+            <div className="rounded-2xl border border-border/70 bg-background/60 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">Listings Report</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Export the current filtered listing view with pricing, visibility, and engagement details.
+                  </p>
+                </div>
+                <PdfFieldExportMenu
+                  disabled={listingReportRows.length === 0}
+                  fields={[...COMPOSER_LISTINGS_REPORT_FIELDS]}
+                  storageKey="composer.listingsReportPdfFields"
+                  buttonLabel="Export Listings"
+                  menuLabel="Choose listing report fields"
+                  exportLabel="Download Listings PDF"
+                  onExport={(selectedKeys) => exportComposerListingsReport(selectedKeys)}
+                />
+              </div>
+              <div className="mt-4 rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                {listingReportRows.length} listing
+                {listingReportRows.length === 1 ? "" : "s"} available in this report.
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-border/70 bg-background/60 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">Sales Report</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Export revenue visibility by listing so arrangements and compositions can be reviewed offline.
+                  </p>
+                </div>
+                <PdfFieldExportMenu
+                  disabled={salesReportRows.length === 0}
+                  fields={[...COMPOSER_SALES_REPORT_FIELDS]}
+                  storageKey="composer.salesReportPdfFields"
+                  buttonLabel="Export Sales"
+                  menuLabel="Choose sales report fields"
+                  exportLabel="Download Sales PDF"
+                  onExport={(selectedKeys) => exportComposerSalesReport(selectedKeys)}
+                />
+              </div>
+              <div className="mt-4 rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                {formatKesAmount(totalRevenue)} total revenue across {totalSales} sale
+                {totalSales === 1 ? "" : "s"} in view.
+              </div>
+            </div>
           </CardContent>
         </Card>
       </DashboardShell>

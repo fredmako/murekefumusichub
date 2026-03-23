@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import {
   ArrowRight,
+  BarChart3,
   Calendar,
   CreditCard,
   Download,
+  FileDown,
   Grid3x3,
   List,
   Loader,
@@ -25,18 +27,44 @@ import {
   SelectValue,
 } from "@/app/components/ui/select";
 import { Separator } from "@/app/components/ui/separator";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/app/components/ui/card";
 import { DashboardShell } from "@/app/components/DashboardShell";
 import { toast } from "sonner";
+import { PdfFieldExportMenu } from "@/app/components/PdfFieldExportMenu";
 import { purchaseService } from "@/services/api";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 import { formatKesAmount } from "@/lib/currency";
 import { CartItem } from "../types";
 import { ensureArray } from "@/lib/ensureArray";
+import { exportTableReportToPdf } from "@/lib/pdfReports";
 
 interface BuyerDashboardProps {
   cart: CartItem[];
   onRemoveFromCart?: (compositionId: string) => void;
 }
+
+const BUYER_LIBRARY_REPORT_FIELDS = [
+  { key: "title", label: "Title" },
+  { key: "composer", label: "Composer" },
+  { key: "category", label: "Category" },
+  { key: "price", label: "Price (KES)" },
+  { key: "purchased", label: "Purchased" },
+  { key: "status", label: "Status" },
+] as const;
+
+const BUYER_CART_REPORT_FIELDS = [
+  { key: "title", label: "Title" },
+  { key: "composer", label: "Composer" },
+  { key: "quantity", label: "Quantity" },
+  { key: "unitPrice", label: "Unit Price (KES)" },
+  { key: "subtotal", label: "Subtotal (KES)" },
+] as const;
 
 export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) {
   const navigate = useNavigate();
@@ -253,6 +281,106 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
     }
   }, [filteredPurchases, sortMode]);
 
+  const buyerLibraryReportRows = useMemo(
+    () =>
+      sortedFilteredPurchases.map((purchase) => {
+        const composition = purchase?.composition;
+        return {
+          title: String(composition?.title || "Untitled"),
+          composer: String(
+            composition?.composerName ||
+              composition?.composer_name ||
+              composition?.composers?.users?.display_name ||
+              "Unknown",
+          ),
+          category: String(
+            composition?.categories?.name ||
+              composition?.category_name ||
+              composition?.categoryName ||
+              "General",
+          ),
+          price: Number(purchase?.price_paid || composition?.price || 0),
+          purchased: String(
+            purchase?.purchased_at || purchase?.created_at || purchase?.createdAt || "",
+          ),
+          status: "Approved",
+        };
+      }),
+    [sortedFilteredPurchases],
+  );
+
+  const buyerCartReportRows = useMemo(
+    () =>
+      cart.map((item) => ({
+        title: String(item?.composition?.title || "Untitled"),
+        composer: String(item?.composition?.composerName || "Unknown"),
+        quantity: Number(item?.quantity || 1),
+        unitPrice: Number(item?.composition?.price || 0),
+        subtotal: Number(item?.composition?.price || 0) * Number(item?.quantity || 1),
+      })),
+    [cart],
+  );
+
+  const jumpToSection = (hash: string) => {
+    navigate(
+      {
+        pathname: location.pathname,
+        search: location.search,
+        hash,
+      },
+      { replace: false },
+    );
+
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(hash.replace(/^#/, ""));
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  const exportBuyerLibraryReport = async (selectedKeys: string[]) => {
+    const selectedFields = BUYER_LIBRARY_REPORT_FIELDS.filter((field) =>
+      selectedKeys.includes(field.key),
+    );
+
+    await exportTableReportToPdf({
+      title: "Buyer Library Report",
+      subtitle: `${buyerLibraryReportRows.length} approved purchase${buyerLibraryReportRows.length === 1 ? "" : "s"} in view`,
+      fileName: "buyer_library_report.pdf",
+      columns: selectedFields.map((field) => field.label),
+      rows: buyerLibraryReportRows.map((row) =>
+        selectedFields.map((field) => {
+          if (field.key === "price") return formatKesAmount(row.price);
+          if (field.key === "purchased") {
+            return row.purchased
+              ? new Date(row.purchased).toLocaleString()
+              : "-";
+          }
+          return String(row[field.key as keyof typeof row] ?? "-");
+        }),
+      ),
+    });
+  };
+
+  const exportBuyerCartReport = async (selectedKeys: string[]) => {
+    const selectedFields = BUYER_CART_REPORT_FIELDS.filter((field) =>
+      selectedKeys.includes(field.key),
+    );
+
+    await exportTableReportToPdf({
+      title: "Buyer Checkout Report",
+      subtitle: `${buyerCartReportRows.length} cart item${buyerCartReportRows.length === 1 ? "" : "s"} ready for checkout`,
+      fileName: "buyer_checkout_report.pdf",
+      columns: selectedFields.map((field) => field.label),
+      rows: buyerCartReportRows.map((row) =>
+        selectedFields.map((field) => {
+          if (field.key === "unitPrice") return formatKesAmount(row.unitPrice);
+          if (field.key === "subtotal") return formatKesAmount(row.subtotal);
+          return String(row[field.key as keyof typeof row] ?? "-");
+        }),
+      ),
+    });
+  };
+
   const handleCheckout = () => {
     if (!appUser) {
       persistPostLoginRedirect("/checkout");
@@ -309,42 +437,161 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
     activeTab === "checkout"
       ? "Review items waiting for checkout."
       : "Keep track of your purchases and downloads.";
-  const activeNavId = activeTab === "checkout" ? "checkout" : "library";
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-indigo-950/30 via-background to-background text-foreground">
       <DashboardShell
         title={dashboardTitle}
         description={dashboardDescription}
-        activeNavId={activeNavId}
         navItems={[
           {
-            id: "library",
-            label: "Library",
-            path: "/buyer",
-            icon: Music,
+            id: "overview",
+            label: "Overview",
+            path: "#buyer-overview",
+            icon: BarChart3,
           },
           {
-            id: "checkout",
-            label: `Cart ${cart.length > 0 ? `(${cart.length})` : ""}`.trim(),
-            path: "/buyer?tab=checkout",
-            icon: ShoppingBag,
+            id: activeTab === "checkout" ? "checkout" : "library",
+            label: activeTab === "checkout" ? "Checkout" : "Library",
+            path: activeTab === "checkout" ? "#buyer-checkout" : "#buyer-library",
+            icon: activeTab === "checkout" ? CreditCard : Music,
           },
           {
-            id: "marketplace",
-            label: "Marketplace",
-            path: "/marketplace",
-            icon: ArrowRight,
+            id: "reports",
+            label: "Reporting",
+            path: "#buyer-reports",
+            icon: FileDown,
+          },
+          {
+            id: activeTab === "checkout" ? "open-library" : "open-checkout",
+            label:
+              activeTab === "checkout"
+                ? "Open Library"
+                : `Open Checkout${cart.length > 0 ? ` (${cart.length})` : ""}`,
+            path: activeTab === "checkout" ? "/buyer" : "/buyer?tab=checkout",
+            icon: activeTab === "checkout" ? Music : ShoppingBag,
           },
         ]}
+        menuDescription="Use the buyer menu to move between overview, your current workspace, reporting, and checkout."
         actions={
-          <Button variant="outline" size="sm" onClick={() => navigate("/marketplace")}>
-            Browse Marketplace
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => jumpToSection("#buyer-reports")}
+            >
+              <FileDown className="mr-2 size-4" />
+              Reports
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => navigate("/marketplace")}>
+              Browse Marketplace
+            </Button>
+          </>
         }
       >
+        <section
+          id="buyer-overview"
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
+        >
+          <Card
+            role="button"
+            tabIndex={0}
+            onClick={() =>
+              jumpToSection(activeTab === "checkout" ? "#buyer-checkout" : "#buyer-library")
+            }
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                jumpToSection(
+                  activeTab === "checkout" ? "#buyer-checkout" : "#buyer-library",
+                );
+              }
+            }}
+            className="lift-card cursor-pointer border-border/70 bg-card/95"
+          >
+            <CardHeader className="pb-3">
+              <CardDescription>Library Items</CardDescription>
+              <CardTitle className="text-2xl">{purchasedCompositions.length}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground">
+              Approved purchases ready for download.
+            </CardContent>
+          </Card>
+
+          <Card
+            role="button"
+            tabIndex={0}
+            onClick={() => jumpToSection("#buyer-reports")}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                jumpToSection("#buyer-reports");
+              }
+            }}
+            className="lift-card cursor-pointer border-border/70 bg-card/95"
+          >
+            <CardHeader className="pb-3">
+              <CardDescription>Total Spent</CardDescription>
+              <CardTitle className="text-2xl">{formatKesAmount(totalSpent)}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground">
+              Buyer reporting now follows the same export language as admin.
+            </CardContent>
+          </Card>
+
+          <Card
+            role="button"
+            tabIndex={0}
+            onClick={() =>
+              activeTab === "checkout"
+                ? jumpToSection("#buyer-checkout")
+                : navigate("/buyer?tab=checkout")
+            }
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                if (activeTab === "checkout") {
+                  jumpToSection("#buyer-checkout");
+                } else {
+                  navigate("/buyer?tab=checkout");
+                }
+              }
+            }}
+            className="lift-card cursor-pointer border-border/70 bg-card/95"
+          >
+            <CardHeader className="pb-3">
+              <CardDescription>Cart Items</CardDescription>
+              <CardTitle className="text-2xl">{cart.length}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground">
+              Review everything waiting for checkout.
+            </CardContent>
+          </Card>
+
+          <Card
+            role="button"
+            tabIndex={0}
+            onClick={() => jumpToSection("#buyer-reports")}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                jumpToSection("#buyer-reports");
+              }
+            }}
+            className="lift-card cursor-pointer border-border/70 bg-card/95"
+          >
+            <CardHeader className="pb-3">
+              <CardDescription>Report Center</CardDescription>
+              <CardTitle className="text-2xl">2 Exports</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground">
+              Export library and checkout summaries as branded PDFs.
+            </CardContent>
+          </Card>
+        </section>
+
         {activeTab === "library" && (
-          <div className="space-y-6">
+          <section id="buyer-library" className="space-y-6">
             <div className="max-w-lg">
               <div className="relative">
                 <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -658,11 +905,11 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
                 </div>
               </div>
             </div>
-          </div>
+          </section>
         )}
 
         {activeTab === "checkout" && (
-          <div className="space-y-6">
+          <section id="buyer-checkout" className="space-y-6">
             <h2 className="text-lg font-semibold">Shopping Cart</h2>
 
             {cart.length === 0 ? (
@@ -781,8 +1028,67 @@ export function BuyerDashboard({ cart, onRemoveFromCart }: BuyerDashboardProps) 
                 </div>
               </div>
             )}
-          </div>
+          </section>
         )}
+        <section id="buyer-reports">
+          <Card className="lift-card overflow-hidden border-border/70 bg-card/95">
+            <CardHeader className="border-b border-border/60 bg-gradient-to-r from-primary/12 via-secondary/20 to-transparent">
+              <CardTitle>Reporting</CardTitle>
+              <CardDescription>
+                Use the same export flow as the admin workspace to download branded buyer reports.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 p-4 xl:grid-cols-2">
+              <div className="rounded-2xl border border-border/70 bg-background/60 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">Library Report</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Export the filtered purchase view with titles, composers, pricing, and approval details.
+                    </p>
+                  </div>
+                  <PdfFieldExportMenu
+                    disabled={buyerLibraryReportRows.length === 0}
+                    fields={[...BUYER_LIBRARY_REPORT_FIELDS]}
+                    storageKey="buyer.libraryReportPdfFields"
+                    buttonLabel="Export Library"
+                    menuLabel="Choose library report fields"
+                    exportLabel="Download Library PDF"
+                    onExport={(selectedKeys) => exportBuyerLibraryReport(selectedKeys)}
+                  />
+                </div>
+                <div className="mt-4 rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                  {buyerLibraryReportRows.length} approved purchase
+                  {buyerLibraryReportRows.length === 1 ? "" : "s"} available for export.
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-border/70 bg-background/60 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">Checkout Report</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Export the current cart summary before payment or review it offline.
+                    </p>
+                  </div>
+                  <PdfFieldExportMenu
+                    disabled={buyerCartReportRows.length === 0}
+                    fields={[...BUYER_CART_REPORT_FIELDS]}
+                    storageKey="buyer.checkoutReportPdfFields"
+                    buttonLabel="Export Checkout"
+                    menuLabel="Choose checkout report fields"
+                    exportLabel="Download Checkout PDF"
+                    onExport={(selectedKeys) => exportBuyerCartReport(selectedKeys)}
+                  />
+                </div>
+                <div className="mt-4 rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                  {buyerCartReportRows.length} cart item
+                  {buyerCartReportRows.length === 1 ? "" : "s"} ready for export.
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
       </DashboardShell>
     </main>
   );

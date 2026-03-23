@@ -6,6 +6,7 @@ import {
   Calendar,
   CheckCircle2,
   Clock3,
+  FileDown,
   MessageSquare,
   Music,
   ShieldCheck,
@@ -14,9 +15,23 @@ import {
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { DashboardShell } from "@/app/components/DashboardShell";
+import { PdfFieldExportMenu } from "@/app/components/PdfFieldExportMenu";
 import { useAuth } from "@/context/AuthContext";
 import { useLearnerStatus } from "@/hooks/useLearnerStatus";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
+import { exportTableReportToPdf } from "@/lib/pdfReports";
+
+const LEARNER_ENROLLMENT_REPORT_FIELDS = [
+  { key: "className", label: "Class" },
+  { key: "level", label: "Skill Level" },
+  { key: "status", label: "Status" },
+  { key: "notes", label: "Notes" },
+] as const;
+
+const LEARNER_SUMMARY_REPORT_FIELDS = [
+  { key: "metric", label: "Metric" },
+  { key: "value", label: "Value" },
+] as const;
 
 function formatStatus(status?: string | null) {
   const normalized = String(status || "").trim().toLowerCase();
@@ -67,6 +82,75 @@ export function LearnerDashboard() {
       ? "Your enrollment is waiting for review. Keep an eye on updates and reach support if you need help."
       : "Start your learner journey by enrolling in a class, then use this dashboard to track every step.";
 
+  const learnerEnrollmentReportRows = enrollments.map((enrollment) => ({
+    className: String(enrollment.music_class || "Music class"),
+    level: String(enrollment.skill_level || "Not specified"),
+    status: formatStatus(enrollment.status),
+    notes: String(enrollment.notes || "-"),
+  }));
+
+  const learnerSummaryReportRows = [
+    { metric: "Enrollments", value: String(enrollments.length) },
+    { metric: "Active Classes", value: String(admittedEnrollments.length) },
+    { metric: "Pending Reviews", value: String(pendingEnrollments.length) },
+    {
+      metric: "Latest Status",
+      value: formatStatus(latestEnrollment?.status || "pending"),
+    },
+  ];
+
+  const jumpToSection = (hash: string) => {
+    navigate(
+      {
+        pathname: location.pathname,
+        search: location.search,
+        hash,
+      },
+      { replace: false },
+    );
+
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(hash.replace(/^#/, ""));
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  const exportLearnerEnrollmentReport = async (selectedKeys: string[]) => {
+    const selectedFields = LEARNER_ENROLLMENT_REPORT_FIELDS.filter((field) =>
+      selectedKeys.includes(field.key),
+    );
+
+    await exportTableReportToPdf({
+      title: "Learner Enrollment Report",
+      subtitle: `${learnerEnrollmentReportRows.length} enrollment record${learnerEnrollmentReportRows.length === 1 ? "" : "s"} in view`,
+      fileName: "learner_enrollment_report.pdf",
+      columns: selectedFields.map((field) => field.label),
+      rows: learnerEnrollmentReportRows.map((row) =>
+        selectedFields.map((field) =>
+          String(row[field.key as keyof typeof row] ?? "-"),
+        ),
+      ),
+    });
+  };
+
+  const exportLearnerSummaryReport = async (selectedKeys: string[]) => {
+    const selectedFields = LEARNER_SUMMARY_REPORT_FIELDS.filter((field) =>
+      selectedKeys.includes(field.key),
+    );
+
+    await exportTableReportToPdf({
+      title: "Learner Summary Report",
+      subtitle: "Student-facing progress snapshot",
+      fileName: "learner_summary_report.pdf",
+      columns: selectedFields.map((field) => field.label),
+      rows: learnerSummaryReportRows.map((row) =>
+        selectedFields.map((field) =>
+          String(row[field.key as keyof typeof row] ?? "-"),
+        ),
+      ),
+    });
+  };
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-emerald-950/20 via-background to-background text-foreground">
       <DashboardShell
@@ -76,8 +160,10 @@ export function LearnerDashboard() {
           { id: "overview", label: "Overview", path: "#learner-overview", icon: Sparkles },
           { id: "classes", label: "My Classes", path: "#learner-classes", icon: BookOpen },
           { id: "community", label: "Community", path: "#learner-community", icon: Users },
+          { id: "reports", label: "Reporting", path: "#learner-reports", icon: FileDown },
           { id: "toolbox", label: "Toolbox", path: "#learner-toolbox", icon: ShieldCheck },
         ]}
+        menuDescription="Use the learner menu to move between class status, community, reporting, and your student toolbox."
         actions={
           <>
             <Button
@@ -87,6 +173,14 @@ export function LearnerDashboard() {
             >
               <Users className="mr-2 size-4" />
               Community
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => jumpToSection("#learner-reports")}
+            >
+              <FileDown className="mr-2 size-4" />
+              Reports
             </Button>
             <Button type="button" onClick={() => navigate("/enroll")}>
               <BookOpen className="mr-2 size-4" />
@@ -294,6 +388,66 @@ export function LearnerDashboard() {
               <div className="rounded-2xl border border-border/70 bg-background/70 p-4">
                 Keep your profile updated so classmates and admins recognize you quickly.
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="learner-reports"
+          className="grid gap-4 lg:grid-cols-2"
+        >
+          <div className="rounded-[1.75rem] border border-border/70 bg-card/90 p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Reporting
+            </p>
+            <h2 className="mt-2 text-lg font-semibold">Enrollment report</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Export your learner enrollment history using the same field-selection report flow used elsewhere in the system.
+            </p>
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-background/70 p-4">
+              <div>
+                <p className="text-sm font-semibold">Enrollment PDF</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {learnerEnrollmentReportRows.length} enrollment record
+                  {learnerEnrollmentReportRows.length === 1 ? "" : "s"} available.
+                </p>
+              </div>
+              <PdfFieldExportMenu
+                disabled={learnerEnrollmentReportRows.length === 0}
+                fields={[...LEARNER_ENROLLMENT_REPORT_FIELDS]}
+                storageKey="learner.enrollmentReportPdfFields"
+                buttonLabel="Export Enrollments"
+                menuLabel="Choose enrollment report fields"
+                exportLabel="Download Enrollment PDF"
+                onExport={(selectedKeys) => exportLearnerEnrollmentReport(selectedKeys)}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-[1.75rem] border border-border/70 bg-card/90 p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Snapshot
+            </p>
+            <h2 className="mt-2 text-lg font-semibold">Learner summary report</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Download a simple overview of your learner state, pending reviews, and admitted class count.
+            </p>
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-background/70 p-4">
+              <div>
+                <p className="text-sm font-semibold">Summary PDF</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Quick export for support follow-up or personal records.
+                </p>
+              </div>
+              <PdfFieldExportMenu
+                disabled={learnerSummaryReportRows.length === 0}
+                fields={[...LEARNER_SUMMARY_REPORT_FIELDS]}
+                storageKey="learner.summaryReportPdfFields"
+                buttonLabel="Export Summary"
+                menuLabel="Choose learner summary fields"
+                exportLabel="Download Summary PDF"
+                onExport={(selectedKeys) => exportLearnerSummaryReport(selectedKeys)}
+              />
             </div>
           </div>
         </section>

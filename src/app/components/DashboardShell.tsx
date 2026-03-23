@@ -25,6 +25,8 @@ interface DashboardShellProps {
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
+  menuTitle?: string;
+  menuDescription?: string;
 }
 
 const isPathActive = (itemPath: string, location: LocationLike) => {
@@ -53,6 +55,8 @@ export function DashboardShell({
   actions,
   children,
   className,
+  menuTitle = "Service Menu",
+  menuDescription = "Use this menu to move between key sections in the dashboard.",
 }: DashboardShellProps) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -202,9 +206,16 @@ export function DashboardShell({
           {hasNav ? (
             <aside className="hidden lg:block lg:self-start">
               <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto rounded-2xl border border-border/70 bg-card/80 p-3 shadow-sm">
-                <p className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Menu
-                </p>
+                <div className="border-b border-border/60 px-2 pb-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    {menuTitle}
+                  </p>
+                  {menuDescription ? (
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      {menuDescription}
+                    </p>
+                  ) : null}
+                </div>
                 <div className="space-y-1">
                   {navItems.map((item) => renderNavItem(item, "rail"))}
                 </div>
