@@ -120,11 +120,13 @@ async function resolveRoomById(roomId) {
 }
 
 async function enrichMessages(messages) {
-  const senderIds = [...new Set(
-    (messages || [])
-      .map((message) => String(message?.sender_user_id || "").trim())
-      .filter(Boolean),
-  )];
+  const senderIds = [
+    ...new Set(
+      (messages || [])
+        .map((message) => String(message?.sender_user_id || "").trim())
+        .filter(Boolean),
+    ),
+  ];
 
   let userMap = new Map();
   if (senderIds.length > 0) {
