@@ -2,22 +2,17 @@
 import { Link, useNavigate } from "react-router-dom";
 import {
   Award,
-  BookOpen,
   CirclePlay,
   FileText,
-  Guitar,
   GraduationCap,
   Headphones,
-  Keyboard,
   LayoutDashboard,
   MessageSquare,
-  Mic,
   Music,
   Quote,
   ShieldCheck,
   SlidersHorizontal,
   Users,
-  Wind,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
@@ -41,14 +36,6 @@ import bg7 from "@/app/components/images/bg_7.jpg";
 import bg9 from "@/app/components/images/bg_9.jpg";
 import bg10 from "@/app/components/images/bg_10.jpg";
 import bg11 from "@/app/components/images/bg_11.jpg";
-
-interface MusicClass {
-  id: string;
-  name: string;
-  description: string;
-  icon: React.ReactNode;
-  level: string;
-}
 
 interface LandingImage {
   id: string;
@@ -92,51 +79,6 @@ const testimonials = [
     message:
       "Murekefu Sam served as a vital part of the KenGen musical program between 2018 and 2020. As our music director, he demonstrated a rare combination of artistic brilliance and disciplined leadership that significantly elevated our corporate identity.\n\nDuring his tenure, Sam's contributions were twofold:\nVocal Excellence & Instruction: As our Music Instructor and Voice Coach, Sam transformed the KenGen Choir. Through his technical guidance, he refined the choir's vocal range and performance quality, leading them to successful presentations at various high-profile corporate functions. His ability to inspire a group of employees to perform at a professional level was exceptional.\n\nThe KenGen Anthem: Sam was the lead composer for the proposed KenGen Company Anthem. He worked diligently on this project, crafting a musical identity that reflected our corporate values. While the anthem is currently under review for formal adoption following the interruption caused by the COVID-19 pandemic in 2020, the foundation he built remains a testament to his skill as a composer.\n\nSam is a dedicated professional who can bridge the gap between creative artistry and corporate requirements. He is a disciplined director and a gifted mentor who we highly recommend for any large-scale musical or branding project.",
     author: "Carol Sirali, KenGen Choir",
-  },
-];
-
-const musicClasses: MusicClass[] = [
-  {
-    id: "piano",
-    name: "Piano",
-    description: "Build confident technique from foundations to performance.",
-    icon: <Keyboard className="size-9" />,
-    level: "Beginner to Advanced",
-  },
-  {
-    id: "guitar",
-    name: "Guitar",
-    description: "Master rhythm, harmony, and expressive accompaniment.",
-    icon: <Guitar className="size-9" />,
-    level: "Beginner to Advanced",
-  },
-  {
-    id: "vocal",
-    name: "Vocal",
-    description: "Improve breath support, diction, blend, and projection.",
-    icon: <Mic className="size-9" />,
-    level: "All Levels",
-  },
-  {
-    id: "trumpet",
-    name: "Trumpet",
-    description: "Train embouchure and tone control with guided practice.",
-    icon: <Wind className="size-9" />,
-    level: "Beginner to Advanced",
-  },
-  {
-    id: "theory",
-    name: "Music Theory",
-    description: "Understand composition, harmony, and score reading clearly.",
-    icon: <BookOpen className="size-9" />,
-    level: "All Levels",
-  },
-  {
-    id: "ensemble",
-    name: "Ensemble",
-    description: "Rehearse and perform with disciplined group musicianship.",
-    icon: <Users className="size-9" />,
-    level: "Intermediate to Advanced",
   },
 ];
 
@@ -267,7 +209,6 @@ export const LandingPage = () => {
   const navigate = useNavigate();
   const { mode } = useTheme();
   const isDarkMode = mode === "dark";
-  const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [expandedTestimonials, setExpandedTestimonials] = useState<
     Record<string, boolean>
@@ -347,16 +288,19 @@ export const LandingPage = () => {
               Train Better. Perform Better. Publish Better.
             </h1>
             <p className="mt-6 max-w-xl text-base text-muted-foreground sm:text-lg">
-              Murekefu Music Hub combines elite training, choir development,
-              and a modern marketplace for composers and music teams.
+              Murekefu Music Hub brings together composition publishing,
+              arrangements, discovery, learner journeys, and admin operations
+              in one connected music platform.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Link to="/enroll">
-                <Button size="lg">Start Learning</Button>
-              </Link>
               <Link to="/marketplace">
-                <Button size="lg" variant="outline">
+                <Button size="lg">
                   Explore Music Hub
+                </Button>
+              </Link>
+              <Link to="/enroll">
+                <Button size="lg" variant="outline">
+                  Learn Music
                 </Button>
               </Link>
               <Link to="/help">
@@ -367,12 +311,12 @@ export const LandingPage = () => {
             </div>
             <div className="mt-8 grid max-w-md grid-cols-3 gap-3 text-sm">
               <div className="rounded-xl border border-border/70 bg-card p-3">
-                <p className="text-2xl font-bold">6+</p>
-                <p className="text-muted-foreground">Class Tracks</p>
+                <p className="text-2xl font-bold">4</p>
+                <p className="text-muted-foreground">Role Journeys</p>
               </div>
               <div className="rounded-xl border border-border/70 bg-card p-3">
-                <p className="text-2xl font-bold">100+</p>
-                <p className="text-muted-foreground">Learners</p>
+                <p className="text-2xl font-bold">PDF + MIDI</p>
+                <p className="text-muted-foreground">Publishing Flow</p>
               </div>
               <div className="rounded-xl border border-border/70 bg-card p-3">
                 <p className="text-2xl font-bold">24/7</p>
@@ -632,65 +576,6 @@ export const LandingPage = () => {
 
       <section className="section-shell">
         <div className="mb-10">
-          <span className="soft-kicker">Programs</span>
-          <h2 className="section-title">Choose your class track</h2>
-          <p className="section-copy">
-            Select a focused learning path and progress with guided milestones.
-          </p>
-        </div>
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {musicClasses.map((musicClass, index) => (
-            <Card
-              key={musicClass.id}
-              className={`lift-card motion-reveal texture-speckle cursor-pointer ${
-                selectedClass === musicClass.id
-                  ? "ring-2 ring-primary/40"
-                  : "ring-1 ring-border/60"
-              }`}
-              style={
-                {
-                  ...(pickImageUrl(index + 7)
-                    ? {
-                        backgroundImage: `${
-                          isDarkMode
-                            ? "linear-gradient(to bottom, rgba(8,24,42,0.84), rgba(12,34,58,0.72))"
-                            : "linear-gradient(to bottom, rgba(255,255,255,0.8), rgba(255,255,255,0.6))"
-                        }, url(${pickImageUrl(index + 7)})`,
-                        backgroundSize: "cover",
-                        backgroundPosition: "center",
-                      }
-                    : {}),
-                  animationDelay: `${index * 80}ms`,
-                }
-              }
-              onClick={() => setSelectedClass(musicClass.id)}
-            >
-              <CardContent className="p-6">
-                <div className="mb-4 inline-flex rounded-full bg-secondary p-3 text-primary">
-                  {musicClass.icon}
-                </div>
-                <h3 className="text-2xl font-semibold">{musicClass.name}</h3>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {musicClass.description}
-                </p>
-                <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-primary/80">
-                  {musicClass.level}
-                </p>
-                <div className="mt-5">
-                  <Link to="/enroll">
-                    <Button variant="outline" className="w-full">
-                      Learn More
-                    </Button>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      <section className="section-shell">
-        <div className="mb-10">
           <span className="soft-kicker">Success Stories</span>
           <h2 className="section-title">What choirs say</h2>
         </div>
@@ -792,9 +677,8 @@ export const LandingPage = () => {
                 </span>
               </div>
               <p className="max-w-md text-sm leading-6 text-muted-foreground">
-                Professional training for choirs, composers, and music students.
-                Learn, perform, and grow with structured coaching and a modern
-                music marketplace.
+                A connected home for music discovery, learning, composition,
+                arrangements, and community workflows.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Link to="/enroll">
