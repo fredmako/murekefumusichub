@@ -18,7 +18,7 @@ class UserController extends Controller
     public function show(string $id)
     {
         $row = DB::table("users")
-            ->select("id", "auth_uid", "email", "display_name", "avatar_url", "theme_settings", "created_at")
+            ->select("id", "auth_uid", "email", "display_name", "phone", "avatar_url", "theme_settings", "created_at")
             ->where("id", $id)
             ->first();
 
@@ -28,13 +28,16 @@ class UserController extends Controller
 
         $user = (array) $row;
         $roles = $this->roleService->resolveRoles((string) $user["id"], $user["email"] ?? null);
-        return response()->json([...AvatarUrl::withNormalizedAvatar($user), "roles" => $roles]);
+        return response()->json($this->roleService->presentUser([
+            ...$user,
+            "roles" => $roles,
+        ]));
     }
 
     public function byAuthUid(string $authUid)
     {
         $row = DB::table("users")
-            ->select("id", "auth_uid", "email", "display_name", "avatar_url", "theme_settings", "created_at")
+            ->select("id", "auth_uid", "email", "display_name", "phone", "avatar_url", "theme_settings", "created_at")
             ->where("auth_uid", $authUid)
             ->first();
 
@@ -44,7 +47,10 @@ class UserController extends Controller
 
         $user = (array) $row;
         $roles = $this->roleService->resolveRoles((string) $user["id"], $user["email"] ?? null);
-        return response()->json([...AvatarUrl::withNormalizedAvatar($user), "roles" => $roles]);
+        return response()->json($this->roleService->presentUser([
+            ...$user,
+            "roles" => $roles,
+        ]));
     }
 
     public function ensure(Request $request)
@@ -56,41 +62,47 @@ class UserController extends Controller
 
         $email = trim(strtolower((string) $request->input("email", "")));
         $displayName = trim((string) $request->input("display_name", ""));
+        $phone = trim((string) $request->input("phone", ""));
         $avatarUrl = AvatarUrl::normalize($request->input("avatar_url"));
-        $themeSettings = $request->input("theme_settings");
-        if (!is_array($themeSettings) || empty($themeSettings)) {
-            $themeSettings = ["preset" => "emerald"];
-        }
+        $themeSettings = $this->roleService->normalizeThemeSettings(
+            $request->input("theme_settings"),
+            true
+        ) ?? ["preset" => "emerald"];
 
         $existing = DB::table("users")
-            ->select("id", "auth_uid", "email", "display_name", "avatar_url", "theme_settings")
+            ->select("id", "auth_uid", "email", "display_name", "phone", "avatar_url", "theme_settings")
             ->where("auth_uid", $authUid)
             ->first();
         if ($existing) {
-            return response()->json(AvatarUrl::withNormalizedAvatar((array) $existing));
+            return response()->json($this->roleService->presentUser((array) $existing));
         }
 
         if ($email !== "") {
             $emailMatch = DB::table("users")
-                ->select("id", "auth_uid", "email", "display_name", "avatar_url", "theme_settings")
+                ->select("id", "auth_uid", "email", "display_name", "phone", "avatar_url", "theme_settings")
                 ->whereRaw("LOWER(email) = ?", [$email])
                 ->first();
 
             if ($emailMatch) {
+                $mergedThemeSettings = $this->roleService->normalizeThemeSettings(
+                    $themeSettings,
+                    true
+                ) ?? ["preset" => "emerald"];
                 DB::table("users")->where("id", $emailMatch->id)->update([
                     "auth_uid" => $authUid,
                     "display_name" => $displayName !== "" ? $displayName : $emailMatch->display_name,
+                    "phone" => $phone !== "" ? $phone : $emailMatch->phone,
                     "avatar_url" => $avatarUrl ?: $emailMatch->avatar_url,
-                    "theme_settings" => json_encode($themeSettings),
+                    "theme_settings" => json_encode($mergedThemeSettings),
                     "updated_at" => now(),
                 ]);
 
                 $updated = DB::table("users")
-                    ->select("id", "auth_uid", "email", "display_name", "avatar_url", "theme_settings")
+                    ->select("id", "auth_uid", "email", "display_name", "phone", "avatar_url", "theme_settings")
                     ->where("id", $emailMatch->id)
                     ->first();
 
-                return response()->json(AvatarUrl::withNormalizedAvatar((array) $updated));
+                return response()->json($this->roleService->presentUser((array) $updated));
             }
         }
 
@@ -99,6 +111,7 @@ class UserController extends Controller
             "auth_uid" => $authUid,
             "email" => $email !== "" ? $email : null,
             "display_name" => $displayName !== "" ? $displayName : null,
+            "phone" => $phone !== "" ? $phone : null,
             "avatar_url" => $avatarUrl,
             "theme_settings" => json_encode($themeSettings),
             "created_at" => now(),
@@ -108,11 +121,11 @@ class UserController extends Controller
         DB::table("users")->insert($insert);
         $id = $insert["id"];
         $created = DB::table("users")
-            ->select("id", "auth_uid", "email", "display_name", "avatar_url", "theme_settings")
+            ->select("id", "auth_uid", "email", "display_name", "phone", "avatar_url", "theme_settings")
             ->where("id", $id)
             ->first();
 
-        return response()->json(AvatarUrl::withNormalizedAvatar((array) $created), 201);
+        return response()->json($this->roleService->presentUser((array) $created), 201);
     }
 
     public function update(Request $request, string $id)
@@ -134,6 +147,12 @@ class UserController extends Controller
         if ($request->has("avatar_url")) {
             $updates["avatar_url"] = AvatarUrl::normalize($request->input("avatar_url"));
         }
+        if ($request->has("theme_settings")) {
+            $updates["theme_settings"] = $this->roleService->encodeThemeSettings(
+                $request->input("theme_settings"),
+                true
+            );
+        }
 
         if (empty($updates)) {
             return response()->json(["message" => "No updatable fields provided"], 400);
@@ -146,9 +165,13 @@ class UserController extends Controller
         }
 
         $row = DB::table("users")->where("id", $id)->first();
+        $roles = $this->roleService->resolveRoles((string) $row->id, $row->email ?? null);
         return response()->json([
             "message" => "User updated",
-            "user" => AvatarUrl::withNormalizedAvatar((array) $row),
+            "user" => $this->roleService->presentUser([
+                ...(array) $row,
+                "roles" => $roles,
+            ]),
         ]);
     }
 }

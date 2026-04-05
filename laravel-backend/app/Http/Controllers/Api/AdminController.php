@@ -3,16 +3,21 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\RegistrationPaymentService;
 use App\Services\RoleService;
 use App\Support\AvatarUrl;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class AdminController extends Controller
 {
-    public function __construct(private readonly RoleService $roleService)
+    public function __construct(
+        private readonly RoleService $roleService,
+        private readonly RegistrationPaymentService $registrationPayments
+    )
     {
     }
 
@@ -91,6 +96,59 @@ class AdminController extends Controller
 
         $row = DB::table("purchases")->where("id", $id)->first();
         return (array) $row;
+    }
+
+    private function hasInviteRequestedRoleColumn(): bool
+    {
+        return Schema::hasColumn("invites", "requested_role");
+    }
+
+    private function hasCompositionVerificationColumns(): bool
+    {
+        return Schema::hasColumn("compositions", "is_verified")
+            && Schema::hasColumn("compositions", "verified_at")
+            && Schema::hasColumn("compositions", "verified_by");
+    }
+
+    private function requireRegulationsController(Request $request): array|\Illuminate\Http\JsonResponse
+    {
+        $adminUser = $this->resolveDbUser($request->attributes->get("authUid"));
+        if (!$adminUser?["id"]) {
+            return response()->json(["error" => "Admin user not found"], 404);
+        }
+
+        $regulations = $this->registrationPayments->ensureActiveRegistrationRegulations();
+        $controllingIdentifier = $regulations["controlling_admin_identifier"]
+            ?? $this->registrationPayments->defaultControllingAdminIdentifier();
+
+        if (!$this->registrationPayments->isRegulationsControllerUser($adminUser, $controllingIdentifier)) {
+            return response()->json([
+                "error" => "Only {$controllingIdentifier} can manage registration regulations.",
+                "controllingAdminIdentifier" => $controllingIdentifier,
+            ], 403);
+        }
+
+        return [
+            "adminUser" => $adminUser,
+            "regulations" => $regulations,
+            "controllingIdentifier" => $controllingIdentifier,
+        ];
+    }
+
+    private function formatRegistrationPaymentSubmission(object $submission, array $usersById = []): array
+    {
+        $requester = isset($usersById[$submission->requester_id])
+            ? AvatarUrl::withNormalizedAvatar($usersById[$submission->requester_id])
+            : null;
+        $reviewer = isset($usersById[$submission->reviewed_by])
+            ? AvatarUrl::withNormalizedAvatar($usersById[$submission->reviewed_by])
+            : null;
+
+        return [
+            ...((array) $submission),
+            "requester" => $requester,
+            "reviewer" => $reviewer,
+        ];
     }
 
     public function bootstrap()
@@ -177,7 +235,7 @@ class AdminController extends Controller
     public function users()
     {
         $users = DB::table("users")
-            ->select("id", "auth_uid", "email", "display_name", "avatar_url", "is_active", "composer_request", "deleted", "created_at", "updated_at")
+            ->select("id", "auth_uid", "email", "display_name", "phone", "avatar_url", "is_active", "composer_request", "deleted", "created_at", "updated_at")
             ->orderByDesc("created_at")
             ->get()
             ->map(fn ($u) => AvatarUrl::withNormalizedAvatar((array) $u))
@@ -202,21 +260,33 @@ class AdminController extends Controller
 
     public function compositions(Request $request)
     {
+        $selects = [
+            "compositions.id",
+            "compositions.title",
+            "compositions.description",
+            "compositions.price",
+            "compositions.created_at",
+            "compositions.composer_id",
+            "compositions.pdf_url",
+            "composers.id as composer_row_id",
+            "composers.user_id as composer_user_id",
+            "users.display_name as composer_display_name",
+            "users.email as composer_email",
+        ];
+
+        if ($this->hasCompositionVerificationColumns()) {
+            $selects[] = "compositions.is_verified";
+            $selects[] = "compositions.verified_at";
+            $selects[] = "compositions.verified_by";
+            if (Schema::hasColumn("compositions", "verification_notes")) {
+                $selects[] = "compositions.verification_notes";
+            }
+        }
+
         $rows = DB::table("compositions")
             ->leftJoin("composers", "composers.id", "=", "compositions.composer_id")
             ->leftJoin("users", "users.id", "=", "composers.user_id")
-            ->select(
-                "compositions.id",
-                "compositions.title",
-                "compositions.description",
-                "compositions.price",
-                "compositions.created_at",
-                "compositions.composer_id",
-                "composers.id as composer_row_id",
-                "composers.user_id as composer_user_id",
-                "users.display_name as composer_display_name",
-                "users.email as composer_email"
-            )
+            ->select($selects)
             ->where("compositions.deleted", false)
             ->orderByDesc("compositions.created_at")
             ->limit($this->parseLimit($request->query("limit"), 400, 1000))
@@ -227,8 +297,13 @@ class AdminController extends Controller
                     "title" => $row->title,
                     "description" => $row->description,
                     "price" => $row->price,
+                    "pdf_url" => $row->pdf_url ?? null,
                     "created_at" => $row->created_at,
                     "composer_id" => $row->composer_id,
+                    "is_verified" => (bool) ($row->is_verified ?? false),
+                    "verified_at" => $row->verified_at ?? null,
+                    "verified_by" => $row->verified_by ?? null,
+                    "verification_notes" => $row->verification_notes ?? null,
                     "composers" => [
                         "id" => $row->composer_row_id,
                         "user_id" => $row->composer_user_id,
@@ -493,14 +568,23 @@ class AdminController extends Controller
             return response()->json(["error" => "Email is required"], 400);
         }
 
+        $requestedRole = strtolower(trim((string) $request->input("requestedRole", "composer"))) === "admin"
+            ? "admin"
+            : "composer";
+
         $id = (string) Str::uuid();
-        DB::table("invites")->insert([
+        $payload = [
             "id" => $id,
             "email" => $email,
             "invited_by" => $request->input("invited_by"),
             "created_at" => now(),
             "used" => false,
-        ]);
+        ];
+        if ($this->hasInviteRequestedRoleColumn()) {
+            $payload["requested_role"] = $requestedRole;
+        }
+
+        DB::table("invites")->insert($payload);
 
         return response()->json(DB::table("invites")->where("id", $id)->first(), 201);
     }
@@ -926,6 +1010,266 @@ class AdminController extends Controller
             "message" => "Payment submission rejected",
             "submission" => $updated,
         ]);
+    }
+
+    public function verifyComposition(Request $request, string $compositionId)
+    {
+        if (trim($compositionId) === "") {
+            return response()->json(["error" => "compositionId is required"], 400);
+        }
+        if (!$this->hasCompositionVerificationColumns()) {
+            return response()->json([
+                "error" => "Composition verification columns are missing.",
+            ], 500);
+        }
+
+        $reviewer = $this->resolveDbUser($request->attributes->get("authUid"));
+        if (!$reviewer?["id"]) {
+            return response()->json(["error" => "Admin user not found"], 404);
+        }
+
+        $verificationNotes = trim((string) $request->input("verificationNotes", ""));
+        DB::table("compositions")
+            ->where("id", $compositionId)
+            ->update([
+                "is_verified" => true,
+                "verified_at" => now(),
+                "verified_by" => $reviewer["id"],
+                "verification_notes" => $verificationNotes !== "" ? $verificationNotes : null,
+                "updated_at" => now(),
+            ]);
+
+        $composition = DB::table("compositions")->where("id", $compositionId)->first();
+        if (!$composition) {
+            return response()->json(["error" => "Composition not found"], 404);
+        }
+
+        return response()->json([
+            "success" => true,
+            "message" => "Composition verified",
+            "composition" => $composition,
+        ]);
+    }
+
+    public function unverifyComposition(Request $request, string $compositionId)
+    {
+        if (trim($compositionId) === "") {
+            return response()->json(["error" => "compositionId is required"], 400);
+        }
+        if (!$this->hasCompositionVerificationColumns()) {
+            return response()->json([
+                "error" => "Composition verification columns are missing.",
+            ], 500);
+        }
+
+        $reason = trim((string) $request->input("reason", ""));
+        DB::table("compositions")
+            ->where("id", $compositionId)
+            ->update([
+                "is_verified" => false,
+                "verified_at" => null,
+                "verified_by" => null,
+                "verification_notes" => $reason !== "" ? $reason : null,
+                "updated_at" => now(),
+            ]);
+
+        $composition = DB::table("compositions")->where("id", $compositionId)->first();
+        if (!$composition) {
+            return response()->json(["error" => "Composition not found"], 404);
+        }
+
+        return response()->json([
+            "success" => true,
+            "message" => "Composition marked unverified",
+            "composition" => $composition,
+        ]);
+    }
+
+    public function registrationRegulations(Request $request)
+    {
+        try {
+            $context = $this->requireRegulationsController($request);
+            if ($context instanceof \Illuminate\Http\JsonResponse) {
+                return $context;
+            }
+
+            return response()->json(
+                $this->registrationPayments->formatPublicRegulations($context["regulations"])
+            );
+        } catch (\Throwable $e) {
+            if ($this->registrationPayments->isMissingRegistrationTablesError($e)) {
+                return response()->json([
+                    "message" => $this->registrationPayments->missingRegistrationTablesMessage(),
+                ], 500);
+            }
+
+            throw $e;
+        }
+    }
+
+    public function updateRegistrationRegulations(Request $request)
+    {
+        try {
+            $context = $this->requireRegulationsController($request);
+            if ($context instanceof \Illuminate\Http\JsonResponse) {
+                return $context;
+            }
+
+            DB::table("registration_regulations")
+                ->where("is_active", true)
+                ->update(["is_active" => false]);
+
+            DB::table("registration_regulations")->insert([
+                "id" => (string) Str::uuid(),
+                "enrollment_fee" => (float) $request->input("enrollmentFee", 0),
+                "composer_request_fee" => (float) $request->input("composerRequestFee", 0),
+                "bank_name" => trim((string) $request->input("bankName", "I&M Bank")),
+                "bank_account_number" => trim((string) $request->input("bankAccountNumber", "0030 7335 5161 50")),
+                "account_name" => trim((string) $request->input("accountName", "Murekefu Music Hub")),
+                "controlling_admin_identifier" => $context["controllingIdentifier"],
+                "is_active" => true,
+                "updated_at" => now(),
+            ]);
+
+            $regulations = $this->registrationPayments->ensureActiveRegistrationRegulations();
+            return response()->json([
+                "success" => true,
+                "regulations" => $this->registrationPayments->formatPublicRegulations($regulations),
+            ]);
+        } catch (\Throwable $e) {
+            if ($this->registrationPayments->isMissingRegistrationTablesError($e)) {
+                return response()->json([
+                    "message" => $this->registrationPayments->missingRegistrationTablesMessage(),
+                ], 500);
+            }
+
+            throw $e;
+        }
+    }
+
+    public function registrationPayments(Request $request)
+    {
+        try {
+            $status = strtolower(trim((string) $request->query("status", "all")));
+            $type = $this->registrationPayments->normalizeRegistrationType($request->query("type"));
+            $limit = $this->parseLimit($request->query("limit"), 200, 1000);
+
+            $query = DB::table("registration_payment_submissions")
+                ->orderByDesc("submitted_at")
+                ->limit($limit);
+
+            if (in_array($status, ["pending", "approved", "rejected"], true)) {
+                $query->where("status", $status);
+            }
+            if ($type) {
+                $query->where("registration_type", $type);
+            }
+
+            $rows = $query->get();
+            $userIds = collect($rows)
+                ->pluck("requester_id")
+                ->merge(collect($rows)->pluck("reviewed_by"))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            $usersById = DB::table("users")
+                ->select("id", "email", "display_name", "avatar_url")
+                ->whereIn("id", $userIds ?: ["00000000-0000-0000-0000-000000000000"])
+                ->get()
+                ->mapWithKeys(fn ($user) => [$user->id => (array) $user])
+                ->all();
+
+            $formatted = $rows->map(fn ($submission) => $this->formatRegistrationPaymentSubmission($submission, $usersById))
+                ->values();
+
+            return response()->json($formatted);
+        } catch (\Throwable $e) {
+            if ($this->registrationPayments->isMissingRegistrationTablesError($e)) {
+                return response()->json([
+                    "message" => $this->registrationPayments->missingRegistrationTablesMessage(),
+                ], 500);
+            }
+
+            throw $e;
+        }
+    }
+
+    public function approveRegistrationPayment(Request $request, string $submissionId)
+    {
+        try {
+            $reviewer = $this->resolveDbUser($request->attributes->get("authUid"));
+            if (!$reviewer?["id"]) {
+                return response()->json(["error" => "Reviewer user not found"], 404);
+            }
+
+            $submission = DB::table("registration_payment_submissions")->where("id", $submissionId)->first();
+            if (!$submission) {
+                return response()->json(["error" => "Registration payment not found"], 404);
+            }
+
+            DB::table("registration_payment_submissions")->where("id", $submissionId)->update([
+                "status" => "approved",
+                "reviewed_by" => $reviewer["id"],
+                "reviewed_at" => now(),
+                "admin_notes" => trim((string) $request->input("adminNotes", "")) ?: null,
+                "updated_at" => now(),
+            ]);
+
+            $updated = DB::table("registration_payment_submissions")->where("id", $submissionId)->first();
+            return response()->json([
+                "success" => true,
+                "message" => "Registration payment approved",
+                "submission" => $updated,
+            ]);
+        } catch (\Throwable $e) {
+            if ($this->registrationPayments->isMissingRegistrationTablesError($e)) {
+                return response()->json([
+                    "message" => $this->registrationPayments->missingRegistrationTablesMessage(),
+                ], 500);
+            }
+
+            throw $e;
+        }
+    }
+
+    public function rejectRegistrationPayment(Request $request, string $submissionId)
+    {
+        try {
+            $reviewer = $this->resolveDbUser($request->attributes->get("authUid"));
+            if (!$reviewer?["id"]) {
+                return response()->json(["error" => "Reviewer user not found"], 404);
+            }
+
+            $submission = DB::table("registration_payment_submissions")->where("id", $submissionId)->first();
+            if (!$submission) {
+                return response()->json(["error" => "Registration payment not found"], 404);
+            }
+
+            DB::table("registration_payment_submissions")->where("id", $submissionId)->update([
+                "status" => "rejected",
+                "reviewed_by" => $reviewer["id"],
+                "reviewed_at" => now(),
+                "admin_notes" => trim((string) $request->input("adminNotes", "")) ?: null,
+                "updated_at" => now(),
+            ]);
+
+            $updated = DB::table("registration_payment_submissions")->where("id", $submissionId)->first();
+            return response()->json([
+                "success" => true,
+                "message" => "Registration payment rejected",
+                "submission" => $updated,
+            ]);
+        } catch (\Throwable $e) {
+            if ($this->registrationPayments->isMissingRegistrationTablesError($e)) {
+                return response()->json([
+                    "message" => $this->registrationPayments->missingRegistrationTablesMessage(),
+                ], 500);
+            }
+
+            throw $e;
+        }
     }
 
     public function notifications()

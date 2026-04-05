@@ -5,10 +5,13 @@ use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CheckoutController;
+use App\Http\Controllers\Api\CommunityController;
 use App\Http\Controllers\Api\CompositionController;
 use App\Http\Controllers\Api\EnrollmentController;
 use App\Http\Controllers\Api\MediaController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PurchaseController;
+use App\Http\Controllers\Api\RegistrationController;
 use App\Http\Controllers\Api\RequestRoleController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\SupportController;
@@ -37,7 +40,14 @@ Route::delete("/account", [AccountController::class, "destroy"])->middleware("au
 // Roles / role requests
 Route::get("/user/roles/{authUid}", [RoleController::class, "rolesByAuthUid"]);
 Route::get("/request-role/status", [RequestRoleController::class, "status"])->middleware("auth.supabase");
+Route::get("/request-role/invite-status", [RequestRoleController::class, "inviteStatus"])->middleware("auth.supabase");
+Route::post("/request-role/accept-invite", [RequestRoleController::class, "acceptInvite"])->middleware("auth.supabase");
 Route::post("/request-role", [RequestRoleController::class, "requestRole"])->middleware("auth.supabase");
+
+// Registration payments
+Route::get("/registration/regulations", [RegistrationController::class, "regulations"]);
+Route::get("/registration/payments/my", [RegistrationController::class, "myPayments"])->middleware("auth.supabase");
+Route::post("/registration/payments/submit", [RegistrationController::class, "submitPayment"])->middleware("auth.supabase");
 
 // Categories
 Route::get("/categories", [CategoryController::class, "index"]);
@@ -47,8 +57,11 @@ Route::post("/categories", [CategoryController::class, "store"])
 // Compositions
 Route::post("/compositions/analyze-pdf", [CompositionController::class, "analyzePdf"])
     ->middleware("auth.supabase");
+Route::post("/compositions/price-to-usd", [CompositionController::class, "priceToUsd"])
+    ->middleware("auth.supabase");
 Route::get("/compositions", [CompositionController::class, "index"]);
 Route::get("/compositions/composer/{composerId}", [CompositionController::class, "byComposer"]);
+Route::get("/compositions/{id}/midi", [CompositionController::class, "midi"]);
 Route::get("/compositions/{id}", [CompositionController::class, "show"]);
 Route::post("/compositions", [CompositionController::class, "store"])->middleware("auth.supabase");
 Route::put("/compositions/{id}", [CompositionController::class, "update"])->middleware("auth.supabase");
@@ -61,6 +74,7 @@ Route::post("/upload/{bucket}", [UploadController::class, "upload"])->middleware
 Route::get("/purchases", [PurchaseController::class, "index"])->middleware("auth.supabase");
 Route::post("/purchases", [PurchaseController::class, "store"])->middleware("auth.supabase");
 Route::delete("/purchases/{id}", [PurchaseController::class, "destroy"])->middleware("auth.supabase");
+Route::get("/purchases/{id}/download", [PurchaseController::class, "download"])->middleware("auth.supabase");
 Route::get("/purchases/recommendations", [PurchaseController::class, "recommendations"])->middleware("auth.supabase");
 Route::put("/purchases/preferences", [PurchaseController::class, "updatePreferences"])->middleware("auth.supabase");
 
@@ -69,13 +83,27 @@ Route::post("/checkout/submit", [CheckoutController::class, "submit"])->middlewa
 
 // Media
 Route::get("/media/landing-images", [MediaController::class, "landingImages"]);
+Route::get("/media/composition-background", [MediaController::class, "compositionBackground"]);
 
 // Enrollments
 Route::post("/enrollments", [EnrollmentController::class, "submit"])->middleware("auth.supabase");
 Route::get("/enrollments/my", [EnrollmentController::class, "my"])->middleware("auth.supabase");
 
+// Community
+Route::get("/community/rooms/primary", [CommunityController::class, "primaryRoom"])->middleware("auth.supabase");
+Route::get("/community/rooms/{roomId}/messages", [CommunityController::class, "roomMessages"])->middleware("auth.supabase");
+Route::post("/community/rooms/{roomId}/messages", [CommunityController::class, "sendMessage"])->middleware("auth.supabase");
+Route::get("/community/settings/me", [CommunityController::class, "mySettings"])->middleware("auth.supabase");
+Route::put("/community/settings/me", [CommunityController::class, "updateMySettings"])->middleware("auth.supabase");
+
+// Notifications
+Route::get("/notifications/read", [NotificationController::class, "read"])->middleware("auth.supabase");
+Route::post("/notifications/mark-read", [NotificationController::class, "markRead"])->middleware("auth.supabase");
+
 // Support
 Route::post("/support/issues", [SupportController::class, "issues"])->middleware("auth.supabase");
+Route::get("/support/inbox", [SupportController::class, "inbox"])->middleware("auth.supabase");
+Route::post("/support/ai/draft", [SupportController::class, "aiDraft"])->middleware("auth.supabase");
 Route::post("/support/threads", [SupportController::class, "createThread"])->middleware("auth.supabase");
 Route::get("/support/threads/my", [SupportController::class, "myThreads"])->middleware("auth.supabase");
 Route::get("/support/threads/{threadId}/messages", [SupportController::class, "threadMessages"])->middleware("auth.supabase");
@@ -90,6 +118,8 @@ Route::post("/support/admin/tickets/{threadId}/reject", [SupportController::clas
 Route::get("/support/admin/threads", [SupportController::class, "adminThreads"])
     ->middleware(["auth.supabase", "admin.only"]);
 Route::post("/support/admin/threads", [SupportController::class, "createAdminThread"])
+    ->middleware(["auth.supabase", "admin.only"]);
+Route::post("/support/admin/announcements", [SupportController::class, "createAnnouncement"])
     ->middleware(["auth.supabase", "admin.only"]);
 Route::delete("/support/admin/threads/{threadId}", [SupportController::class, "deleteAdminThread"])
     ->middleware(["auth.supabase", "admin.only"]);
@@ -109,6 +139,8 @@ Route::prefix("admin")->middleware(["auth.supabase", "admin.only"])->group(funct
     Route::get("/debug/compositions", [AdminController::class, "debugCompositions"]);
     Route::post("/invites", [AdminController::class, "createInvite"]);
     Route::delete("/invites/{email}", [AdminController::class, "revokeInvite"]);
+    Route::post("/compositions/{compositionId}/verify", [AdminController::class, "verifyComposition"]);
+    Route::post("/compositions/{compositionId}/unverify", [AdminController::class, "unverifyComposition"]);
     Route::post("/users/{userId}/promote-composer", [AdminController::class, "promoteComposer"]);
     Route::post("/users/{userId}/demote-composer", [AdminController::class, "demoteComposer"]);
     Route::post("/users/{userId}/promote-admin", [AdminController::class, "promoteAdmin"]);
@@ -121,5 +153,10 @@ Route::prefix("admin")->middleware(["auth.supabase", "admin.only"])->group(funct
     Route::post("/payment-submissions/{submissionId}/approve", [AdminController::class, "approvePaymentSubmission"]);
     Route::post("/payment-submissions/{submissionId}/reject", [AdminController::class, "rejectPaymentSubmission"]);
     Route::get("/notifications", [AdminController::class, "notifications"]);
+    Route::get("/registration/regulations", [AdminController::class, "registrationRegulations"]);
+    Route::put("/registration/regulations", [AdminController::class, "updateRegistrationRegulations"]);
+    Route::get("/registration/payments", [AdminController::class, "registrationPayments"]);
+    Route::post("/registration/payments/{submissionId}/approve", [AdminController::class, "approveRegistrationPayment"]);
+    Route::post("/registration/payments/{submissionId}/reject", [AdminController::class, "rejectRegistrationPayment"]);
 });
 

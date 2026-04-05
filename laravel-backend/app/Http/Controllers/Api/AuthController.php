@@ -38,6 +38,7 @@ class AuthController extends Controller
             "id" => $id,
             "email" => $email,
             "display_name" => $displayName !== "" ? $displayName : null,
+            "theme_settings" => json_encode(["preset" => "emerald"]),
             "created_at" => now(),
             "updated_at" => now(),
         ]);
@@ -75,7 +76,12 @@ class AuthController extends Controller
 
         $email = strtolower(trim((string) $request->input("email", "")));
         $displayName = trim((string) $request->input("display_name", ""));
+        $phone = trim((string) $request->input("phone", ""));
         $avatar = AvatarUrl::normalize($request->input("avatar_url"));
+        $themeSettings = $this->roleService->normalizeThemeSettings(
+            $request->input("theme_settings"),
+            true
+        );
 
         $user = $this->roleService->resolveDbUserByAuthUid($authUid);
         if ($user) {
@@ -86,8 +92,14 @@ class AuthController extends Controller
             if ($displayName !== "") {
                 $updates["display_name"] = $displayName;
             }
+            if ($phone !== "") {
+                $updates["phone"] = $phone;
+            }
             if ($avatar !== null) {
                 $updates["avatar_url"] = $avatar;
+            }
+            if ($themeSettings !== null) {
+                $updates["theme_settings"] = json_encode($themeSettings);
             }
             if (!empty($updates)) {
                 $updates["updated_at"] = now();
@@ -100,17 +112,27 @@ class AuthController extends Controller
                 "auth_uid" => $authUid,
                 "email" => $email !== "" ? $email : null,
                 "display_name" => $displayName !== "" ? $displayName : null,
+                "phone" => $phone !== "" ? $phone : null,
                 "avatar_url" => $avatar,
-                "theme_settings" => json_encode(["preset" => "emerald"]),
+                "theme_settings" => json_encode($themeSettings ?? ["preset" => "emerald"]),
                 "created_at" => now(),
                 "updated_at" => now(),
             ]);
         }
 
         $fresh = $this->roleService->resolveDbUserByAuthUid($authUid);
+        $roles = $fresh
+            ? $this->roleService->resolveRoles((string) $fresh["id"], $fresh["email"] ?? null)
+            : [];
+
         return response()->json([
             "success" => true,
-            "user" => $fresh ? AvatarUrl::withNormalizedAvatar($fresh) : null,
+            "user" => $fresh
+                ? $this->roleService->presentUser([
+                    ...$fresh,
+                    "roles" => $roles,
+                ])
+                : null,
         ]);
     }
 
@@ -127,9 +149,9 @@ class AuthController extends Controller
         }
 
         $roles = $this->roleService->resolveRoles($user["id"], $user["email"] ?? null);
-        return response()->json([
-            ...AvatarUrl::withNormalizedAvatar($user),
+        return response()->json($this->roleService->presentUser([
+            ...$user,
             "roles" => $roles,
-        ]);
+        ]));
     }
 }

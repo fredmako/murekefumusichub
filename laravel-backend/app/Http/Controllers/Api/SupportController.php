@@ -7,6 +7,7 @@ use App\Services\RoleService;
 use App\Support\AvatarUrl;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 class SupportController extends Controller
 {
@@ -15,6 +16,8 @@ class SupportController extends Controller
     private const TICKET_LIFETIME_DAYS = 30;
     private const TICKET_REJECTED_MESSAGE = "Your ticket was rejected by all available admins. Please open a new ticket if you still need help.";
     private const TICKET_EXPIRED_MESSAGE = "This ticket expired after 30 days. Please open a new ticket if your issue is still unresolved.";
+    private const ANNOUNCEMENT_ROLE_OPTIONS = ["student", "buyer", "composer", "admin"];
+    private const AI_DRAFT_USE_CASES = ["support", "message", "announcement"];
 
     public function __construct(private readonly RoleService $roleService)
     {
@@ -283,6 +286,257 @@ class SupportController extends Controller
         };
     }
 
+    private function parseJsonObject(?string $content): ?array
+    {
+        $content = trim((string) ($content ?? ""));
+        if ($content === "") {
+            return null;
+        }
+
+        try {
+            $decoded = json_decode($content, true, flags: JSON_THROW_ON_ERROR);
+            return is_array($decoded) ? $decoded : null;
+        } catch (\Throwable) {
+            $start = strpos($content, "{");
+            $end = strrpos($content, "}");
+            if ($start === false || $end === false || $end <= $start) {
+                return null;
+            }
+
+            try {
+                $decoded = json_decode(substr($content, $start, $end - $start + 1), true, flags: JSON_THROW_ON_ERROR);
+                return is_array($decoded) ? $decoded : null;
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+    }
+
+    private function normalizeAnnouncementRoles(mixed $rawRoles): array
+    {
+        $roles = is_array($rawRoles)
+            ? $rawRoles
+            : explode(",", (string) ($rawRoles ?? ""));
+
+        return collect($roles)
+            ->map(fn ($role) => strtolower($this->normalizeText($role, 32)))
+            ->filter(fn ($role) => in_array($role, self::ANNOUNCEMENT_ROLE_OPTIONS, true))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function normalizeAiDraftUseCase(mixed $value): string
+    {
+        $normalized = strtolower($this->normalizeText($value, 24));
+        return in_array($normalized, self::AI_DRAFT_USE_CASES, true)
+            ? $normalized
+            : "message";
+    }
+
+    private function generateProfessionalDraft(array $payload): array
+    {
+        $openAiKey = trim((string) env("OPENAI_API_KEY", ""));
+        if ($openAiKey === "") {
+            throw new \RuntimeException("AI assistant is not configured. Set OPENAI_API_KEY on the backend.", 503);
+        }
+
+        $model = (string) env("OPENAI_MODEL", "gpt-4o-mini");
+        $response = Http::withToken($openAiKey)->acceptJson()->post("https://api.openai.com/v1/chat/completions", [
+            "model" => $model,
+            "temperature" => 0.25,
+            "response_format" => ["type" => "json_object"],
+            "messages" => [
+                [
+                    "role" => "system",
+                    "content" => "You rewrite operational platform messages in a clear professional tone. Return JSON only with keys: subject, message. Keep message concise, respectful, and action-oriented. Do not use markdown.",
+                ],
+                [
+                    "role" => "user",
+                    "content" => json_encode($payload),
+                ],
+            ],
+            "max_tokens" => 500,
+        ]);
+
+        if (!$response->successful()) {
+            throw new \RuntimeException("AI draft generation failed: " . $response->body(), $response->status() >= 500 ? 502 : $response->status());
+        }
+
+        $parsed = $this->parseJsonObject((string) data_get($response->json(), "choices.0.message.content"));
+        $draftSubject = $this->normalizeText($parsed["subject"] ?? ($payload["subject"] ?? null), 160);
+        $draftMessage = $this->normalizeText($parsed["message"] ?? ($payload["message"] ?? null), 4000);
+        if ($draftMessage === "") {
+            throw new \RuntimeException("AI draft returned an empty message", 502);
+        }
+
+        return [
+            "success" => true,
+            "useCase" => $payload["useCase"] ?? "message",
+            "model" => $model,
+            "draft" => [
+                "subject" => $draftSubject,
+                "message" => $draftMessage,
+            ],
+        ];
+    }
+
+    private function resolveAnnouncementRecipients(array $targetRoles, ?string $senderUserId = null): array
+    {
+        if (count($targetRoles) === 0) {
+            return [];
+        }
+
+        $users = DB::table("users")
+            ->select("id", "email", "display_name", "avatar_url", "is_active")
+            ->where(function ($query) {
+                $query->whereNull("is_active")
+                    ->orWhere("is_active", true);
+            })
+            ->get()
+            ->map(fn ($user) => AvatarUrl::withNormalizedAvatar((array) $user))
+            ->values()
+            ->all();
+
+        if (count($users) === 0) {
+            return [];
+        }
+
+        $userIds = array_values(array_filter(array_map(fn ($user) => $user["id"] ?? null, $users)));
+        $rolesByUserId = [];
+        foreach ($userIds as $userId) {
+            $rolesByUserId[$userId] = [];
+        }
+
+        try {
+            $roleRows = DB::table("user_roles")
+                ->join("roles", "roles.id", "=", "user_roles.role_id")
+                ->whereIn("user_roles.user_id", $userIds)
+                ->select("user_roles.user_id", "roles.name")
+                ->get();
+            foreach ($roleRows as $row) {
+                $roleName = strtolower(trim((string) ($row->name ?? "")));
+                if ($roleName === "") {
+                    continue;
+                }
+                $rolesByUserId[$row->user_id] ??= [];
+                if (!in_array($roleName, $rolesByUserId[$row->user_id], true)) {
+                    $rolesByUserId[$row->user_id][] = $roleName;
+                }
+            }
+        } catch (\Throwable) {
+            // Ignore missing role mapping tables.
+        }
+
+        try {
+            $composerRows = DB::table("composers")
+                ->select("user_id")
+                ->whereIn("user_id", $userIds)
+                ->get();
+            foreach ($composerRows as $row) {
+                if (!isset($rolesByUserId[$row->user_id])) {
+                    continue;
+                }
+                if (!in_array("composer", $rolesByUserId[$row->user_id], true)) {
+                    $rolesByUserId[$row->user_id][] = "composer";
+                }
+            }
+        } catch (\Throwable) {
+            // Ignore missing composers table.
+        }
+
+        $usersByEmail = [];
+        foreach ($users as $user) {
+            $email = strtolower(trim((string) ($user["email"] ?? "")));
+            if ($email !== "") {
+                $usersByEmail[$email] = $user["id"];
+            }
+        }
+
+        try {
+            $adminEmails = DB::table("admin_emails")
+                ->where("is_active", true)
+                ->pluck("email")
+                ->map(fn ($email) => strtolower(trim((string) $email)))
+                ->filter()
+                ->values()
+                ->all();
+            foreach ($adminEmails as $email) {
+                $userId = $usersByEmail[$email] ?? null;
+                if (!$userId) {
+                    continue;
+                }
+                if (!in_array("admin", $rolesByUserId[$userId], true)) {
+                    $rolesByUserId[$userId][] = "admin";
+                }
+            }
+        } catch (\Throwable) {
+            // Ignore missing admin_emails table.
+        }
+
+        try {
+            $enrollmentRows = DB::table("enrollments")
+                ->select("user_id", "email", "status")
+                ->whereIn("status", ["pending", "admitted"])
+                ->get();
+            foreach ($enrollmentRows as $row) {
+                $userId = $row->user_id ?: ($usersByEmail[strtolower(trim((string) ($row->email ?? "")))] ?? null);
+                if (!$userId || !isset($rolesByUserId[$userId])) {
+                    continue;
+                }
+                if (!in_array("student", $rolesByUserId[$userId], true)) {
+                    $rolesByUserId[$userId][] = "student";
+                }
+            }
+        } catch (\Throwable) {
+            // Ignore missing enrollments table.
+        }
+
+        foreach ($userIds as $userId) {
+            if (empty($rolesByUserId[$userId])) {
+                $rolesByUserId[$userId][] = "buyer";
+            }
+        }
+
+        return array_values(array_filter(array_map(function ($user) use ($rolesByUserId, $targetRoles, $senderUserId) {
+            $userId = $user["id"] ?? null;
+            if (!$userId || ($senderUserId && $senderUserId === $userId)) {
+                return null;
+            }
+
+            $roles = $rolesByUserId[$userId] ?? ["buyer"];
+            foreach ($roles as $role) {
+                if (in_array($role, $targetRoles, true)) {
+                    return [
+                        ...$user,
+                        "roles" => $roles,
+                    ];
+                }
+            }
+
+            return null;
+        }, $users)));
+    }
+
+    private function loadMemberThreadsForUser(string $userId, int $limit = 100): array
+    {
+        $rows = DB::table("support_chat_threads")
+            ->where("requester_user_id", $userId)
+            ->where("deleted_by_admin", false)
+            ->orderByDesc("last_message_at")
+            ->limit($limit)
+            ->get()
+            ->map(fn ($row) => (array) $row)
+            ->all();
+
+        $threadIds = array_values(array_filter(array_map(fn ($row) => $row["id"] ?? null, $rows)));
+        $rejectionMap = $this->rejectionCountMap($threadIds);
+
+        return array_map(function ($row) use ($rejectionMap) {
+            return $this->mapThread($row, null, (int) ($rejectionMap[$row["id"]] ?? 0));
+        }, $rows);
+    }
+
     public function issues(Request $request)
     {
         $user = $this->authUser($request);
@@ -425,6 +679,140 @@ class SupportController extends Controller
         ], 201);
     }
 
+    public function aiDraft(Request $request)
+    {
+        $user = $this->authUser($request);
+        if (!$user) {
+            return response()->json(["message" => "User profile not found"], 404);
+        }
+
+        $message = $this->normalizeText($request->input("message", $request->input("text")), 4000);
+        if ($message === "") {
+            return response()->json(["message" => "message is required"], 400);
+        }
+
+        $useCase = $this->normalizeAiDraftUseCase($request->input("useCase"));
+        $audienceRoles = $this->normalizeAnnouncementRoles($request->input("audienceRoles", $request->input("roles")));
+        $subject = $this->normalizeText($request->input("subject"), 160);
+        $context = $this->normalizeText($request->input("context"), 160);
+
+        try {
+            $result = $this->generateProfessionalDraft([
+                "useCase" => $useCase,
+                "audienceRoles" => $audienceRoles,
+                "context" => $context !== "" ? $context : null,
+                "subject" => $subject !== "" ? $subject : null,
+                "message" => $message,
+            ]);
+
+            return response()->json($result);
+        } catch (\RuntimeException $e) {
+            $status = $e->getCode() >= 400 ? $e->getCode() : 500;
+            return response()->json([
+                "message" => $e->getMessage() ?: "Failed to generate AI draft",
+                "error" => $e->getMessage() ?: "UNKNOWN_ERROR",
+            ], $status);
+        }
+    }
+
+    public function createAnnouncement(Request $request)
+    {
+        $this->expireOverdueTickets();
+        $adminUser = $this->authUser($request);
+        if (!$adminUser || !$this->isAdminUser($adminUser)) {
+            return response()->json(["message" => "Admin profile not found"], 404);
+        }
+
+        $targetRoles = $this->normalizeAnnouncementRoles(
+            $request->input("targetRoles", $request->input("roles"))
+        );
+        if (count($targetRoles) === 0) {
+            return response()->json([
+                "message" => "At least one target role is required. Use student, buyer, composer, or admin.",
+            ], 400);
+        }
+
+        $message = $this->normalizeText($request->input("message"), 4000);
+        if ($message === "") {
+            return response()->json(["message" => "Announcement message is required"], 400);
+        }
+
+        $subject = $this->normalizeText($request->input("subject"), 160) ?: "Platform Announcement";
+        $context = $this->normalizeText($request->input("context"), 120) ?: "admin-announcement";
+        $recipients = $this->resolveAnnouncementRecipients($targetRoles, (string) $adminUser["id"]);
+        if (count($recipients) === 0) {
+            return response()->json([
+                "message" => "No active users match the selected target roles",
+            ], 404);
+        }
+
+        $now = now();
+        $threadRows = [];
+        $messageRows = [];
+        $createdThreadIds = [];
+        foreach ($recipients as $recipient) {
+            $threadId = (string) \Illuminate\Support\Str::uuid();
+            $createdThreadIds[] = $threadId;
+            $threadRows[] = [
+                "id" => $threadId,
+                "requester_user_id" => $recipient["id"],
+                "subject" => $subject,
+                "context" => $context,
+                "status" => "active",
+                "assigned_admin_user_id" => $adminUser["id"],
+                "assigned_at" => $now,
+                "expires_at" => now()->addDays(self::TICKET_LIFETIME_DAYS),
+                "is_admin_unread" => false,
+                "is_user_unread" => true,
+                "last_message_preview" => mb_substr($message, 0, 500),
+                "last_sender_role" => "admin",
+                "last_message_at" => $now,
+                "deleted_by_admin" => false,
+                "created_at" => $now,
+                "updated_at" => $now,
+            ];
+            $messageRows[] = [
+                "id" => (string) \Illuminate\Support\Str::uuid(),
+                "thread_id" => $threadId,
+                "sender_user_id" => $adminUser["id"],
+                "sender_role" => "admin",
+                "message" => $message,
+                "created_at" => $now,
+            ];
+        }
+
+        DB::table("support_chat_threads")->insert($threadRows);
+        DB::table("support_chat_messages")->insert($messageRows);
+
+        return response()->json([
+            "success" => true,
+            "recipientCount" => count($recipients),
+            "targetRoles" => $targetRoles,
+            "createdThreadIds" => $createdThreadIds,
+            "message" => "Announcement sent",
+        ], 201);
+    }
+
+    public function inbox(Request $request)
+    {
+        $this->expireOverdueTickets();
+        $user = $this->authUser($request);
+        if (!$user) {
+            return response()->json(["message" => "User profile not found"], 404);
+        }
+
+        $limit = $this->parseLimit($request->query("limit"), 100, 500);
+        $threads = $this->loadMemberThreadsForUser((string) $user["id"], $limit);
+        $unreadThreads = array_values(array_filter($threads, fn ($thread) => (bool) ($thread["is_user_unread"] ?? false)));
+
+        return response()->json([
+            "threads" => $threads,
+            "unreadThreads" => $unreadThreads,
+            "unreadCount" => count($unreadThreads),
+            "lastUpdatedAt" => now()->toISOString(),
+        ]);
+    }
+
     public function myThreads(Request $request)
     {
         $this->expireOverdueTickets();
@@ -433,23 +821,8 @@ class SupportController extends Controller
             return response()->json(["message" => "User profile not found"], 404);
         }
 
-        $rows = DB::table("support_chat_threads")
-            ->where("requester_user_id", $user["id"])
-            ->where("deleted_by_admin", false)
-            ->orderByDesc("last_message_at")
-            ->limit($this->parseLimit($request->query("limit"), 100, 500))
-            ->get()
-            ->map(fn ($row) => (array) $row)
-            ->all();
-
-        $ids = array_values(array_filter(array_map(fn ($row) => $row["id"] ?? null, $rows)));
-        $rejectionMap = $this->rejectionCountMap($ids);
-
-        $response = array_map(function ($row) use ($rejectionMap) {
-            return $this->mapThread($row, null, (int) ($rejectionMap[$row["id"]] ?? 0));
-        }, $rows);
-
-        return response()->json($response);
+        $limit = $this->parseLimit($request->query("limit"), 100, 500);
+        return response()->json($this->loadMemberThreadsForUser((string) $user["id"], $limit));
     }
 
     public function threadMessages(Request $request, string $threadId)

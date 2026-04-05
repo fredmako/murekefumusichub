@@ -13,11 +13,39 @@ use Illuminate\Support\Str;
 
 class CompositionController extends Controller
 {
-    private const PRICE_CURRENCY_DEFAULT = "USD";
+    private const PRICE_CURRENCY_DEFAULT = "KES";
     private const DIFFICULTY_OPTIONS = ["Easy", "Intermediate", "Advanced"];
     private const LANGUAGE_OPTIONS = ["English", "Latin", "German", "French", "Italian", "Spanish"];
     private const ACCOMPANIMENT_OPTIONS = ["A cappella", "Piano", "Organ", "String Quartet", "Orchestra"];
     private const VOICE_PART_OPTIONS = ["Soprano", "Alto", "Tenor", "Bass", "Soprano I", "Soprano II"];
+    private const CURRENCY_ALIAS_MAP = [
+        "USD" => "USD",
+        "US" => "USD",
+        "DOLLAR" => "USD",
+        "DOLLARS" => "USD",
+        "$" => "USD",
+        "US$" => "USD",
+        "KES" => "KES",
+        "KSH" => "KES",
+        "KSHS" => "KES",
+        "SHILLING" => "KES",
+        "SHILLINGS" => "KES",
+        "EUR" => "EUR",
+        "EURO" => "EUR",
+        "EUROS" => "EUR",
+        "GBP" => "GBP",
+        "POUND" => "GBP",
+        "POUNDS" => "GBP",
+        "UGX" => "UGX",
+        "TZS" => "TZS",
+        "RWF" => "RWF",
+        "NGN" => "NGN",
+        "ZAR" => "ZAR",
+        "CAD" => "CAD",
+        "AUD" => "AUD",
+        "INR" => "INR",
+        "JPY" => "JPY",
+    ];
 
     public function __construct(
         private readonly RoleService $roleService,
@@ -36,11 +64,151 @@ class CompositionController extends Controller
 
     private function normalizePriceCurrency(?string $raw): string
     {
+        return $this->normalizeCurrencyCode($raw) ?: self::PRICE_CURRENCY_DEFAULT;
+    }
+
+    private function normalizeCurrencyCode(mixed $raw): string
+    {
         $value = strtoupper(trim((string) ($raw ?? "")));
         if ($value === "") {
-            return self::PRICE_CURRENCY_DEFAULT;
+            return "";
         }
-        return substr($value, 0, 16);
+
+        return self::CURRENCY_ALIAS_MAP[$value] ?? substr($value, 0, 16);
+    }
+
+    private function sanitizePriceInput(mixed $value): string
+    {
+        return substr(trim(preg_replace('/\s+/', ' ', (string) ($value ?? '')) ?? ''), 0, 120);
+    }
+
+    private function parseAmountLoose(mixed $value): float
+    {
+        if (is_numeric($value)) {
+            return is_finite((float) $value) ? (float) $value : NAN;
+        }
+
+        $text = str_replace(",", "", trim((string) ($value ?? "")));
+        if ($text === "") {
+            return NAN;
+        }
+
+        if (preg_match('/-?\d+(\.\d+)?/', $text, $matches) !== 1) {
+            return NAN;
+        }
+
+        $amount = (float) $matches[0];
+        return is_finite($amount) ? $amount : NAN;
+    }
+
+    private function detectCurrencyFromText(mixed $value): string
+    {
+        $text = strtoupper(trim((string) ($value ?? "")));
+        if ($text === "") {
+            return "";
+        }
+
+        foreach ([
+            "KSH" => "KES",
+            "KES" => "KES",
+            "UGX" => "UGX",
+            "TZS" => "TZS",
+            "RWF" => "RWF",
+            "NGN" => "NGN",
+            "ZAR" => "ZAR",
+            "EUR" => "EUR",
+            "EURO" => "EUR",
+            "GBP" => "GBP",
+            "POUND" => "GBP",
+            "USD" => "USD",
+            "US$" => "USD",
+            "$" => "USD",
+        ] as $needle => $code) {
+            if (str_contains($text, $needle)) {
+                return $code;
+            }
+        }
+
+        return "";
+    }
+
+    private function detectPriceWithAI(string $priceInput, string $currencyHint, float $amountHint): ?array
+    {
+        $openAiKey = trim((string) env("OPENAI_API_KEY", ""));
+        if ($openAiKey === "") {
+            return null;
+        }
+
+        $model = (string) env("OPENAI_MODEL", "gpt-4o-mini");
+        $response = Http::withToken($openAiKey)->acceptJson()->post("https://api.openai.com/v1/chat/completions", [
+            "model" => $model,
+            "temperature" => 0,
+            "response_format" => ["type" => "json_object"],
+            "messages" => [
+                [
+                    "role" => "system",
+                    "content" => "Extract price and currency from user input. Return JSON with keys: amount (number), currencyCode (3-letter ISO code), confidence (0 to 1).",
+                ],
+                [
+                    "role" => "user",
+                    "content" => json_encode([
+                        "priceInput" => $priceInput,
+                        "currencyHint" => $currencyHint,
+                        "amountHint" => is_finite($amountHint) && $amountHint > 0 ? $amountHint : null,
+                    ]),
+                ],
+            ],
+            "max_tokens" => 220,
+        ]);
+
+        if (!$response->successful()) {
+            throw new \RuntimeException("OpenAI price parse failed: " . $response->body());
+        }
+
+        $content = data_get($response->json(), "choices.0.message.content");
+        if (!is_string($content) || trim($content) === "") {
+            return null;
+        }
+
+        try {
+            $parsed = json_decode($content, true, flags: JSON_THROW_ON_ERROR);
+        } catch (\Throwable) {
+            $start = strpos($content, "{");
+            $end = strrpos($content, "}");
+            if ($start === false || $end === false || $end <= $start) {
+                return null;
+            }
+            $parsed = json_decode(substr($content, $start, $end - $start + 1), true);
+        }
+
+        if (!is_array($parsed)) {
+            return null;
+        }
+
+        return [
+            "amount" => $this->parseAmountLoose($parsed["amount"] ?? null),
+            "currencyCode" => $this->normalizeCurrencyCode((string) ($parsed["currencyCode"] ?? "")),
+            "confidence" => (float) ($parsed["confidence"] ?? 0),
+        ];
+    }
+
+    private function fetchRateToUsd(string $currencyCode): float
+    {
+        if ($currencyCode === "" || $currencyCode === "USD") {
+            return 1.0;
+        }
+
+        $response = Http::acceptJson()->get("https://open.er-api.com/v6/latest/" . urlencode($currencyCode));
+        if (!$response->successful()) {
+            throw new \RuntimeException("Exchange rate lookup failed: " . $response->body());
+        }
+
+        $rate = (float) data_get($response->json(), "rates.USD", 0);
+        if (!is_finite($rate) || $rate <= 0) {
+            throw new \RuntimeException("Exchange rate provider returned invalid USD rate");
+        }
+
+        return $rate;
     }
 
     private function decodeVoiceParts(mixed $value): ?array
@@ -68,36 +236,52 @@ class CompositionController extends Controller
 
     private function compositionBaseQuery()
     {
+        $selects = [
+            "compositions.id",
+            "compositions.composer_id",
+            "compositions.title",
+            "compositions.description",
+            "compositions.category_id",
+            "compositions.price",
+            "compositions.pdf_url",
+            "compositions.thumbnail_url",
+            "compositions.created_at",
+            "compositions.updated_at",
+            "compositions.duration",
+            "compositions.difficulty",
+            "compositions.language",
+            "compositions.accompaniment",
+            "compositions.voice_parts",
+            "compositions.deleted",
+            "compositions.is_published",
+            "categories.name as category_name",
+            "composers.id as composer_table_id",
+            "composer_users.display_name as composer_display_name",
+            "composer_users.email as composer_email",
+            "composition_stats.views as stats_views",
+            "composition_stats.purchases as stats_purchases",
+        ];
+
+        foreach ([
+            "midi_url",
+            "original_link",
+            "price_currency",
+            "is_verified",
+            "verified_at",
+            "verified_by",
+            "verification_notes",
+        ] as $optionalColumn) {
+            if (Schema::hasColumn("compositions", $optionalColumn)) {
+                $selects[] = "compositions.{$optionalColumn}";
+            }
+        }
+
         return DB::table("compositions")
             ->leftJoin("composers", "composers.id", "=", "compositions.composer_id")
             ->leftJoin("users as composer_users", "composer_users.id", "=", "composers.user_id")
             ->leftJoin("categories", "categories.id", "=", "compositions.category_id")
             ->leftJoin("composition_stats", "composition_stats.composition_id", "=", "compositions.id")
-            ->select([
-                "compositions.id",
-                "compositions.composer_id",
-                "compositions.title",
-                "compositions.description",
-                "compositions.category_id",
-                "compositions.price",
-                "compositions.pdf_url",
-                "compositions.thumbnail_url",
-                "compositions.created_at",
-                "compositions.updated_at",
-                "compositions.duration",
-                "compositions.difficulty",
-                "compositions.language",
-                "compositions.accompaniment",
-                "compositions.voice_parts",
-                "compositions.deleted",
-                "compositions.is_published",
-                "categories.name as category_name",
-                "composers.id as composer_table_id",
-                "composer_users.display_name as composer_display_name",
-                "composer_users.email as composer_email",
-                "composition_stats.views as stats_views",
-                "composition_stats.purchases as stats_purchases",
-            ]);
+            ->select($selects);
     }
 
     private function mapCompositionRow(object $row): array
@@ -110,7 +294,9 @@ class CompositionController extends Controller
             "category_id" => $row->category_id,
             "price" => $row->price,
             "pdf_url" => $row->pdf_url,
+            "midi_url" => $row->midi_url ?? null,
             "thumbnail_url" => $row->thumbnail_url,
+            "original_link" => $row->original_link ?? null,
             "created_at" => $row->created_at,
             "updated_at" => $row->updated_at,
             "duration" => $row->duration,
@@ -128,17 +314,19 @@ class CompositionController extends Controller
                     "email" => $row->composer_email,
                 ],
             ],
-            "composition_stats" => [
+            "composition_stats" => [[
                 "views" => (int) ($row->stats_views ?? 0),
                 "purchases" => (int) ($row->stats_purchases ?? 0),
-            ],
+            ]],
+            "is_verified" => (bool) ($row->is_verified ?? false),
+            "verified_at" => $row->verified_at ?? null,
+            "verified_by" => $row->verified_by ?? null,
+            "verification_notes" => $row->verification_notes ?? null,
         ];
 
-        if (Schema::hasColumn("compositions", "price_currency")) {
-            $mapped["price_currency"] = $this->normalizePriceCurrency((string) ($row->price_currency ?? ""));
-        } else {
-            $mapped["price_currency"] = self::PRICE_CURRENCY_DEFAULT;
-        }
+        $mapped["price_currency"] = Schema::hasColumn("compositions", "price_currency")
+            ? $this->normalizePriceCurrency((string) ($row->price_currency ?? ""))
+            : self::PRICE_CURRENCY_DEFAULT;
 
         return $mapped;
     }
@@ -174,6 +362,11 @@ class CompositionController extends Controller
         }
 
         return $composition;
+    }
+
+    private function refreshSignedPdfUrls(array $compositions): array
+    {
+        return array_map(fn ($composition) => $this->refreshSignedPdfUrl($composition), $compositions);
     }
 
     private function firstNonEmptyLine(string $text): string
@@ -427,6 +620,70 @@ class CompositionController extends Controller
         ]);
     }
 
+    public function priceToUsd(Request $request)
+    {
+        try {
+            $priceInput = $this->sanitizePriceInput($request->input("priceInput", $request->input("price")));
+            $currencyHint = $this->sanitizePriceInput($request->input("currencyHint", $request->input("currency")));
+            $amountHint = $this->parseAmountLoose($request->input("amount"));
+
+            if ($priceInput === "" && !is_finite($amountHint)) {
+                return response()->json([
+                    "message" => "Provide priceInput (or amount) to convert.",
+                ], 400);
+            }
+
+            $aiResult = null;
+            try {
+                $aiResult = $this->detectPriceWithAI($priceInput, $currencyHint, $amountHint);
+            } catch (\Throwable) {
+                $aiResult = null;
+            }
+
+            $fallbackCurrency = $this->normalizeCurrencyCode($currencyHint)
+                ?: $this->normalizeCurrencyCode($this->detectCurrencyFromText($priceInput));
+            $detectedCurrency = $this->normalizeCurrencyCode((string) ($aiResult["currencyCode"] ?? ""))
+                ?: $fallbackCurrency;
+            if ($detectedCurrency === "") {
+                return response()->json([
+                    "message" => "Could not detect currency. Add currency code like USD, KES, EUR, GBP.",
+                ], 400);
+            }
+
+            $detectedAmount = is_finite((float) ($aiResult["amount"] ?? NAN))
+                ? (float) $aiResult["amount"]
+                : (is_finite($amountHint) ? $amountHint : $this->parseAmountLoose($priceInput));
+
+            if (!is_finite($detectedAmount) || $detectedAmount <= 0) {
+                return response()->json([
+                    "message" => "Could not detect a valid positive amount.",
+                ], 400);
+            }
+
+            $rateToUsd = $this->fetchRateToUsd($detectedCurrency);
+            $usdAmount = round($detectedAmount * $rateToUsd, 2);
+
+            return response()->json([
+                "success" => true,
+                "detectedBy" => $aiResult ? "ai" : "heuristic",
+                "aiConfidence" => isset($aiResult["confidence"]) && $aiResult["confidence"] > 0
+                    ? (float) $aiResult["confidence"]
+                    : null,
+                "originalAmount" => round($detectedAmount, 2),
+                "originalCurrency" => $detectedCurrency,
+                "rateToUsd" => $rateToUsd,
+                "usdAmount" => $usdAmount,
+                "usdCurrency" => "USD",
+                "convertedAt" => now()->toISOString(),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                "message" => "Failed to convert price to USD",
+                "error" => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function index(Request $request)
     {
         $query = $this->compositionBaseQuery()
@@ -446,8 +703,8 @@ class CompositionController extends Controller
             });
         }
 
-        $rows = $query->get()->map(fn ($row) => $this->mapCompositionRow($row))->values();
-        return response()->json($rows);
+        $rows = $query->get()->map(fn ($row) => $this->mapCompositionRow($row))->values()->all();
+        return response()->json($this->refreshSignedPdfUrls($rows));
     }
 
     public function byComposer(string $composerId)
@@ -462,9 +719,46 @@ class CompositionController extends Controller
             ->orderByDesc("compositions.created_at")
             ->get()
             ->map(fn ($row) => $this->mapCompositionRow($row))
-            ->values();
+            ->values()
+            ->all();
 
-        return response()->json($rows);
+        return response()->json($this->refreshSignedPdfUrls($rows));
+    }
+
+    public function midi(string $id)
+    {
+        if (trim($id) === "") {
+            return response()->json(["message" => "id is required"], 400);
+        }
+
+        if (!Schema::hasColumn("compositions", "midi_url")) {
+            return response()->json(["message" => "MIDI preview not available"], 404);
+        }
+
+        $row = DB::table("compositions")
+            ->select("id", "midi_url")
+            ->where("id", $id)
+            ->first();
+
+        if (!$row || !$row->midi_url) {
+            return response()->json(["message" => "MIDI preview not available"], 404);
+        }
+
+        $path = $this->extractCompositionStoragePath((string) $row->midi_url);
+        if (!$path) {
+            return response()->json(["message" => "Invalid MIDI storage path"], 400);
+        }
+
+        $binary = $this->storageService->download("compositions", $path);
+        if ($binary === null) {
+            return response()->json(["message" => "MIDI file not found"], 404);
+        }
+
+        return response($binary, 200, [
+            "Content-Type" => "audio/midi",
+            "Cache-Control" => "public, max-age=300",
+            "Content-Disposition" => 'inline; filename="preview.mid"',
+        ]);
     }
 
     public function show(string $id)
@@ -555,6 +849,12 @@ class CompositionController extends Controller
         if (Schema::hasColumn("compositions", "price_currency")) {
             $insert["price_currency"] = $this->normalizePriceCurrency($request->input("price_currency"));
         }
+        if (Schema::hasColumn("compositions", "midi_url")) {
+            $insert["midi_url"] = $request->input("midi_url") ?: null;
+        }
+        if (Schema::hasColumn("compositions", "original_link")) {
+            $insert["original_link"] = $request->input("original_link") ?: null;
+        }
 
         DB::table("compositions")->insert($insert);
 
@@ -591,7 +891,9 @@ class CompositionController extends Controller
             "duration",
             "accompaniment",
             "pdf_url",
+            "midi_url",
             "thumbnail_url",
+            "original_link",
         ] as $field) {
             if ($request->has($field)) {
                 $updates[$field] = $request->input($field);

@@ -2,14 +2,27 @@
 
 namespace App\Services;
 
+use App\Support\AvatarUrl;
 use Illuminate\Support\Facades\DB;
 
 class RoleService
 {
+    private const USER_SELECT_COLUMNS = [
+        "id",
+        "auth_uid",
+        "email",
+        "display_name",
+        "phone",
+        "avatar_url",
+        "theme_settings",
+        "composer_request",
+        "is_active",
+    ];
+
     public function resolveDbUserByAuthUid(string $authUid): ?array
     {
         $row = DB::table("users")
-            ->select("id", "auth_uid", "email", "display_name", "avatar_url", "theme_settings", "is_active")
+            ->select(self::USER_SELECT_COLUMNS)
             ->where("auth_uid", $authUid)
             ->first();
 
@@ -24,7 +37,7 @@ class RoleService
         }
 
         $byId = DB::table("users")
-            ->select("id", "auth_uid", "email", "display_name", "avatar_url", "theme_settings", "is_active")
+            ->select(self::USER_SELECT_COLUMNS)
             ->where("id", $id)
             ->first();
         if ($byId) {
@@ -32,11 +45,86 @@ class RoleService
         }
 
         $byAuth = DB::table("users")
-            ->select("id", "auth_uid", "email", "display_name", "avatar_url", "theme_settings", "is_active")
+            ->select(self::USER_SELECT_COLUMNS)
             ->where("auth_uid", $id)
             ->first();
 
         return $byAuth ? (array) $byAuth : null;
+    }
+
+    public function normalizeThemeSettings(mixed $rawThemeSettings, bool $defaultToEmerald = false): ?array
+    {
+        $themeSettings = null;
+
+        if (is_array($rawThemeSettings)) {
+            $themeSettings = $rawThemeSettings;
+        } elseif (is_object($rawThemeSettings)) {
+            $themeSettings = (array) $rawThemeSettings;
+        } elseif (is_string($rawThemeSettings)) {
+            $rawThemeSettings = trim($rawThemeSettings);
+            if ($rawThemeSettings !== "") {
+                if (str_starts_with($rawThemeSettings, "{") || str_starts_with($rawThemeSettings, "[")) {
+                    try {
+                        $decoded = json_decode($rawThemeSettings, true, flags: JSON_THROW_ON_ERROR);
+                        $themeSettings = is_array($decoded) ? $decoded : null;
+                    } catch (\Throwable) {
+                        $themeSettings = ["preset" => $rawThemeSettings];
+                    }
+                } else {
+                    $themeSettings = ["preset" => $rawThemeSettings];
+                }
+            }
+        }
+
+        $normalized = [];
+        if (is_array($themeSettings)) {
+            foreach ([
+                "preset",
+                "mode",
+                "darkHue",
+                "uiScale",
+                "iconScale",
+                "layoutDensity",
+                "surfaceStyle",
+            ] as $key) {
+                $value = trim((string) ($themeSettings[$key] ?? ""));
+                if ($value !== "") {
+                    $normalized[$key] = $value;
+                }
+            }
+        }
+
+        if (empty($normalized) && $defaultToEmerald) {
+            $normalized["preset"] = "emerald";
+        }
+
+        return empty($normalized) ? null : $normalized;
+    }
+
+    public function encodeThemeSettings(mixed $rawThemeSettings, bool $defaultToEmerald = false): ?string
+    {
+        $normalized = $this->normalizeThemeSettings($rawThemeSettings, $defaultToEmerald);
+        if (!$normalized) {
+            return null;
+        }
+
+        return json_encode($normalized);
+    }
+
+    public function presentUser(array $user, bool $includeRoles = false): array
+    {
+        $presented = AvatarUrl::withNormalizedAvatar($user);
+        $presented["theme_settings"] = $this->normalizeThemeSettings($presented["theme_settings"] ?? null);
+        $presented["phone"] = $presented["phone"] ?? null;
+
+        if ($includeRoles && !isset($presented["roles"])) {
+            $presented["roles"] = $this->resolveRoles(
+                (string) ($presented["id"] ?? ""),
+                $presented["email"] ?? null
+            );
+        }
+
+        return $presented;
     }
 
     /**

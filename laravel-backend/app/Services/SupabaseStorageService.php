@@ -38,30 +38,46 @@ class SupabaseStorageService
     {
         $path = $this->uploadPath($authUid, $file->getClientOriginalName());
         $url = "{$this->supabaseUrl()}/storage/v1/object/{$bucket}/{$path}";
+        $mimeType = $file->getMimeType() ?: "application/octet-stream";
 
         $uploadResponse = Http::withHeaders([
             ...$this->baseHeaders(),
-            "Content-Type" => $file->getMimeType() ?: "application/octet-stream",
+            "Content-Type" => $mimeType,
             "x-upsert" => "false",
-        ])->withBody(file_get_contents($file->getRealPath()), $file->getMimeType() ?: "application/octet-stream")
+        ])->withBody(file_get_contents($file->getRealPath()), $mimeType)
             ->post($url);
 
         if (!$uploadResponse->successful()) {
             throw new \RuntimeException("Storage upload failed: {$uploadResponse->body()}");
         }
 
-        if ($bucket === "avatars") {
+        if ($bucket === "avatars" || $bucket === "community") {
             $publicUrl = "{$this->supabaseUrl()}/storage/v1/object/public/{$bucket}/{$path}";
-            return ["path" => $path, "url" => $publicUrl];
+            return [
+                "path" => $path,
+                "url" => $publicUrl,
+                "bucket" => $bucket,
+                "mimeType" => $mimeType,
+            ];
         }
 
         $signed = $this->createSignedUrl($bucket, $path, 3600);
         if ($signed) {
-            return ["path" => $path, "url" => $signed];
+            return [
+                "path" => $path,
+                "url" => $signed,
+                "bucket" => $bucket,
+                "mimeType" => $mimeType,
+            ];
         }
 
         $fallbackPublic = "{$this->supabaseUrl()}/storage/v1/object/public/{$bucket}/{$path}";
-        return ["path" => $path, "url" => $fallbackPublic];
+        return [
+            "path" => $path,
+            "url" => $fallbackPublic,
+            "bucket" => $bucket,
+            "mimeType" => $mimeType,
+        ];
     }
 
     public function createSignedUrl(string $bucket, string $path, int $expiresIn = 3600): ?string
@@ -86,6 +102,18 @@ class SupabaseStorageService
         }
 
         return "{$this->supabaseUrl()}/storage/v1{$signedPath}";
+    }
+
+    public function download(string $bucket, string $path): ?string
+    {
+        $url = "{$this->supabaseUrl()}/storage/v1/object/{$bucket}/{$path}";
+        $response = Http::withHeaders($this->baseHeaders())->get($url);
+
+        if (!$response->successful()) {
+            return null;
+        }
+
+        return $response->body();
     }
 
     public function fetchAuthenticatedUser(string $bearerToken): ?array
