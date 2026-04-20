@@ -47,7 +47,7 @@ import { toast } from "sonner";
 import { ensureArray } from "@/lib/ensureArray";
 import { parseAccompanimentList } from "@/lib/compositionMeta";
 import { buildApiUrl } from "@/lib/apiBase";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 interface Composition {
   id: string;
@@ -136,6 +136,7 @@ function mapComposition(comp: any): Composition {
 
 export function Marketplace({ onAddToCart }: MarketplaceProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { appUser } = useAuth();
   const [activeFeed, setActiveFeed] = useState<"all" | "for-you" | "discover">(
     "all",
@@ -166,6 +167,12 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
     minimumPurchasesForPersonalized: 3,
     message: "",
   });
+
+  const forcedCategoryName = useMemo(() => {
+    if (location.pathname === "/marketplace/arrangements") return "arrangements";
+    if (location.pathname === "/marketplace/compositions") return "compositions";
+    return null;
+  }, [location.pathname]);
 
   useEffect(() => {
     const fetchMarketplaceData = async () => {
@@ -251,6 +258,11 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
 
   const filteredCompositions = useMemo(() => {
     return compositions.filter((comp) => {
+      const normalizedCategoryName = String(comp.categoryName || "")
+        .trim()
+        .toLowerCase();
+      const matchesForcedCategory =
+        !forcedCategoryName || normalizedCategoryName === forcedCategoryName;
       const matchesSearch =
         comp.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         comp.composerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -271,10 +283,12 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         accompanimentFilter === "all" ||
         comp.accompaniment.includes(accompanimentFilter);
       const matchesCategory =
+        forcedCategoryName ||
         categoryFilter === "all" ||
         String(comp.categoryId || "") === categoryFilter;
 
       return (
+        matchesForcedCategory &&
         matchesSearch &&
         matchesInitials &&
         matchesLanguage &&
@@ -286,6 +300,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
     accompanimentFilter,
     categoryFilter,
     compositions,
+    forcedCategoryName,
     languageFilter,
     initialFilters,
     searchTerm,
@@ -632,19 +647,21 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
 
       <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 p-4 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)] backdrop-blur">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="border-white/10 bg-white/10 text-foreground">
-              <SelectValue placeholder="Category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              {categories.map((category) => (
-                <SelectItem key={category.id} value={String(category.id)}>
-                  {category.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {!forcedCategoryName && (
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="border-white/10 bg-white/10 text-foreground">
+                <SelectValue placeholder="Category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {categories.map((category) => (
+                  <SelectItem key={category.id} value={String(category.id)}>
+                    {category.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
           <Select value={languageFilter} onValueChange={setLanguageFilter}>
             <SelectTrigger className="border-white/10 bg-white/10 text-foreground">
