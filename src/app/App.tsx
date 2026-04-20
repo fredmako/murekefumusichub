@@ -788,6 +788,14 @@ export default function App() {
                   path="/marketplace"
                   element={<Marketplace onAddToCart={handleAddToCart} />}
                 />
+                <Route
+                  path="/marketplace/arrangements"
+                  element={<Marketplace onAddToCart={handleAddToCart} />}
+                />
+                <Route
+                  path="/marketplace/compositions"
+                  element={<Marketplace onAddToCart={handleAddToCart} />}
+                />
                 <Route path="/about" element={<AboutPage />} />
                 <Route path="/help" element={<HelpCenterPage />} />
                 <Route path="/messenger" element={<MessengerPage />} />
