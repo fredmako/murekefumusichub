@@ -344,6 +344,20 @@ export function MessengerPage() {
 
   useEffect(() => {
     if (activeWorkspace !== "support") return;
+    if (!selectedThreadId) return;
+    if (!selectedThread?.is_user_unread) return;
+
+    setThreads((current) =>
+      current.map((thread) =>
+        thread.id === selectedThreadId ? { ...thread, is_user_unread: false } : thread,
+      ),
+    );
+    emitMessengerInboxUpdated();
+    void supportService.markThreadRead(selectedThreadId).catch(() => null);
+  }, [activeWorkspace, selectedThread?.is_user_unread, selectedThreadId]);
+
+  useEffect(() => {
+    if (activeWorkspace !== "support") return;
     if (!selectedThreadId || loadingMessages) return;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [activeWorkspace, loadingMessages, messages, selectedThreadId]);
@@ -395,7 +409,7 @@ export function MessengerPage() {
           filter: `thread_id=eq.${selectedThreadId}`,
         },
         () => {
-          void loadMessages(selectedThreadId, false, true);
+          void loadMessages(selectedThreadId, true, true);
           void loadThreads(false, true);
         },
       )
