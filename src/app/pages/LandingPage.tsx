@@ -726,14 +726,14 @@ export const LandingPage = () => {
 
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Services
+                Primary Links
               </p>
               <div className="mt-4 space-y-2 text-sm">
                 <Link to="/enroll" className="block text-muted-foreground hover:text-foreground">
-                  Music Classes
+                  Learn
                 </Link>
                 <Link to="/marketplace" className="block text-muted-foreground hover:text-foreground">
-                  Music Hub Store
+                  Arrangements & Compositions
                 </Link>
                 <Link to="/manage-account" className="block text-muted-foreground hover:text-foreground">
                   Manage Account
