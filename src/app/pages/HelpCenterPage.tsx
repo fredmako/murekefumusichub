@@ -26,25 +26,25 @@ import {
 const navigationMenus = [
   {
     title: "Home",
-    description: "Use this menu for public information and guidance pages.",
+    description: "Use these top links for public pages and platform entry points.",
     icon: Compass,
-    items: ["Home", "About Us", "Testimonials", "Help", "Contact Us"],
+    items: ["Home", "Learn", "Arrangements", "Compositions"],
   },
   {
-    title: "Services",
-    description: "Use this menu to enter the platform's main offerings.",
+    title: "More Menu",
+    description: "Open More for supporting pages that stay out of the primary top bar.",
     icon: Sparkles,
-    items: ["Learn Music", "Music Hub"],
+    items: ["About", "Testimonials", "Help", "Contact"],
   },
   {
     title: "Dashboards",
-    description: "Signed-in users get a centralized menu for role-based workspaces.",
+    description: "Signed-in users open this dropdown for role-based workspaces.",
     icon: LayoutDashboard,
     items: ["Learner Dashboard", "My Library", "My Arrangements", "My Compositions", "Admin Panel"],
   },
   {
     title: "Profile Menu",
-    description: "Open your avatar menu for personal account and sign-out actions.",
+    description: "Open the profile menu for account settings, theme controls, and sign-out.",
     icon: Settings2,
     items: ["Manage Account", "Appearance", "Profile photo", "Sign out"],
   },
@@ -53,19 +53,19 @@ const navigationMenus = [
 const quickLinks = [
   {
     title: "Music Hub",
-    description: "Open it from Services to browse arrangements and compositions, preview music, and head straight to checkout.",
+    description: "Use the Arrangements and Compositions top links to browse music, preview samples, and move to checkout.",
     path: "/marketplace",
     icon: Music,
   },
   {
     title: "My Library",
-    description: "Find it under Dashboards to open your purchases, change view style, and download approved files.",
+    description: "Find it under Dashboard to open purchases, change view style, and download approved files.",
     path: "/buyer",
     icon: ShoppingBag,
   },
   {
     title: "Learner Dashboard",
-    description: "Find it under Dashboards for learning progress, enrollment activity, and a calmer student-focused workspace.",
+    description: "Find it under Dashboard for learning progress, enrollment activity, and a calmer student-focused workspace.",
     path: "/learner",
     icon: GraduationCap,
   },
@@ -94,10 +94,10 @@ const roleGuides = [
     title: "Visitors",
     icon: Sparkles,
     points: [
-      "Start on the landing page and use the Home menu to explore public platform information.",
-      "Open Services when you want to move into Learn Music or Music Hub.",
+      "Start on the landing page and use Home, Learn, Arrangements, and Compositions to navigate quickly.",
+      "Use More when you want public pages like About, Testimonials, Help, and Contact.",
       "Use the login page to create an account or sign in with Google.",
-      "Open Music Hub from Services to preview what is available before you commit to a purchase.",
+      "Open Arrangements or Compositions in the top bar to preview what is available before you commit to a purchase.",
     ],
   },
   {
@@ -106,7 +106,7 @@ const roleGuides = [
     points: [
       "Use the Learner Dashboard for a student-friendly workspace focused on progress and learning flow.",
       "Submit or track enrollment activity from the learning journey pages.",
-      "Use Dashboards as your main shortcut after signing in.",
+      "Use Dashboard as your main shortcut after signing in.",
       "Use Messenger and Community to ask questions, connect with others, and stay supported.",
     ],
   },
@@ -116,7 +116,7 @@ const roleGuides = [
     points: [
       "Browse Music Hub, preview compositions, and use filters, sorting, and list/card view to find music quickly.",
       "When you click purchase, the system takes you directly to checkout.",
-      "Use Dashboards to jump into My Library after approval.",
+      "Use Dashboard to jump into My Library after approval.",
       "After approval, open My Library to download and manage purchased files.",
     ],
   },
@@ -125,7 +125,7 @@ const roleGuides = [
     icon: Music,
     points: [
       "Use My Arrangements and My Compositions separately so each workflow stays focused.",
-      "Open both workspaces from the Dashboards menu instead of searching through the top bar.",
+      "Open both workspaces from the Dashboard menu instead of searching through the top bar.",
       "Upload new work, edit listings, review performance data, and delete old items when needed.",
       "Monitor pricing, visibility, and sales from the composer workspace.",
     ],
@@ -135,7 +135,7 @@ const roleGuides = [
     icon: LayoutDashboard,
     points: [
       "Open the Admin Panel to manage users, enrollments, support conversations, reports, and system activity.",
-      "Use Dashboards to reach the admin workspace quickly after login.",
+      "Use Dashboard to reach the admin workspace quickly after login.",
       "Use state-aware actions such as promote, demote, suspend, activate, verify, and delete only where appropriate.",
       "Export branded PDF reports with selected fields for users, transactions, requests, enrollments, and compositions.",
     ],
@@ -196,7 +196,7 @@ export function HelpCenterPage() {
           </h1>
           <p className="mt-4 max-w-3xl text-sm leading-7 text-muted-foreground sm:text-base">
             This help center gives users a practical guide to navigating Murekefu
-            Music Hub, using the new grouped navigation, switching between
+            Music Hub, using the updated navbar structure, switching between
             dashboards, carrying out common actions, and understanding what each
             role can do.
           </p>
@@ -221,10 +221,9 @@ export function HelpCenterPage() {
       <section className="section-shell pt-4">
         <div className="mb-8">
           <span className="soft-kicker">Navigation Update</span>
-          <h2 className="section-title">How the new menus are organized</h2>
+          <h2 className="section-title">How the navbar menus are organized</h2>
           <p className="section-copy">
-            The latest navigation keeps public pages, platform services, role dashboards,
-            and personal account actions in separate groups so the top bar stays cleaner.
+            The navbar now keeps primary destinations in the top row, supporting pages under More, role workspaces under Dashboard, and personal controls inside the profile menu.
           </p>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
