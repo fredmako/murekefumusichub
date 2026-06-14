@@ -73,7 +73,8 @@ export function Navbar({ cart = [] }: NavbarProps) {
   const primaryNav = [
     { label: "Home", path: "/" },
     { label: "Learn", path: "/enroll" },
-    { label: "Music Hub", path: "/marketplace" },
+    { label: "Arrangements", path: "/marketplace/arrangements" },
+    { label: "Compositions", path: "/marketplace/compositions" },
   ];
 
   const secondaryNav = [

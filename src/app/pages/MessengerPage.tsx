@@ -133,6 +133,7 @@ export function MessengerPage() {
   const compactViewportRef = useRef(isCompactViewport);
   const composerModeRef = useRef(isComposingNewThread);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     compactViewportRef.current = isCompactViewport;
@@ -344,6 +345,20 @@ export function MessengerPage() {
 
   useEffect(() => {
     if (activeWorkspace !== "support") return;
+    if (!selectedThreadId) return;
+    if (!selectedThread?.is_user_unread) return;
+
+    setThreads((current) =>
+      current.map((thread) =>
+        thread.id === selectedThreadId ? { ...thread, is_user_unread: false } : thread,
+      ),
+    );
+    emitMessengerInboxUpdated();
+    void supportService.markThreadRead(selectedThreadId).catch(() => null);
+  }, [activeWorkspace, selectedThread?.is_user_unread, selectedThreadId]);
+
+  useEffect(() => {
+    if (activeWorkspace !== "support") return;
     if (!selectedThreadId || loadingMessages) return;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [activeWorkspace, loadingMessages, messages, selectedThreadId]);
@@ -395,7 +410,7 @@ export function MessengerPage() {
           filter: `thread_id=eq.${selectedThreadId}`,
         },
         () => {
-          void loadMessages(selectedThreadId, false, true);
+          void loadMessages(selectedThreadId, true, true);
           void loadThreads(false, true);
         },
       )
@@ -512,6 +527,9 @@ export function MessengerPage() {
     setSelectedThreadId(null);
     setMessages([]);
     setMessagesError(null);
+    window.requestAnimationFrame(() => {
+      composerTextareaRef.current?.focus();
+    });
   };
 
   const handleSelectThread = (threadId: string) => {
@@ -587,8 +605,21 @@ export function MessengerPage() {
 
   const switchWorkspace = (workspace: "support" | "community") => {
     const nextParams = new URLSearchParams(searchParams);
-    nextParams.set("tab", workspace);
+    if (workspace === "support") {
+      nextParams.delete("tab");
+    } else {
+      nextParams.set("tab", workspace);
+    }
     setSearchParams(nextParams, { replace: true });
+  };
+
+  const handleComposerKeyDown = (
+    event: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) => {
+    if (event.key !== "Enter" || event.shiftKey) return;
+    event.preventDefault();
+    if (composerDisabled || !draftMessage.trim()) return;
+    void handleSendMessage();
   };
 
   if (activeWorkspace === "community") {
@@ -1039,9 +1070,11 @@ export function MessengerPage() {
                       Message
                     </Label>
                     <Textarea
+                      ref={composerTextareaRef}
                       id="support-message"
                       value={draftMessage}
                       onChange={(event) => setDraftMessage(event.target.value)}
+                      onKeyDown={handleComposerKeyDown}
                       placeholder={
                         selectedThread
                           ? "Type a message"

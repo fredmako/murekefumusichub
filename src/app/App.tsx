@@ -30,10 +30,19 @@ import {
 } from "@/context/ThemeContext";
 import { toast } from "sonner";
 import { SESSION_EXPIRED_EVENT } from "@/lib/sessionEvents";
-import { APP_ERROR_EVENT, type AppErrorAction, type AppErrorDetail, dispatchAppError } from "@/lib/appErrorEvents";
+import {
+  APP_ERROR_EVENT,
+  type AppErrorAction,
+  type AppErrorDetail,
+  dispatchAppError,
+} from "@/lib/appErrorEvents";
 import { AppErrorDialog } from "@/app/components/AppErrorDialog";
 import { Button } from "@/app/components/ui/button";
-import { buildErrorReportMessage, shouldOfferReport, simplifyErrorMessage } from "@/lib/errorMessages";
+import {
+  buildErrorReportMessage,
+  shouldOfferReport,
+  simplifyErrorMessage,
+} from "@/lib/errorMessages";
 import { supportService } from "@/services/supportService";
 import { supabase } from "@/lib/supabase";
 import { Guitar, Loader2 } from "lucide-react";
@@ -42,6 +51,7 @@ import {
   getCurrentPathWithQuery,
   persistPostLoginRedirect,
 } from "@/lib/authRedirect";
+//import { Analytics } from "@vercel/analytics/react";
 
 const CART_STORAGE_PREFIX = "choral-cart";
 
@@ -235,7 +245,12 @@ class AppErrorBoundary extends React.Component<
   }
 
   static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error, reportStatus: "idle", reportMessage: undefined };
+    return {
+      hasError: true,
+      error,
+      reportStatus: "idle",
+      reportMessage: undefined,
+    };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
@@ -247,7 +262,10 @@ class AppErrorBoundary extends React.Component<
   };
 
   handleReport = async () => {
-    if (this.state.reportStatus === "sending" || this.state.reportStatus === "sent") {
+    if (
+      this.state.reportStatus === "sending" ||
+      this.state.reportStatus === "sent"
+    ) {
       return;
     }
     this.setState({ reportStatus: "sending", reportMessage: undefined });
@@ -313,7 +331,11 @@ class AppErrorBoundary extends React.Component<
                 onClick={this.handleReport}
                 disabled={isReporting || reportSent}
               >
-                {isReporting ? "Reporting..." : reportSent ? "Reported" : "Report Error"}
+                {isReporting
+                  ? "Reporting..."
+                  : reportSent
+                    ? "Reported"
+                    : "Report Error"}
               </Button>
             </div>
             {this.state.reportMessage ? (
@@ -392,8 +414,10 @@ export default function App() {
       ({
         "--route-backdrop-image": routeBackdropImage,
         "--route-backdrop-image-size": routeBackdrop.imageSize ?? "cover",
-        "--route-backdrop-image-repeat": routeBackdrop.imageRepeat ?? "no-repeat",
-        "--route-backdrop-image-position": routeBackdrop.imagePosition ?? "center",
+        "--route-backdrop-image-repeat":
+          routeBackdrop.imageRepeat ?? "no-repeat",
+        "--route-backdrop-image-position":
+          routeBackdrop.imagePosition ?? "center",
         "--route-backdrop-overlay": routeBackdropOverlay,
         "--route-backdrop-scrim": isDarkMode
           ? "linear-gradient(180deg, rgba(5,10,22,0.12), rgba(7,14,28,0.46), rgba(6,12,22,0.76))"
@@ -453,7 +477,10 @@ export default function App() {
       setIconScale(iconScale as any);
     }
     const layoutDensity = appUser?.theme_settings?.layoutDensity;
-    if (layoutDensity && THEME_LAYOUT_DENSITIES.includes(layoutDensity as any)) {
+    if (
+      layoutDensity &&
+      THEME_LAYOUT_DENSITIES.includes(layoutDensity as any)
+    ) {
       setLayoutDensity(layoutDensity as any);
     }
     const surfaceStyle = appUser?.theme_settings?.surfaceStyle;
@@ -482,7 +509,10 @@ export default function App() {
     location.pathname.startsWith("/reset-password") ||
     location.pathname.startsWith("/auth/callback");
 
-  const handleAppErrorAction = (action: AppErrorAction, detail: AppErrorDetail | null) => {
+  const handleAppErrorAction = (
+    action: AppErrorAction,
+    detail: AppErrorDetail | null,
+  ) => {
     if (!detail) return;
     if (action === "refresh") {
       window.location.reload();
@@ -501,7 +531,9 @@ export default function App() {
       });
       supportService
         .createThread({
-          subject: detail.title ? `Error report: ${detail.title}` : "Error report",
+          subject: detail.title
+            ? `Error report: ${detail.title}`
+            : "Error report",
           message: reportMessage,
           context: "error-report",
         })
@@ -651,7 +683,9 @@ export default function App() {
     }
 
     setCart((prev) => {
-      const existing = prev.find((item) => item.composition.id === composition.id);
+      const existing = prev.find(
+        (item) => item.composition.id === composition.id,
+      );
       if (existing) {
         toast.info("This composition is already in your cart.");
         return prev;
@@ -714,7 +748,6 @@ export default function App() {
           onOpenChange={setAppErrorOpen}
           onAction={handleAppErrorAction}
         />
-
         <Suspense
           fallback={
             <div className="relative min-h-[calc(100vh-4rem)] overflow-hidden">
@@ -786,6 +819,14 @@ export default function App() {
                 <Route path="/reset-password" element={<SetNewPassword />} />
                 <Route
                   path="/marketplace"
+                  element={<Marketplace onAddToCart={handleAddToCart} />}
+                />
+                <Route
+                  path="/marketplace/arrangements"
+                  element={<Marketplace onAddToCart={handleAddToCart} />}
+                />
+                <Route
+                  path="/marketplace/compositions"
                   element={<Marketplace onAddToCart={handleAddToCart} />}
                 />
                 <Route path="/about" element={<AboutPage />} />
@@ -873,6 +914,7 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
         </Suspense>
+        //
       </div>
     </AppErrorBoundary>
   );

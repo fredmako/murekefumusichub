@@ -47,7 +47,7 @@ import { toast } from "sonner";
 import { ensureArray } from "@/lib/ensureArray";
 import { parseAccompanimentList } from "@/lib/compositionMeta";
 import { buildApiUrl } from "@/lib/apiBase";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 interface Composition {
   id: string;
@@ -136,6 +136,7 @@ function mapComposition(comp: any): Composition {
 
 export function Marketplace({ onAddToCart }: MarketplaceProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { appUser } = useAuth();
   const [activeFeed, setActiveFeed] = useState<"all" | "for-you" | "discover">(
     "all",
@@ -166,6 +167,15 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
     minimumPurchasesForPersonalized: 3,
     message: "",
   });
+
+  const forcedCategoryName = useMemo(() => {
+    if (location.pathname === "/marketplace/arrangements") return "arrangements";
+    if (location.pathname === "/marketplace/compositions") return "compositions";
+    return null;
+  }, [location.pathname]);
+  const marketplaceItemLabelPlural = forcedCategoryName ?? "compositions";
+  const marketplaceItemLabelSingular =
+    marketplaceItemLabelPlural === "arrangements" ? "arrangement" : "composition";
 
   useEffect(() => {
     const fetchMarketplaceData = async () => {
@@ -249,8 +259,17 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
     void fetchRecommendations();
   }, [appUser?.id]);
 
-  const filteredCompositions = useMemo(() => {
+  const categoryRestrictedCompositions = useMemo(() => {
     return compositions.filter((comp) => {
+      const normalizedCategoryName = String(comp.categoryName || "")
+        .trim()
+        .toLowerCase();
+      return !forcedCategoryName || normalizedCategoryName === forcedCategoryName;
+    });
+  }, [compositions, forcedCategoryName]);
+
+  const filteredCompositions = useMemo(() => {
+    return categoryRestrictedCompositions.filter((comp) => {
       const matchesSearch =
         comp.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         comp.composerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -271,6 +290,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         accompanimentFilter === "all" ||
         comp.accompaniment.includes(accompanimentFilter);
       const matchesCategory =
+        forcedCategoryName ||
         categoryFilter === "all" ||
         String(comp.categoryId || "") === categoryFilter;
 
@@ -285,7 +305,8 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
   }, [
     accompanimentFilter,
     categoryFilter,
-    compositions,
+    categoryRestrictedCompositions,
+    forcedCategoryName,
     languageFilter,
     initialFilters,
     searchTerm,
@@ -322,30 +343,38 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
 
   const availableInitials = useMemo(() => {
     const initials = new Set<string>();
-    compositions.forEach((comp) => {
+    categoryRestrictedCompositions.forEach((comp) => {
       const titleInitial = extractInitial(comp.title);
       const composerInitial = extractInitial(comp.composerName);
       if (titleInitial) initials.add(titleInitial);
       if (composerInitial) initials.add(composerInitial);
     });
     return Array.from(initials).sort((a, b) => a.localeCompare(b));
-  }, [compositions]);
+  }, [categoryRestrictedCompositions]);
 
   const featuredCompositions = useMemo(() => {
     const source =
       activeFeed === "for-you" && recommendedCompositions.length > 0
         ? recommendedCompositions
-        : compositions;
+        : categoryRestrictedCompositions;
     return [...source]
       .sort((a, b) => (b.stats?.purchases ?? 0) - (a.stats?.purchases ?? 0))
       .slice(0, 3);
-  }, [activeFeed, compositions, recommendedCompositions]);
+  }, [activeFeed, categoryRestrictedCompositions, recommendedCompositions]);
 
   const trendingCompositions = useMemo(() => {
-    return [...compositions]
+    return [...categoryRestrictedCompositions]
       .sort((a, b) => (b.stats?.views ?? 0) - (a.stats?.views ?? 0))
       .slice(0, 6);
-  }, [compositions]);
+  }, [categoryRestrictedCompositions]);
+
+  const filteredRecommendedCompositions = useMemo(() => {
+    if (!forcedCategoryName) return recommendedCompositions;
+    return recommendedCompositions.filter(
+      (comp) =>
+        String(comp.categoryName || "").trim().toLowerCase() === forcedCategoryName,
+    );
+  }, [forcedCategoryName, recommendedCompositions]);
 
   useEffect(() => {
     if (!previewComposition) return;
@@ -403,7 +432,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
     <main className="min-h-screen bg-gradient-to-b from-indigo-950/30 via-background to-background text-foreground">
       <DashboardShell
         title="Music Hub"
-        description="Browse and filter compositions and arrangements in one place."
+        description={`Browse and filter ${marketplaceItemLabelPlural}.`}
         navItems={marketplaceNavItems}
         activeNavId={activeFeed}
       >
@@ -421,7 +450,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
               <div className="relative">
                 <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Search for compositions..."
+                  placeholder={`Search for ${marketplaceItemLabelPlural}...`}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="h-10 border-white/15 bg-white/10 pl-10 pr-10 text-foreground placeholder:text-muted-foreground focus-visible:ring-primary/40"
@@ -544,13 +573,13 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                   <p className="text-sm text-muted-foreground">
                     Recommendations are temporarily unavailable.
                   </p>
-                ) : recommendedCompositions.length === 0 ? (
+                ) : filteredRecommendedCompositions.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     No recommendations yet. Check back after a few plays.
                   </p>
                 ) : (
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {recommendedCompositions.map((composition) => (
+                    {filteredRecommendedCompositions.map((composition) => (
                       <div
                         key={`recommended-${composition.id}`}
                         onClick={() => handlePreviewSelect(composition)}
@@ -632,19 +661,21 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
 
       <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 p-4 shadow-[0_20px_30px_-28px_rgba(15,23,42,0.6)] backdrop-blur">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="border-white/10 bg-white/10 text-foreground">
-              <SelectValue placeholder="Category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              {categories.map((category) => (
-                <SelectItem key={category.id} value={String(category.id)}>
-                  {category.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {!forcedCategoryName && (
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="border-white/10 bg-white/10 text-foreground">
+                <SelectValue placeholder="Category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {categories.map((category) => (
+                  <SelectItem key={category.id} value={String(category.id)}>
+                    {category.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
           <Select value={languageFilter} onValueChange={setLanguageFilter}>
             <SelectTrigger className="border-white/10 bg-white/10 text-foreground">
@@ -738,8 +769,8 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm font-medium text-muted-foreground">
           {loading
-            ? "Loading compositions..."
-            : `${sortedFilteredCompositions.length} composition${sortedFilteredCompositions.length !== 1 ? "s" : ""} found`}
+            ? `Loading ${marketplaceItemLabelPlural}...`
+            : `${sortedFilteredCompositions.length} ${marketplaceItemLabelSingular}${sortedFilteredCompositions.length !== 1 ? "s" : ""} found`}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Select value={sortMode} onValueChange={(value) => setSortMode(value as typeof sortMode)}>
@@ -929,10 +960,10 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
             <div className="py-12 text-center">
               <p className="text-gray-500">
                 {compositions.length === 0
-                  ? "No compositions available yet. Check back soon."
-                  : "No compositions found matching your criteria."}
+                  ? `No ${marketplaceItemLabelPlural} available yet. Check back soon.`
+                  : `No ${marketplaceItemLabelPlural} found matching your criteria.`}
               </p>
-              {compositions.length > 0 && (
+              {categoryRestrictedCompositions.length > 0 && (
                 <Button
                   variant="link"
                   onClick={() => {
