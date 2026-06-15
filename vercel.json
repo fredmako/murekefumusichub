@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://murekefumusichub.onrender.com/api/:path*"
+      "destination": "https://walrus-app-53hcs.ondigitalocean.app/api/:path*"
     },
     {
       "source": "/auth/callback/",
