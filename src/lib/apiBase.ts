@@ -1,5 +1,5 @@
 const envApiBase = String(
-  (import.meta as any).env?.VITE_API_BASE_URL || "",
+  (import.meta as any).env?.VITE_API_BASE_URL || "https://walrus-app-53hcs.ondigitalocean.app/",
 ).trim();
 const isBrowser = typeof window !== "undefined";
 const isDev = Boolean((import.meta as any).env?.DEV);
