@@ -5,6 +5,7 @@
   "description": "Supabase-only API server",
   "main": "index.js",
   "scripts": {
+    "prebuild": "npm ci",
     "build": "node -e \"console.log('Backend build step complete')\"",
     "start": "node index.js",
     "dev": "node ./scripts/ensure-port-free.mjs 3001 && nodemon index.js",
