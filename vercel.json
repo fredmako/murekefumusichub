@@ -1,17 +1,31 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rewrites": [
+  "version": 2,
+  "builds": [
     {
-      "source": "/api/(.+)",
-      "destination": "/api"
+      "src": "api/**/*.ts",
+      "use": "@vercel/node"
     },
     {
-      "source": "/auth/callback/",
-      "destination": "/auth/callback"
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
     },
     {
-      "source": "/(.*)",
-      "destination": "/"
+      "src": "/auth/callback/",
+      "dest": "/auth/callback"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/"
     }
   ]
 }
