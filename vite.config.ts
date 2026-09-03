@@ -13,11 +13,4 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  // Only include src directory - exclude api/ from Vite processing
-  include: ['src'],
-  build: {
-    rollupOptions: {
-      external: ['@vercel/node', 'express', '@supabase/supabase-js'],
-    },
-  },
 })
