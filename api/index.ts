@@ -6,21 +6,20 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// Table mapping: endpoint name -> schema.table
 const tableMap: Record<string, string> = {
-  users: 'public.users',
-  composers: 'public.composers',
-  compositions: 'public.compositions',
-  categories: 'public.categories',
-  purchases: 'murekefu.purchases',
-  checkouts: 'murekefu.payment_submissions',
-  support_tickets: 'public.support_tickets',
-  enrollments: 'public.enrollments',
-  invites: 'public.invites',
-  role_requests: 'public.role_requests',
-  admin_emails: 'public.admin_emails',
-  file_uploads: 'public.file_uploads',
-  payment_submissions: 'murekefu.payment_submissions',
+  users: 'users',
+  composers: 'composers',
+  compositions: 'compositions',
+  categories: 'categories',
+  purchases: 'purchases',
+  checkouts: 'payment_submissions',
+  support_tickets: 'support_tickets',
+  enrollments: 'enrollments',
+  invites: 'invites',
+  role_requests: 'role_requests',
+  admin_emails: 'admin_emails',
+  file_uploads: 'file_uploads',
+  payment_submissions: 'payment_submissions',
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -31,21 +30,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.json({ ok: true, service: 'murekefu-backend', version: '1.0.0' });
   }
   
-  const fullTable = tableMap[tableName];
-  if (!fullTable) {
+  const table = tableMap[tableName];
+  if (!table) {
     return res.status(404).json({ error: 'Not found', table: tableName, available: Object.keys(tableMap) });
   }
   
   try {
     if (req.method === 'GET') {
-      const { data, error } = await supabase.from(fullTable).select('*').limit(100);
-      if (error) return res.status(500).json({ error: error.message, table: fullTable });
+      const { data, error } = await supabase.from(table).select('*').limit(100);
+      if (error) return res.status(500).json({ error: error.message, table });
       return res.json(data || []);
     }
     
     if (req.method === 'POST') {
-      const { data, error } = await supabase.from(fullTable).insert(req.body).select();
-      if (error) return res.status(500).json({ error: error.message, table: fullTable });
+      const { data, error } = await supabase.from(table).insert(req.body).select();
+      if (error) return res.status(500).json({ error: error.message, table });
       return res.json(data?.[0] || {});
     }
     
