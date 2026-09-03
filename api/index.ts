@@ -86,11 +86,17 @@ async function handleAuth(req: VercelRequest, res: VercelResponse) {
       if (error) return res.status(400).json({ error: error.message });
 
       if (data.user) {
+        // Auto-confirm the user (free tier workaround)
+        await adminClient.auth.admin.updateUserById(data.user.id, {
+          email_confirm: true,
+          user_metadata: { full_name, requested_role: role || 'buyer' }
+        });
+
         await adminClient.from('users').upsert({ auth_uid: data.user.id, email, full_name: full_name || '' });
         const roleId = role === 'composer' ? 2 : role === 'admin' ? 3 : 1;
         await adminClient.from('user_roles').upsert({ user_id: data.user.id, role_id: roleId });
       }
-      return res.json({ user: data.user, session: data.session, message: 'Signed up' });
+      return res.json({ user: data.user, session: data.session, message: 'Signed up and confirmed' });
     }
 
     if (action === 'login') {
