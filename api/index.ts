@@ -6,18 +6,19 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const allowedTables = ['users', 'accounts', 'compositions', 'categories', 'purchases', 'checkouts', 'support_tickets', 'community_posts', 'notifications', 'enrollments', 'registrations', 'media', 'uploads', 'user_roles', 'role_requests'];
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const path = req.query.path || '';
+  // Extract path from query or URL
+  const urlPath = req.url?.replace(/^\/api\//, '') || '';
+  const tableName = urlPath.split('/')[0].split('?')[0];
   
-  if (path.includes('health') || req.url?.includes('health')) {
-    return res.json({ ok: true });
+  if (urlPath.includes('health') || !tableName) {
+    return res.json({ ok: true, service: 'murekefu-backend', version: '1.0.0' });
   }
   
-  const tableName = Array.isArray(path) ? path[0] : path;
-  const allowedTables = ['users', 'accounts', 'compositions', 'categories', 'purchases', 'checkouts', 'support_tickets', 'community_posts', 'notifications', 'enrollments', 'registrations', 'media', 'uploads', 'user_roles', 'role_requests'];
-  
   if (!allowedTables.includes(tableName)) {
-    return res.status(404).json({ error: 'Not found' });
+    return res.status(404).json({ error: 'Not found', table: tableName });
   }
   
   try {
