@@ -1,17 +1,17 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/:path*",
-      "destination": "/api/:path*"
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
     },
     {
-      "source": "/auth/callback/",
-      "destination": "/auth/callback"
+      "src": "/auth/callback/",
+      "dest": "/auth/callback"
     },
     {
-      "source": "/:path*",
-      "destination": "/"
+      "src": "/(.*)",
+      "dest": "/"
     }
   ]
 }
