@@ -13,7 +13,8 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  // Exclude API directory from Vite build - handled by Vercel serverless
+  // Only include src directory - exclude api/ from Vite processing
+  include: ['src'],
   build: {
     rollupOptions: {
       external: ['@vercel/node', 'express', '@supabase/supabase-js'],
