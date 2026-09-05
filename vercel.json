@@ -20,10 +20,6 @@
       "dest": "/api"
     },
     {
-      "src": "/auth/callback/",
-      "dest": "/auth/callback"
-    },
-    {
       "src": "/(.*)",
       "dest": "/"
     }
