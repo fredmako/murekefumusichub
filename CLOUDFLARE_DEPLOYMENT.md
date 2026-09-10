@@ -1,7 +1,8 @@
 # Cloudflare deployment
 
-This repository deploys the Vite frontend and the existing Express API together
-as a single Cloudflare Worker. `worker.js` sends `/api/*` and `/health` requests
+This repository uses an npm workspace so one root `npm ci` installs both the
+Vite frontend and Express API dependencies. It deploys the Vite frontend and
+the existing Express API together as a single Cloudflare Worker. `worker.js` sends `/api/*` and `/health` requests
 to the Express application through Cloudflare's Node.js HTTP compatibility
 layer. All other requests are served from the Vite `dist/` assets binding, with
 single-page-app fallback enabled.
@@ -19,9 +20,19 @@ repository and use these settings:
 - **Compatibility flags:** `nodejs_compat`, `enable_nodejs_http_modules`, and
   `enable_nodejs_http_server_modules` (configured in `wrangler.jsonc`).
 
-`wrangler.jsonc` publishes `dist/` as Worker assets and configures SPA fallback.
-Do not configure a separate static-site rewrite or a separate backend service:
-the Worker owns both static and `/api/*` routing.
+The `server` workspace is intentional: it makes API dependencies available to
+Wrangler after a clean root install. Do not replace it with a separate server
+install step.
+
+`wrangler.jsonc` publishes `dist/` as Worker assets. The Worker explicitly
+serves `index.html` for `/` and browser SPA navigations, serves `/assets/*` from
+the assets binding, and sends `/api/*` to Express. Do not configure a separate
+static-site rewrite or a separate backend service: the Worker owns both static
+and `/api/*` routing.
+
+Use the Worker `workers.dev` URL printed by `wrangler deploy`, or attach a
+custom domain/route to this Worker in the Cloudflare dashboard. This repository
+does not contain an account-specific domain, so it cannot name that URL.
 
 ## Variables and secrets
 
