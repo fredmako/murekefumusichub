@@ -3,9 +3,14 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
+  "workspaces": [
+    "server"
+  ],
   "scripts": {
     "build": "vite build",
     "dev": "vite",
+    "test:server": "npm --workspace server test",
+    "worker:validate": "wrangler deploy --dry-run",
     "push:deploy": "powershell -ExecutionPolicy Bypass -File ./scripts/push-deploy.ps1",
     "push:deploy:dry": "powershell -ExecutionPolicy Bypass -File ./scripts/push-deploy.ps1 -DryRun",
     "push:deploy:all": "powershell -ExecutionPolicy Bypass -File ./scripts/push-deploy.ps1 -FrontendRemotes frontend,origin -BackendRemotes backend",
@@ -75,16 +80,14 @@
     "tailwind-merge": "3.2.0",
     "tone": "^15.1.22",
     "tw-animate-css": "1.3.8",
-    "vaul": "1.1.2",
-    "serverless-http": "^3.2.0",
-    "express": "^4.18.2",
-    "@vercel/node": "^3.0.0"
+    "vaul": "1.1.2"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.1.12",
     "@vitejs/plugin-react": "4.7.0",
     "tailwindcss": "4.1.12",
-    "vite": "6.3.5"
+    "vite": "6.3.5",
+    "wrangler": "^4.130.0"
   },
   "pnpm": {
     "overrides": {
