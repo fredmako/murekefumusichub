@@ -36,7 +36,7 @@ const shouldRejectEnvApiBase = (candidate: string): boolean => {
 
     // In hosted browser environments, prefer the current-origin `/api` proxy.
     // This avoids stale provider URLs in deployment env vars from bypassing
-    // the active rewrite contract (for example Vercel -> Render).
+    // the active same-origin API contract.
     if (!isLoopbackHost(appUrl.hostname) && apiUrl.origin !== appUrl.origin) {
       return true;
     }
@@ -68,7 +68,7 @@ const resolveApiBaseFromEnv = (candidate: string): string => {
       return parsed.toString().replace(/\/+$/, "");
     }
 
-    // Same-origin absolute values without /api are usually misconfigured in Vercel env vars.
+    // Same-origin absolute values without /api are usually misconfigured in deployment environment variables.
     if (isBrowser) {
       const appOrigin = new URL(window.location.origin).origin;
       if (parsed.origin === appOrigin) {
