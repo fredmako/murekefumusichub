@@ -24,15 +24,9 @@ The `server` workspace is intentional: it makes API dependencies available to
 Wrangler after a clean root install. Do not replace it with a separate server
 install step.
 
-`wrangler.jsonc` publishes `dist/` as Worker assets. The Worker explicitly
-serves `index.html` for `/` and browser SPA navigations, serves `/assets/*` from
-the assets binding, and sends `/api/*` to Express. Do not configure a separate
-static-site rewrite or a separate backend service: the Worker owns both static
-and `/api/*` routing.
-
-Use the Worker `workers.dev` URL printed by `wrangler deploy`, or attach a
-custom domain/route to this Worker in the Cloudflare dashboard. This repository
-does not contain an account-specific domain, so it cannot name that URL.
+`wrangler.jsonc` publishes `dist/` as Worker assets and configures SPA fallback.
+Do not configure a separate static-site rewrite or a separate backend service:
+the Worker owns both static and `/api/*` routing.
 
 ## Variables and secrets
 
