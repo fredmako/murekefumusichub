@@ -299,23 +299,19 @@ pnpm test:e2e
 
 ## 🚀 Deployment
 
-### Frontend (Vercel/Netlify)
+### Cloudflare Workers
+
+The frontend and `/api/*` backend deploy together from this repository as one
+Cloudflare Worker. Build and validate the production bundle locally with:
+
 ```bash
-# Build
-pnpm run build
-
-# Deploy to Vercel
-vercel deploy
-
-# Deploy to Netlify
-netlify deploy --prod
+npm ci
+npm run build:cloudflare
+npm run worker:validate
 ```
 
-### Backend (Azure Functions)
-```bash
-cd azure-functions
-func azure functionapp publish prime-media-api
-```
+See [Cloudflare deployment](./CLOUDFLARE_DEPLOYMENT.md) for the required
+Wrangler settings and Worker secrets.
 
 ### Database (Supabase)
 - Already hosted
