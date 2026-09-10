@@ -3,18 +3,16 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "workspaces": [
-    "server"
-  ],
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "test:server": "npm --workspace server test",
-    "worker:validate": "wrangler deploy --dry-run",
+    "test:server": "npm --prefix server test",
+    "worker:validate": "npx wrangler deploy --dry-run",
     "push:deploy": "powershell -ExecutionPolicy Bypass -File ./scripts/push-deploy.ps1",
     "push:deploy:dry": "powershell -ExecutionPolicy Bypass -File ./scripts/push-deploy.ps1 -DryRun",
     "push:deploy:all": "powershell -ExecutionPolicy Bypass -File ./scripts/push-deploy.ps1 -FrontendRemotes frontend,origin -BackendRemotes backend",
-    "push:deploy:all:dry": "powershell -ExecutionPolicy Bypass -File ./scripts/push-deploy.ps1 -FrontendRemotes frontend,origin -BackendRemotes backend -DryRun"
+    "push:deploy:all:dry": "powershell -ExecutionPolicy Bypass -File ./scripts/push-deploy.ps1 -FrontendRemotes frontend,origin -BackendRemotes backend -DryRun",
+    "build:cloudflare": "npm --prefix server ci && npm run build"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -50,7 +48,6 @@
     "@radix-ui/react-tooltip": "1.1.8",
     "@supabase/supabase-js": "^2.91.0",
     "@tonejs/midi": "^2.0.28",
-    "@vercel/analytics": "^2.0.1",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "cmdk": "1.1.1",
@@ -86,8 +83,7 @@
     "@tailwindcss/vite": "4.1.12",
     "@vitejs/plugin-react": "4.7.0",
     "tailwindcss": "4.1.12",
-    "vite": "6.3.5",
-    "wrangler": "^4.130.0"
+    "vite": "6.3.5"
   },
   "pnpm": {
     "overrides": {
