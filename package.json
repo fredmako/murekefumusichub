@@ -12,7 +12,7 @@
     "push:deploy:dry": "powershell -ExecutionPolicy Bypass -File ./scripts/push-deploy.ps1 -DryRun",
     "push:deploy:all": "powershell -ExecutionPolicy Bypass -File ./scripts/push-deploy.ps1 -FrontendRemotes frontend,origin -BackendRemotes backend",
     "push:deploy:all:dry": "powershell -ExecutionPolicy Bypass -File ./scripts/push-deploy.ps1 -FrontendRemotes frontend,origin -BackendRemotes backend -DryRun",
-    "build:cloudflare": "npm --prefix server ci && npm run build"
+    "build:cloudflare": "npm run build"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -89,5 +89,8 @@
     "overrides": {
       "vite": "6.3.5"
     }
-  }
+  },
+  "workspaces": [
+    "server"
+  ]
 }
