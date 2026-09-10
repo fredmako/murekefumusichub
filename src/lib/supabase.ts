@@ -21,14 +21,34 @@ function createMissingClientStub() {
     "Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable Supabase features.";
   const err = new Error(message);
 
-  // Return a proxy that converts any function access into a rejected Promise
-  // so async callers get a clear failure instead of crashing on import.
+  // Return a proxy that converts function calls into rejected Promises so async
+  // callers get a clear failure instead of crashing on import. Auth state
+  // registration is intentionally a synchronous no-op: Supabase exposes it as
+  // a synchronous API, and callers must still be able to register cleanup
+  // handlers while configuration is missing.
   const fn = () => Promise.reject(err);
+  const unsubscribe = () => undefined;
+  const auth = new Proxy(
+    {},
+    {
+      get(_target, property) {
+        if (property === "onAuthStateChange") {
+          return () => ({
+            data: { subscription: { unsubscribe } },
+            error: null,
+          });
+        }
+
+        return fn;
+      },
+    },
+  );
 
   const proxy = new Proxy(
     {},
     {
-      get() {
+      get(_target, property) {
+        if (property === "auth") return auth;
         return fn;
       },
       apply() {
