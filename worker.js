@@ -517,6 +517,27 @@ app.post('/api/auth/sync-user', async (c) => {
 // USER ENDPOINTS
 // ============================================================
 
+// GET /api/user/roles/:authUid — used by AuthContext.tsx fetchServerRoles
+app.get('/api/user/roles/:authUid', async (c) => {
+  const authUid = c.req.param('authUid');
+  const supabaseUrl = c.env.SUPABASE_URL;
+  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  // Find user by auth_uid
+  const userRes = await fetch(`${supabaseUrl}/rest/v1/users?auth_uid=eq.${authUid}&select=id,email`, {
+    headers: {
+      'apikey': supabaseKey,
+      'Authorization': `Bearer ${supabaseKey}`,
+    },
+  });
+  const users = await userRes.json();
+  if (users.length === 0) return c.json([]);
+
+  const userRow = users[0];
+  const roles = await getUserRoles(c, userRow.id, userRow.email);
+  return c.json(roles);
+});
+
 app.get('/api/users/:id', async (c) => {
   const userId = c.req.param('id');
   const supabaseUrl = c.env.SUPABASE_URL;
