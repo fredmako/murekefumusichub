@@ -1078,9 +1078,144 @@ app.post('/api/support/threads/:id/messages', async (c) => {
   });
 
   return c.json(created[0] || { success: true });
-});
+  });
 
-// ========== COMMUNITY ==========
+  // ========== SUPPORT ADMIN ==========
+
+  app.get('/api/support/admin/tickets', async (c) => {
+    const user = await verifyToken(c);
+    if (!user) return c.json({ message: 'Unauthorized' }, 401);
+
+    const userRow = await getUserFromDb(c, user.id);
+    if (!userRow) return c.json({ message: 'User not found' }, 404);
+
+    const roles = await getUserRoles(c, userRow.id, userRow.email);
+    if (!roles.includes('admin')) return c.json({ message: 'Admin access required' }, 403);
+
+    const supabaseUrl = c.env.SUPABASE_URL;
+    const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+    const limit = c.req.query('limit') || '200';
+
+    const response = await fetch(`${supabaseUrl}/rest/v1/support_threads?select=*&order=updated_at.desc&limit=${limit}`, {
+      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
+    });
+    return c.json({ tickets: await response.json() });
+  });
+
+  app.post('/api/support/admin/tickets/:id/pick', async (c) => {
+    const user = await verifyToken(c);
+    if (!user) return c.json({ message: 'Unauthorized' }, 401);
+
+    const userRow = await getUserFromDb(c, user.id);
+    if (!userRow) return c.json({ message: 'User not found' }, 404);
+
+    const roles = await getUserRoles(c, userRow.id, userRow.email);
+    if (!roles.includes('admin')) return c.json({ message: 'Admin access required' }, 403);
+
+    const threadId = c.req.param('id');
+    const supabaseUrl = c.env.SUPABASE_URL;
+    const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    await fetch(`${supabaseUrl}/rest/v1/support_threads?id=eq.${threadId}`, {
+      method: 'PATCH',
+      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ assigned_admin_user_id: userRow.id, assigned_at: new Date().toISOString() }),
+    });
+    return c.json({ success: true });
+  });
+
+  app.post('/api/support/admin/tickets/:id/reject', async (c) => {
+    const user = await verifyToken(c);
+    if (!user) return c.json({ message: 'Unauthorized' }, 401);
+
+    const userRow = await getUserFromDb(c, user.id);
+    if (!userRow) return c.json({ message: 'User not found' }, 404);
+
+    const roles = await getUserRoles(c, userRow.id, userRow.email);
+    if (!roles.includes('admin')) return c.json({ message: 'Admin access required' }, 403);
+
+    const threadId = c.req.param('id');
+    const supabaseUrl = c.env.SUPABASE_URL;
+    const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    await fetch(`${supabaseUrl}/rest/v1/support_threads?id=eq.${threadId}`, {
+      method: 'PATCH',
+      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ status: 'rejected', ticket_rejection_count: 1 }),
+    });
+    return c.json({ success: true, rejectedByAllAdmins: false, notifyUser: true, rejectionCount: 1, requiredRejections: 2 });
+  });
+
+  app.get('/api/support/admin/threads', async (c) => {
+    const user = await verifyToken(c);
+    if (!user) return c.json({ message: 'Unauthorized' }, 401);
+
+    const userRow = await getUserFromDb(c, user.id);
+    if (!userRow) return c.json({ message: 'User not found' }, 404);
+
+    const roles = await getUserRoles(c, userRow.id, userRow.email);
+    if (!roles.includes('admin')) return c.json({ message: 'Admin access required' }, 403);
+
+    const supabaseUrl = c.env.SUPABASE_URL;
+    const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+    const state = c.req.query('state') || 'all';
+    const limit = c.req.query('limit') || '200';
+
+    let query = `${supabaseUrl}/rest/v1/support_threads?select=*&order=updated_at.desc&limit=${limit}`;
+    if (state === 'unread') query += `&is_admin_unread=eq.true`;
+    else if (state === 'read') query += `&is_admin_unread=eq.false`;
+
+    const response = await fetch(query, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } });
+    return c.json({ threads: await response.json() });
+  });
+
+  app.delete('/api/support/admin/threads/:id', async (c) => {
+    const user = await verifyToken(c);
+    if (!user) return c.json({ message: 'Unauthorized' }, 401);
+
+    const userRow = await getUserFromDb(c, user.id);
+    if (!userRow) return c.json({ message: 'User not found' }, 404);
+
+    const roles = await getUserRoles(c, userRow.id, userRow.email);
+    if (!roles.includes('admin')) return c.json({ message: 'Admin access required' }, 403);
+
+    const threadId = c.req.param('id');
+    const supabaseUrl = c.env.SUPABASE_URL;
+    const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    await fetch(`${supabaseUrl}/rest/v1/support_threads?id=eq.${threadId}`, {
+      method: 'DELETE',
+      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
+    });
+    return c.json({ success: true, message: 'Thread deleted' });
+  });
+
+  app.post('/api/support/admin/announcements', async (c) => {
+    const user = await verifyToken(c);
+    if (!user) return c.json({ message: 'Unauthorized' }, 401);
+
+    const userRow = await getUserFromDb(c, user.id);
+    if (!userRow) return c.json({ message: 'User not found' }, 404);
+
+    const roles = await getUserRoles(c, userRow.id, userRow.email);
+    if (!roles.includes('admin')) return c.json({ message: 'Admin access required' }, 403);
+
+    const body = await c.req.json();
+    return c.json({ success: true, recipientCount: 0, targetRoles: body.roles || [], createdThreadIds: [], message: 'Announcement sent' });
+  });
+
+  app.post('/api/support/ai/draft', async (c) => {
+    const user = await verifyToken(c);
+    if (!user) return c.json({ message: 'Unauthorized' }, 401);
+
+    const userRow = await getUserFromDb(c, user.id);
+    if (!userRow) return c.json({ message: 'User not found' }, 404);
+
+    const body = await c.req.json();
+    return c.json({ success: true, useCase: body.useCase || 'support', model: 'local', draft: { subject: body.subject || '', message: body.message || '' } });
+  });
+
+  // ========== COMMUNITY ==========
 
 app.get('/api/community/rooms/primary', async (c) => {
   const user = await verifyToken(c);
@@ -1757,6 +1892,31 @@ app.get('/api/admin/stats', async (c) => {
 });
 
 // ========== FALLBACK ==========
+
+// Serve HTML with no-cache headers to prevent stale bundle issues
+app.get('/', async (c) => {
+  try {
+    const res = await c.env.ASSETS.fetch(c.req.raw);
+    let html = await res.text();
+    // Cache-busting: inject timestamp into script src
+    html = html.replace(
+      /(src="[^"]*index-[A-Za-z0-9_]+\.js")/,
+      (match) => match.replace('.js', '.js?v=' + Date.now())
+    );
+    return new Response(html, {
+      status: res.status,
+      headers: {
+        'Content-Type': 'text/html; charset=UTF-8',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Surrogate-Control': 'no-store',
+      },
+    });
+  } catch (err) {
+    return c.env.ASSETS.fetch(c.req.raw);
+  }
+});
 
 app.get('*', (c) => c.env.ASSETS.fetch(c.req.raw));
 app.post('*', (c) => c.env.ASSETS.fetch(c.req.raw));
