@@ -21,10 +21,22 @@ async function verifyToken(c) {
   const token = authHeader.slice(7);
   try {
     const res = await fetch(`${c.env.SUPABASE_URL}/auth/v1/user`, {
-      headers: { 'Authorization': `Bearer ${token}`, 'apikey': c.env.SUPABASE_SERVICE_ROLE_KEY },
+      headers: { 'Authorization': `Bearer ${token}`, 'apikey': c.env.VITE_SUPABASE_ANON_KEY },
     });
     if (!res.ok) return null;
-    return await res.json();
+    const authUser = await res.json();
+    if (!authUser?.id) return null;
+
+    // Look up user in database by auth_uid
+    const supabaseUrl = c.env.SUPABASE_URL;
+    const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+    const userRes = await fetch(`${supabaseUrl}/rest/v1/users?auth_uid=eq.${authUser.id}&select=*`, {
+      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
+    });
+    const users = await userRes.json();
+    if (users.length === 0) return null;
+
+    return { ...users[0], auth_uid: users[0].auth_uid || authUser.id, email: users[0].email || authUser.email };
   } catch { return null; }
 }
 
@@ -1351,7 +1363,281 @@ app.get('/api/admin/users', async (c) => {
     if (r.roles?.name) rolesByUser[r.user_id].push(r.roles.name);
   });
 
-  return c.json((users || []).map(u => ({ ...u, computed_roles: rolesByUser[u.id] || [] })));
+  const userRoles = (users || []).map(u => ({ user_id: u.id, roles: rolesByUser[u.id] || [] }));
+
+  return c.json({ users: (users || []).map(u => ({ ...u, computed_roles: rolesByUser[u.id] || [] })), userRoles });
+});
+
+// ========== MISSING ADMIN ENDPOINTS ==========
+
+// GET /admin/transactions
+app.get('/api/admin/transactions', async (c) => {
+  const auth = await requireAdmin(c);
+  if (auth.error) return c.json({ error: auth.error }, auth.status);
+
+  const supabaseUrl = c.env.SUPABASE_URL;
+  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+  const limit = c.req.query('limit') || '50';
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/purchases?select=*&order=created_at.desc&limit=${limit}`, {
+    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
+  });
+  return c.json({ transactions: await response.json() });
+});
+
+// GET /admin/enrollments
+app.get('/api/admin/enrollments', async (c) => {
+  const auth = await requireAdmin(c);
+  if (auth.error) return c.json({ error: auth.error }, auth.status);
+
+  const supabaseUrl = c.env.SUPABASE_URL;
+  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+  const limit = c.req.query('limit') || '100';
+  const status = c.req.query('status');
+
+  let query = `${supabaseUrl}/rest/v1/enrollments?select=*&order=created_at.desc&limit=${limit}`;
+  if (status && status !== 'all') query += `&status=eq.${status}`;
+
+  const response = await fetch(query, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } });
+  return c.json({ enrollments: await response.json() });
+});
+
+// GET /admin/invites
+app.get('/api/admin/invites', async (c) => {
+  const auth = await requireAdmin(c);
+  if (auth.error) return c.json({ error: auth.error }, auth.status);
+
+  const supabaseUrl = c.env.SUPABASE_URL;
+  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/invites?select=*&order=created_at.desc&limit=50`, {
+    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
+  });
+  return c.json({ invites: await response.json() });
+});
+
+// POST /admin/invites
+app.post('/api/admin/invites', async (c) => {
+  const auth = await requireAdmin(c);
+  if (auth.error) return c.json({ error: auth.error }, auth.status);
+
+  const body = await c.req.json();
+  const supabaseUrl = c.env.SUPABASE_URL;
+  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/invites`, {
+    method: 'POST',
+    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+    body: JSON.stringify({
+      email: body.email,
+      invited_by: body.invited_by,
+      requested_role: body.requested_role || 'composer',
+      created_at: new Date().toISOString(),
+    }),
+  });
+
+  const created = await response.json();
+  return c.json(created[0] || { success: true });
+});
+
+// DELETE /admin/invites/:email
+app.delete('/api/admin/invites/:email', async (c) => {
+  const auth = await requireAdmin(c);
+  if (auth.error) return c.json({ error: auth.error }, auth.status);
+
+  const email = c.req.param('email');
+  const supabaseUrl = c.env.SUPABASE_URL;
+  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  await fetch(`${supabaseUrl}/rest/v1/invites?email=eq.${email}`, {
+    method: 'DELETE',
+    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
+  });
+  return c.json({ success: true });
+});
+
+// GET /admin/composer-requests
+app.get('/api/admin/composer-requests', async (c) => {
+  const auth = await requireAdmin(c);
+  if (auth.error) return c.json({ error: auth.error }, auth.status);
+
+  const supabaseUrl = c.env.SUPABASE_URL;
+  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/role_requests?select=*&status=eq.pending&order=requested_at.desc&limit=50`, {
+    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
+  });
+  return c.json({ requests: await response.json() });
+});
+
+// POST /admin/users/:id/demote-composer
+app.post('/api/admin/users/:id/demote-composer', async (c) => {
+  const auth = await requireAdmin(c);
+  if (auth.error) return c.json({ error: auth.error }, auth.status);
+
+  const userId = c.req.param('id');
+  const supabaseUrl = c.env.SUPABASE_URL;
+  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  const roleRes = await fetch(`${supabaseUrl}/rest/v1/roles?name=eq.composer&select=id`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } });
+  const roles = await roleRes.json();
+  if (roles[0]?.id) {
+    await fetch(`${supabaseUrl}/rest/v1/user_roles?user_id=eq.${userId}&role_id=eq.${roles[0].id}`, {
+      method: 'DELETE',
+      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
+    });
+  }
+  return c.json({ success: true });
+});
+
+// POST /admin/users/:id/demote-admin
+app.post('/api/admin/users/:id/demote-admin', async (c) => {
+  const auth = await requireAdmin(c);
+  if (auth.error) return c.json({ error: auth.error }, auth.status);
+
+  const userId = c.req.param('id');
+  const supabaseUrl = c.env.SUPABASE_URL;
+  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  const roleRes = await fetch(`${supabaseUrl}/rest/v1/roles?name=eq.admin&select=id`, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } });
+  const roles = await roleRes.json();
+  if (roles[0]?.id) {
+    await fetch(`${supabaseUrl}/rest/v1/user_roles?user_id=eq.${userId}&role_id=eq.${roles[0].id}`, {
+      method: 'DELETE',
+      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
+    });
+  }
+  return c.json({ success: true });
+});
+
+// POST /admin/users/:id/unsuspend
+app.post('/api/admin/users/:id/unsuspend', async (c) => {
+  const auth = await requireAdmin(c);
+  if (auth.error) return c.json({ error: auth.error }, auth.status);
+
+  const userId = c.req.param('id');
+  await fetch(`${c.env.SUPABASE_URL}/rest/v1/users?id=eq.${userId}`, {
+    method: 'PATCH',
+    headers: { 'apikey': c.env.SUPABASE_SERVICE_ROLE_KEY, 'Authorization': `Bearer ${c.env.SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ is_active: true }),
+  });
+  return c.json({ success: true });
+});
+
+// POST /admin/role-requests/:userId/reject
+app.post('/api/admin/role-requests/:userId/reject', async (c) => {
+  const auth = await requireAdmin(c);
+  if (auth.error) return c.json({ error: auth.error }, auth.status);
+
+  const userId = c.req.param('userId');
+  const supabaseUrl = c.env.SUPABASE_URL;
+  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  await fetch(`${supabaseUrl}/rest/v1/role_requests?user_id=eq.${userId}`, {
+    method: 'PATCH',
+    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ status: 'rejected' }),
+  });
+  return c.json({ success: true });
+});
+
+// GET /admin/registration/regulations
+app.get('/api/admin/registration/regulations', async (c) => {
+  const auth = await requireAdmin(c);
+  if (auth.error) return c.json({ error: auth.error }, auth.status);
+
+  const supabaseUrl = c.env.SUPABASE_URL;
+  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/registration_regulations?select=*&limit=1`, {
+    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
+  });
+  const data = await response.json();
+  return c.json(data[0] || { enrollmentFee: 0, composerRequestFee: 0, bankName: '', bankAccountNumber: '', accountName: '' });
+});
+
+// PUT /admin/registration/regulations
+app.put('/api/admin/registration/regulations', async (c) => {
+  const auth = await requireAdmin(c);
+  if (auth.error) return c.json({ error: auth.error }, auth.status);
+
+  const body = await c.req.json();
+  const supabaseUrl = c.env.SUPABASE_URL;
+  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  // Upsert regulations
+  const checkRes = await fetch(`${supabaseUrl}/rest/v1/registration_regulations?select=id&limit=1`, {
+    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
+  });
+  const existing = await checkRes.json();
+
+  if (existing.length > 0) {
+    await fetch(`${supabaseUrl}/rest/v1/registration_regulations?id=eq.${existing[0].id}`, {
+      method: 'PATCH',
+      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify(body),
+    });
+  } else {
+    await fetch(`${supabaseUrl}/rest/v1/registration_regulations`, {
+      method: 'POST',
+      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify(body),
+    });
+  }
+  return c.json({ success: true });
+});
+
+// GET /admin/registration/payments
+app.get('/api/admin/registration/payments', async (c) => {
+  const auth = await requireAdmin(c);
+  if (auth.error) return c.json({ error: auth.error }, auth.status);
+
+  const supabaseUrl = c.env.SUPABASE_URL;
+  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+  const limit = c.req.query('limit') || '50';
+  const status = c.req.query('status');
+  const type = c.req.query('type');
+
+  let query = `${supabaseUrl}/rest/v1/payment_submissions?select=*&order=submitted_at.desc&limit=${limit}`;
+  if (status && status !== 'all') query += `&status=eq.${status}`;
+  if (type && type !== 'all') query += `&type=eq.${type}`;
+
+  const response = await fetch(query, { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } });
+  return c.json({ payments: await response.json() });
+});
+
+// POST /admin/registration/payments/:id/approve
+app.post('/api/admin/registration/payments/:id/approve', async (c) => {
+  const auth = await requireAdmin(c);
+  if (auth.error) return c.json({ error: auth.error }, auth.status);
+
+  const submissionId = c.req.param('id');
+  const supabaseUrl = c.env.SUPABASE_URL;
+  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  await fetch(`${supabaseUrl}/rest/v1/payment_submissions?id=eq.${submissionId}`, {
+    method: 'PATCH',
+    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ status: 'approved', approved_at: new Date().toISOString() }),
+  });
+  return c.json({ success: true });
+});
+
+// POST /admin/registration/payments/:id/reject
+app.post('/api/admin/registration/payments/:id/reject', async (c) => {
+  const auth = await requireAdmin(c);
+  if (auth.error) return c.json({ error: auth.error }, auth.status);
+
+  const submissionId = c.req.param('id');
+  const supabaseUrl = c.env.SUPABASE_URL;
+  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  await fetch(`${supabaseUrl}/rest/v1/payment_submissions?id=eq.${submissionId}`, {
+    method: 'PATCH',
+    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ status: 'rejected', rejected_at: new Date().toISOString() }),
+  });
+  return c.json({ success: true });
 });
 
 app.post('/api/admin/users/:id/promote-composer', async (c) => {
