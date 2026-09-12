@@ -193,6 +193,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const roles = ["buyer"];
 
     try {
+      // Check user_roles table
+      const { data: userRoleRows, error: userRolesErr } = await supabase
+        .from("user_roles")
+        .select("role_id, roles(name)")
+        .eq("user_id", userId);
+      if (!userRolesErr && userRoleRows) {
+        userRoleRows.forEach((row: any) => {
+          const roleName = row?.roles?.name;
+          if (roleName && !roles.includes(roleName)) roles.push(roleName);
+        });
+      }
+    } catch (err) {
+      console.warn("[resolveFallbackRoles] user_roles lookup failed:", err);
+    }
+
+    try {
       const composerActive = await hasActiveComposerProfile(userId);
       if (composerActive && !roles.includes("composer")) roles.push("composer");
     } catch (err) {
