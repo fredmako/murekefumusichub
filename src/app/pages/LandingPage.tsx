@@ -16,14 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/app/components/ui/dialog";
+import { Button } from "@/app/components/ui/button";
 import ShowBanner from "../utils/privacyBanner";
 import { useTheme } from "@/context/ThemeContext";
 import bg1 from "@/app/components/images/bg_1.jpg";
@@ -210,16 +203,10 @@ export const LandingPage = () => {
   const location = useLocation();
   const { mode } = useTheme();
   const isDarkMode = mode === "dark";
-  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [expandedTestimonials, setExpandedTestimonials] = useState<
     Record<string, boolean>
   >({});
   const landingImages = isDarkMode ? LANDING_DARK_IMAGES : LANDING_LIGHT_IMAGES;
-
-  useEffect(() => {
-    const accepted = localStorage.getItem("privacyAccepted");
-    setIsPrivacyOpen(accepted !== "true");
-  }, []);
 
   useEffect(() => {
     if (!location.hash) return;
@@ -240,7 +227,6 @@ export const LandingPage = () => {
 
   const handleAcceptPrivacy = () => {
     localStorage.setItem("privacyAccepted", "true");
-    setIsPrivacyOpen(false);
   };
 
   return (
@@ -259,24 +245,6 @@ export const LandingPage = () => {
           aria-hidden="true"
         />
       ) : null}
-      <Dialog open={isPrivacyOpen} onOpenChange={setIsPrivacyOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Privacy Policy Notice</DialogTitle>
-            <DialogDescription>
-              We respect your privacy. By continuing to use this website, you
-              agree to our privacy and data usage practices.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={() => navigate("/privacy-policy")}>
-              View Privacy Policy
-            </Button>
-            <Button onClick={handleAcceptPrivacy}>Accept & Continue</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <section className="section-shell route-backdrop-panel texture-speckle motion-reveal relative overflow-hidden rounded-3xl border border-white/45 bg-card/35 shadow-[0_28px_60px_-38px_rgba(15,23,42,0.72)] dark:border-white/10 dark:bg-card/30">
         {pickImageUrl(1) ? (
           <div
