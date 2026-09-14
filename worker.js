@@ -9,6 +9,14 @@ app.use('/api/*', cors({
   allowHeaders: ['Content-Type', 'Authorization'],
 }));
 
+// Add no-cache headers to all API responses
+app.use('/api/*', async (c, next) => {
+  await next();
+  c.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+  c.header('Pragma', 'no-cache');
+  c.header('Expires', '0');
+});
+
 // Health
 app.get('/api/health', (c) => c.json({ ok: true, service: 'murekefu-music-hub' }));
 app.get('/health', (c) => c.json({ ok: true, service: 'murekefu-music-hub' }));
