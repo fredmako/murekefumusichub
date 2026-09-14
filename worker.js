@@ -48,6 +48,17 @@ async function getUserFromDb(c, authUid) {
   return users[0] || null;
 }
 
+// Check if a record exists by ID - returns { exists: boolean, data?: any }
+async function checkExists(c, table, idField, id, selectFields = '*') {
+  const supabaseUrl = c.env.SUPABASE_URL;
+  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+  const res = await fetch(`${supabaseUrl}/rest/v1/${table}?${idField}=eq.${id}&select=${selectFields}`, {
+    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
+  });
+  const data = await res.json();
+  return { exists: Array.isArray(data) && data.length > 0, data: data[0] || null };
+}
+
 async function getUserRoles(c, userId, userEmail) {
   const roles = ['buyer'];
   const supabaseUrl = c.env.SUPABASE_URL;
@@ -496,6 +507,14 @@ app.put('/api/compositions/:id', async (c) => {
   const supabaseUrl = c.env.SUPABASE_URL;
   const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
 
+  // Check if composition exists first
+  const { exists, data: existingComp } = await checkExists(c, 'compositions', 'id', id);
+  if (!exists) return c.json({ message: 'Composition not found' }, 404);
+  // Verify user owns this composition (or is admin)
+  if (existingComp.composer_id !== userRow.id && !roles.includes('admin')) {
+    return c.json({ message: 'Forbidden' }, 403);
+  }
+
   const updates = {};
   if (body.title !== undefined) updates.title = body.title;
   if (body.description !== undefined) updates.description = body.description;
@@ -524,6 +543,12 @@ app.delete('/api/compositions/:id', async (c) => {
   const id = c.req.param('id');
   const supabaseUrl = c.env.SUPABASE_URL;
   const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  // Check if composition exists
+  const { exists } = await checkExists(c, 'compositions', 'id', id);
+  if (!exists) {
+    return c.json({ message: 'Composition not found' }, 404);
+  }
 
   await fetch(`${supabaseUrl}/rest/v1/compositions?id=eq.${id}`, {
     method: 'PATCH',
@@ -786,6 +811,24 @@ app.post('/api/checkout/submit', async (c) => {
   if (items.length === 0) return c.json({ message: 'No items to checkout' }, 400);
 
   const compositionIds = items.map(i => i.composition_id).filter(Boolean);
+  if (compositionIds.length === 0) return c.json({ message: 'No valid composition IDs provided' }, 400);
+
+  // Check if compositions exist and are published
+  const compCheckRes = await fetch(`${supabaseUrl}/rest/v1/compositions?id=in.(${compositionIds.join(',')})&select=id,title,price,is_published`, {
+    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
+  });
+  const comps = await compCheckRes.json();
+  const compMap = {};
+  (comps || []).forEach(c => { compMap[c.id] = c; });
+
+  const missingIds = compositionIds.filter(id => !compMap[id]);
+  if (missingIds.length > 0) {
+    return c.json({ message: `Compositions not found: ${missingIds.join(',')}` }, 404);
+  }
+  const unpublishedIds = compositionIds.filter(id => !compMap[id]?.is_published);
+  if (unpublishedIds.length > 0) {
+    return c.json({ message: `Compositions not published: ${unpublishedIds.join(',')}` }, 400);
+  }
 
   // Check for existing purchases
   const existingRes = await fetch(`${supabaseUrl}/rest/v1/purchases?buyer_id=eq.${userRow.id}&composition_id=in.(${compositionIds.join(',')})&select=composition_id`, {
@@ -806,18 +849,15 @@ app.post('/api/checkout/submit', async (c) => {
     });
   }
 
-  // Get composition prices
-  const compRes = await fetch(`${supabaseUrl}/rest/v1/compositions?id=in.(${newItems.map(i => i.composition_id).join(',')})&select=id,price`, {
-    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
-  });
-  const compositions = await compRes.json();
+  // Use already-fetched compMap for prices
   const priceMap = {};
-  (compositions || []).forEach(comp => { priceMap[comp.id] = comp.price || 0; });
+  Object.entries(compMap).forEach(([id, comp]) => {
+    priceMap[id] = comp.price || 0;
+  });
 
   const totalAmount = newItems.reduce((sum, item) => sum + (priceMap[item.composition_id] || 0), 0);
 
   // Create payment submission
-  const submissions = [];
   for (const item of newItems) {
     const submissionRes = await fetch(`${supabaseUrl}/rest/v1/payment_submissions`, {
       method: 'POST',
@@ -1932,19 +1972,27 @@ app.get('/api/admin/stats', async (c) => {
 // Serve HTML with no-cache headers to prevent stale bundle issues
 app.get('/', async (c) => {
   try {
-    const res = await c.env.ASSETS.fetch(c.req.raw);
+    // Add version param to bypass browser cache
+    const url = new URL(c.req.url);
+    url.searchParams.set('_v', Date.now().toString());
+    const freshReq = new Request(url, {
+      headers: c.req.headers,
+      method: c.req.method,
+    });
+    const res = await c.env.ASSETS.fetch(freshReq);
     let html = await res.text();
-    // Cache-busting: inject timestamp into script src
+    // Inject version into script src
     html = html.replace(
       /(src="[^"]*index-[A-Za-z0-9_]+\.js")/,
       (match) => match.replace('.js', '.js?v=' + Date.now())
     );
     // Replace favicon.ico with inline SVG to avoid 404, and remove apple-touch-icon
+    // Use flexible regex that handles both single and double quotes, with or without self-closing
     html = html.replace(
-      /<link rel="icon".*?href="\/favicon\.ico".*?\/?>/,
+      /<link[^>]*rel=["']icon["'][^>]*href=["']\/favicon\.ico["'][^>]*\/?>/gi,
       '<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E🎵%3C/text%3E%3C/svg%3E" />'
     );
-    html = html.replace(/<link rel="apple-touch-icon".*?href="\/apple-touch-icon\.png".*?\/?>/, '');
+    html = html.replace(/<link[^>]*rel=["']apple-touch-icon["'][^>]*href=["']\/apple-touch-icon\.png["'][^>]*\/?>/gi, '');
     return new Response(html, {
       status: res.status,
       headers: {
