@@ -59,6 +59,17 @@ async function checkExists(c, table, idField, id, selectFields = '*') {
   return { exists: Array.isArray(data) && data.length > 0, data: data[0] || null };
 }
 
+// Fetch a single record by ID, returning null if not found (avoids separate existence check)
+async function fetchOne(c, table, idField, id, selectFields = '*') {
+  const supabaseUrl = c.env.SUPABASE_URL;
+  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+  const res = await fetch(`${supabaseUrl}/rest/v1/${table}?${idField}=eq.${id}&select=${selectFields}`, {
+    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
+  });
+  const data = await res.json();
+  return (Array.isArray(data) && data.length > 0) ? data[0] : null;
+}
+
 async function getUserRoles(c, userId, userEmail) {
   const roles = ['buyer'];
   const supabaseUrl = c.env.SUPABASE_URL;
@@ -447,12 +458,9 @@ app.get('/api/compositions/:id', async (c) => {
   const supabaseUrl = c.env.SUPABASE_URL;
   const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  const response = await fetch(`${supabaseUrl}/rest/v1/compositions?id=eq.${id}&select=*`, {
-    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
-  });
-  const compositions = await response.json();
-  if (compositions.length === 0) return c.json({ error: 'Composition not found' }, 404);
-  return c.json(compositions[0]);
+  const comp = await fetchOne(c, 'compositions', 'id', id);
+  if (!comp) return c.json({ message: 'Composition not found' }, 404);
+  return c.json(comp);
 });
 
 app.post('/api/compositions', async (c) => {
