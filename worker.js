@@ -700,6 +700,7 @@ app.get('/api/purchases', async (c) => {
   const response = await fetch(`${supabaseUrl}/rest/v1/purchases?buyer_id=eq.${userRow.id}&select=*&order=created_at.desc`, {
     headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
   });
+  c.header('Cache-Control', 'no-cache, no-store, must-revalidate');
   const purchases = await response.json();
 
   // Hydrate with composition details
@@ -1041,6 +1042,7 @@ app.get('/api/support/inbox', async (c) => {
   const response = await fetch(query, {
     headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
   });
+  c.header('Cache-Control', 'no-cache, no-store, must-revalidate');
   const threads = await response.json();
 
   return c.json({ threads: threads || [] });
@@ -1608,6 +1610,7 @@ app.get('/api/enrollments/my', async (c) => {
   const response = await fetch(`${supabaseUrl}/rest/v1/enrollments?user_id=eq.${userRow.id}&select=*&order=created_at.desc&limit=${limit}`, {
     headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
   });
+  c.header('Cache-Control', 'no-cache, no-store, must-revalidate');
   const enrollments = await response.json();
 
   // Hydrate with composition details
