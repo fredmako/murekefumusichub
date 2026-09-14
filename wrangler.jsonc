@@ -8,9 +8,9 @@
     "enable_nodejs_http_modules",
     "enable_nodejs_http_server_modules"
   ],
+  "type": "module",
   "assets": {
     "directory": "./dist",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS"
   }
 }
