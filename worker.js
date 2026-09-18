@@ -1632,57 +1632,46 @@ app.get('/api/enrollments/my', async (c) => {
   });
 });
 
-// GET /admin/invites
+// GET /admin/invites — D1 implementation
 app.get('/api/admin/invites', async (c) => {
   const auth = await requireAdmin(c);
   if (auth.error) return c.json({ error: auth.error }, auth.status);
-
-  const supabaseUrl = c.env.SUPABASE_URL;
-  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  const response = await fetch(`${supabaseUrl}/rest/v1/invites?select=*&order=created_at.desc&limit=50`, {
-    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
-  });
-  return c.json({ invites: await response.json() });
+  const { results } = await c.env.DB.prepare(
+    'SELECT * FROM invites ORDER BY created_at DESC LIMIT 50'
+  ).all();
+  return c.json(results || []);
 });
 
-// POST /admin/invites
+// POST /admin/invites — D1 implementation
 app.post('/api/admin/invites', async (c) => {
   const auth = await requireAdmin(c);
   if (auth.error) return c.json({ error: auth.error }, auth.status);
-
-  const body = await c.req.json();
-  const supabaseUrl = c.env.SUPABASE_URL;
-  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  const response = await fetch(`${supabaseUrl}/rest/v1/invites`, {
-    method: 'POST',
-    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
-    body: JSON.stringify({
-      email: body.email,
-      invited_by: body.invited_by,
-      requested_role: body.requested_role || 'composer',
-      created_at: new Date().toISOString(),
-    }),
-  });
-
-  const created = await response.json();
-  return c.json(created[0] || { success: true });
+  const body = await c.req.json().catch(() => ({}));
+  const email = String(body.email || '').trim().toLowerCase();
+  if (!email) return c.json({ error: 'Email is required' }, 400);
+  const invitedBy = body.invited_by || auth.userRow?.id || auth.user?.id;
+  if (!invitedBy) return c.json({ error: 'Inviting admin could not be identified' }, 400);
+  const id = crypto.randomUUID();
+  try {
+    await c.env.DB.prepare(
+      'INSERT INTO invites (id, email, invited_by, requested_role, created_at, used) VALUES (?, ?, ?, ?, ?, 0)'
+    ).bind(id, email, invitedBy, body.requested_role || 'composer', new Date().toISOString()).run();
+    const { results } = await c.env.DB.prepare('SELECT * FROM invites WHERE id = ?').bind(id).all();
+    return c.json(results?.[0] || { id, email, invited_by: invitedBy, requested_role: body.requested_role || 'composer', used: 0 }, 201);
+  } catch (err) {
+    if (String(err?.message || err).toLowerCase().includes('unique')) {
+      return c.json({ error: 'An invite already exists for this email' }, 409);
+    }
+    return c.json({ error: 'Failed to create invite' }, 500);
+  }
 });
 
-// DELETE /admin/invites/:email
+// DELETE /admin/invites/:email — D1 implementation
 app.delete('/api/admin/invites/:email', async (c) => {
   const auth = await requireAdmin(c);
   if (auth.error) return c.json({ error: auth.error }, auth.status);
-
-  const email = c.req.param('email');
-  const supabaseUrl = c.env.SUPABASE_URL;
-  const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  await fetch(`${supabaseUrl}/rest/v1/invites?email=eq.${email}`, {
-    method: 'DELETE',
-    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
-  });
+  const email = decodeURIComponent(c.req.param('email') || '').trim().toLowerCase();
+  await c.env.DB.prepare('DELETE FROM invites WHERE email = ?').bind(email).run();
   return c.json({ success: true });
 });
 
