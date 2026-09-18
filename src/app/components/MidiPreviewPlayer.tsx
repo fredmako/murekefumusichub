@@ -41,11 +41,10 @@ export function MidiPreviewPlayer({
   const partRef = useRef<Tone.Part<MidiNoteEvent> | null>(null);
   const onPreviewEndRef = useRef(onPreviewEnd);
 
-  useEffect(() => {
-    onPreviewEndRef.current = onPreviewEnd;
-  }, [onPreviewEnd]);
-
   const teardownPlayback = () => {
+    // Do not touch Tone.Transport during initial render. Tone may create or
+    // resume an AudioContext there, which browsers reject without a gesture.
+    if (!partRef.current && !synthRef.current) return;
     Tone.Transport.stop();
     Tone.Transport.cancel(0);
     partRef.current?.dispose();
@@ -53,6 +52,10 @@ export function MidiPreviewPlayer({
     partRef.current = null;
     synthRef.current = null;
   };
+
+  useEffect(() => {
+    onPreviewEndRef.current = onPreviewEnd;
+  }, [onPreviewEnd]);
 
   useEffect(() => {
     setStatus("idle");

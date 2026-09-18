@@ -419,13 +419,24 @@ app.put('/api/account', async (c) => {
   if (body.displayName !== undefined) updates.display_name = body.displayName || null;
   if (body.phone !== undefined) updates.phone = String(body.phone || '').trim().slice(0, 32) || null;
   if (body.avatarUrl !== undefined) updates.avatar_url = body.avatarUrl || null;
+  if (body.themeSettings !== undefined) {
+    if (!body.themeSettings || typeof body.themeSettings !== 'object' || Array.isArray(body.themeSettings)) {
+      return c.json({ message: 'themeSettings must be an object' }, 400);
+    }
+    updates.theme_settings = body.themeSettings;
+  }
 
   if (Object.keys(updates).length === 0) return c.json({ message: 'No updatable fields provided' }, 400);
 
   const response = await fetch(`${c.env.SUPABASE_URL}/rest/v1/users?id=eq.${userRow.id}`, {
     method: 'PATCH',
     headers: { 'apikey': c.env.SUPABASE_SERVICE_ROLE_KEY, 'Authorization': `Bearer ${c.env.SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
-    body: JSON.stringify(updates),
+    body: JSON.stringify({
+      ...updates,
+      ...(updates.theme_settings !== undefined
+        ? { theme_settings: updates.theme_settings }
+        : {}),
+    }),
   });
 
   const updated = await response.json();
