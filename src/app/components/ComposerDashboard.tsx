@@ -52,10 +52,9 @@ import {
 import { Badge } from "@/app/components/ui/badge";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
-import { UploadComposition } from "@/app/components/UploadComposition";
+import UploadWork from "@/app/components/UploadWork";
 import { DashboardShell } from "@/app/components/DashboardShell";
 import { PdfFieldExportMenu } from "@/app/components/PdfFieldExportMenu";
-import { supabase } from "@/lib/supabase";
 import { compositionService } from "@/services/api";
 import { toast } from "sonner";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
@@ -163,95 +162,74 @@ export function ComposerDashboard() {
   // Function to fetch composer data
   const fetchComposerData = async () => {
     try {
-      if (!appUser?.auth_uid) {
+      if (!appUser?.id) {
         toast.error("Not authenticated");
         return;
       }
 
-      // Step 1: Get user's UUID from auth UID
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select("id")
-        .eq("auth_uid", appUser.auth_uid)
-        .maybeSingle();
+      // Fetch compositions via the API (already scoped to this composer by the worker)
+      const compositions = await compositionService.getByComposer(appUser.id);
+      const compList = Array.isArray(compositions) ? compositions : [];
 
-      if (userError || !userData) {
-        toast.error("User profile not found");
-        setStats((prev) => ({ ...prev, loading: false }));
-        return;
+      // Fetch purchases for these compositions via the worker
+      const compIds = compList.map((c: any) => c.id).filter(Boolean);
+      let purchases: Array<{ composition_id?: string | null; price_paid?: number | null }> = [];
+      if (compIds.length > 0) {
+        try {
+          const purchRes = await apiRequest<any[]>("/admin/purchases", {
+            method: "GET",
+            requiresAuth: true,
+            timeoutMs: 15000,
+          });
+          const allPurchases = Array.isArray(purchRes) ? purchRes : [];
+          const compIdSet = new Set(compIds);
+          purchases = allPurchases
+            .filter((p) => compIdSet.has(p.composition_id))
+            .map((p) => ({
+              composition_id: p.composition_id,
+              price_paid: p.price_paid || 0,
+            }));
+        } catch {
+          // Purchases endpoint may not exist yet; continue with empty
+        }
       }
 
-      // Step 2: Get composer record by user UUID
-      const { data: composerData, error: composerError } = await supabase
-        .from("composers")
-        .select("id")
-        .eq("user_id", userData.id)
-        .single();
-
-      if (composerError || !composerData) {
-        toast.error("Composer profile not found");
-        setStats((prev) => ({ ...prev, loading: false }));
-        return;
+      // Fetch payment submissions for these compositions
+      let approvedSubmissions: Array<{ composition_id?: string | null; amount?: number | null; purchase_id?: string | null; status?: string }> = [];
+      if (compIds.length > 0) {
+        try {
+          const subRes = await apiRequest<any[]>("/admin/payment-submissions", {
+            method: "GET",
+            requiresAuth: true,
+            timeoutMs: 15000,
+          });
+          const allSubs = Array.isArray(subRes) ? subRes : [];
+          const compIdSet = new Set(compIds);
+          approvedSubmissions = allSubs
+            .filter((s) => s.status === "approved" && compIdSet.has(s.composition_id))
+            .map((s) => ({
+              composition_id: s.composition_id,
+              price_paid: Number(s.amount || 0),
+              purchase_id: s.purchase_id || null,
+            }));
+        } catch {
+          // Payment submissions endpoint may not exist yet; continue with empty
+        }
       }
-
-      // Get composer's compositions with stats
-      const { data: compositions, error: compError } = await supabase
-        .from("compositions")
-        .select(
-          `
-          id,
-          title,
-          description,
-          price,
-          created_at,
-          updated_at,
-          is_published,
-          difficulty,
-          duration,
-          language,
-          accompaniment,
-          voice_parts,
-          pdf_url,
-          category_id,
-          categories(name),
-          composition_stats(views, purchases)
-        `,
-        )
-        .eq("composer_id", composerData.id)
-        .eq("deleted", false);
-
-      if (compError) throw compError;
-
-      // Get total sales and revenue
-      const { data: purchases, error: purchaseError } = await supabase
-        .from("purchases")
-        .select("id, price_paid, composition_id")
-        .in("composition_id", compositions?.map((c) => c.id) || [])
-        .eq("is_active", true);
-
-      if (purchaseError) throw purchaseError;
-
-      const { data: approvedSubmissions, error: submissionError } = await supabase
-        .from("payment_submissions")
-        .select("amount, composition_id, purchase_id, status")
-        .in("composition_id", compositions?.map((c) => c.id) || [])
-        .eq("status", "approved");
-
-      if (submissionError) throw submissionError;
 
       const purchaseIdSet = new Set(
-        (purchases || []).map((purchase) => String(purchase.id || "")),
+        (purchases || []).map((purchase) => String(purchase.composition_id || "")),
       );
       const approvedRows =
         approvedSubmissions
           ?.filter(
             (submission) =>
               !submission.purchase_id ||
-              !purchaseIdSet.has(String(submission.purchase_id)),
+              !purchaseIdSet.has(String(submission.composition_id)),
           )
           .map((submission) => ({
             composition_id: submission.composition_id,
-            price_paid: Number(submission.amount || 0),
+            price_paid: Number(submission.price_paid || 0),
           })) || [];
 
       const combinedPurchases = [
@@ -266,8 +244,31 @@ export function ComposerDashboard() {
         combinedPurchases.reduce((sum, p) => sum + (p.price_paid || 0), 0) || 0;
       const totalSales = combinedPurchases.length || 0;
 
+      // Enrich compositions with stats from purchases
+      const compIdPurchaseMap = new Map<string, number>();
+      combinedPurchases.forEach((p) => {
+        if (p.composition_id) {
+          compIdPurchaseMap.set(
+            p.composition_id,
+            (compIdPurchaseMap.get(p.composition_id) || 0) + 1,
+          );
+        }
+      });
+
+      const enrichedCompositions = compList.map((c: any) => ({
+        ...c,
+        composition_stats: [
+          {
+            views: c.views || 0,
+            purchases: compIdPurchaseMap.get(c.id) || 0,
+          },
+        ],
+        categories: c.category_name ? { name: c.category_name } : null,
+        category_name: c.category_name || null,
+      }));
+
       setStats({
-        composerCompositions: compositions || [],
+        composerCompositions: enrichedCompositions,
         totalRevenue,
         totalSales,
         purchases: combinedPurchases,
@@ -306,10 +307,22 @@ export function ComposerDashboard() {
 
   // Redirect unauthenticated users to login and preserve their original route.
   useEffect(() => {
-    if (!authLoading && appUser === null) {
+    if (authLoading) return;
+
+    const token = localStorage.getItem("murekefu_auth_token");
+    if (!appUser && token) {
+      return; // Wait for auth to load
+    }
+
+    if (!appUser) {
       const currentPath = `${location.pathname}${location.search}${location.hash}`;
       persistPostLoginRedirect(currentPath);
       navigate(buildLoginPath({ nextPath: currentPath }), { replace: true });
+      return;
+    }
+
+    if (!appUser.roles?.includes("composer") && !appUser.roles?.includes("admin")) {
+      navigate(appUser.roles?.includes("learner") ? "/learner" : "/buyer", { replace: true });
     }
   }, [appUser, authLoading, location.hash, location.pathname, location.search, navigate]);
 
@@ -682,16 +695,15 @@ export function ComposerDashboard() {
                   Add a new choral {entryLabel.toLowerCase()} to the marketplace
                 </DialogDescription>
               </DialogHeader>
-              <UploadComposition
+              <UploadWork
                 onClose={() => setIsUploadOpen(false)}
-                defaultCategoryName={
+                type={
                   isArrangementsView
-                    ? "arrangements"
+                    ? "arrangement"
                     : isCompositionsView
-                      ? "compositions"
-                      : undefined
+                      ? "composition"
+                      : "composition"
                 }
-                entryLabel={entryLabel}
               />
             </DialogContent>
           </Dialog>

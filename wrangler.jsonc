@@ -4,13 +4,17 @@
   "main": "worker.js",
   "compatibility_date": "2026-09-10",
   "compatibility_flags": [
-    "nodejs_compat",
-    "enable_nodejs_http_modules",
-    "enable_nodejs_http_server_modules"
+    "nodejs_compat"
   ],
-  "type": "module",
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS"
-  }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "murekefu-db",
+      "database_id": "117b6082-cd56-40d8-8f77-85b8d4e8f19e"
+    }
+  ]
 }

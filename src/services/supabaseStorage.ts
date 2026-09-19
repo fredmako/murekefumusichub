@@ -1,5 +1,4 @@
-import { supabase } from "@/lib/supabase";
-// use Supabase auth session token
+import { buildApiUrl } from "@/lib/apiBase";
 
 export type StorageBucket = "compositions" | "thumbnails" | "avatars";
 
@@ -15,87 +14,73 @@ export interface UploadResult {
 }
 
 /**
- * Upload file to Supabase Storage
- * Uses auth UID as the user identifier in the path
+ * Upload file via the Cloudflare Worker API.
+ * Uses the stored JWT token for auth.
  */
 export async function uploadFile(
   file: File,
   options: UploadOptions,
 ): Promise<UploadResult> {
-  // get current supabase session user
-  const {
-    data: { session },
-    error: sessionError,
-  } = await supabase.auth.getSession();
-  if (sessionError || !session?.user) {
+  const token = localStorage.getItem("murekefu_auth_token");
+  if (!token) {
     throw new Error("User must be authenticated to upload files");
   }
-  const authUid = session.user.id;
+
+  if (!file) {
+    throw new Error("No file selected for upload");
+  }
+
+  if (file.size > 30 * 1024 * 1024) {
+    throw new Error("File is too large. Please keep it under 30MB.");
+  }
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const url = buildApiUrl(`/upload/${options.bucket}`);
+  const timeoutMs = 30000;
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    // Create a unique file path: bucket/{authUid}/timestamp-filename
-    const timestamp = Date.now();
-    const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, "-");
-    const filePath = `${authUid}/${timestamp}-${sanitizedFileName}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+      signal: controller.signal,
+    });
 
-    // Upload file to Supabase Storage
-    const { data, error } = await supabase.storage
-      .from(options.bucket)
-      .upload(filePath, file, {
-        cacheControl: "3600",
-        upsert: false,
-      });
-
-    if (error) {
-      throw new Error(`Upload failed: ${error.message}`);
+    if (!response.ok) {
+      let errorMessage = `Upload failed with status ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        // ignore parse failures
+      }
+      throw new Error(errorMessage);
     }
 
-    // Get the public URL
-    const { data: urlData } = supabase.storage
-      .from(options.bucket)
-      .getPublicUrl(filePath);
-
-    const storageUrl = urlData.publicUrl;
-
-    // Record file upload in database for tracking
-    const { data: fileRecord, error: dbError } = await supabase
-      .from("file_uploads")
-      .insert({
-        user_id: (
-          await supabase
-            .from("users")
-            .select("id")
-            .eq("auth_uid", authUid)
-            .single()
-        ).data?.id,
-        file_name: file.name,
-        file_path: filePath,
-        file_type: file.type,
-        file_size: file.size,
-        bucket: options.bucket,
-        storage_url: storageUrl,
-      })
-      .select()
-      .single();
-
-    if (dbError) {
-      console.warn("Failed to record file upload in database:", dbError);
-      // Continue anyway - file is uploaded, just not tracked
+    const result: any = await response.json();
+    if (!result.success || !result.url) {
+      throw new Error("Server upload returned no URL");
     }
 
     return {
-      id: fileRecord?.id || data.id,
-      url: storageUrl,
-      path: filePath,
+      id: result.fileId || result.id || "",
+      url: result.url,
+      path: result.fileName || result.path || "",
     };
   } catch (error) {
     console.error("File upload error:", error);
     throw error;
+  } finally {
+    clearTimeout(timeoutHandle);
   }
 }
 
 /**
- * Upload composition file (PDF/Music scores)
+ * Upload composition file (PDF/MIDI)
  */
 export async function uploadComposition(
   file: File,
@@ -148,129 +133,63 @@ export async function uploadAvatar(
 }
 
 /**
- * Delete file from Supabase Storage
+ * Delete file via the Cloudflare Worker API
  */
 export async function deleteFile(
   bucket: StorageBucket,
   filePath: string,
 ): Promise<void> {
-  const {
-    data: { session },
-    error: sessionError,
-  } = await supabase.auth.getSession();
-  if (sessionError || !session?.user) {
+  const token = localStorage.getItem("murekefu_auth_token");
+  if (!token) {
     throw new Error("User must be authenticated to delete files");
   }
-  const authUid = session.user.id;
 
-  try {
-    // Only allow users to delete their own files
-    if (!filePath.startsWith(authUid)) {
-      throw new Error("You do not have permission to delete this file");
+  const url = buildApiUrl(`/upload/${bucket}`);
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ path: filePath }),
+  });
+
+  if (!response.ok) {
+    let errorMessage = `Delete failed with status ${response.status}`;
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.error || errorMessage;
+    } catch {
+      // ignore parse failures
     }
-
-    const { error: deleteError } = await supabase.storage
-      .from(bucket)
-      .remove([filePath]);
-
-    if (deleteError) {
-      throw new Error(`Delete failed: ${deleteError.message}`);
-    }
-
-    // Remove file record from database
-    const { error: dbError } = await supabase
-      .from("file_uploads")
-      .delete()
-      .eq("file_path", filePath)
-      .eq("bucket", bucket);
-
-    if (dbError) {
-      console.warn("Failed to delete file record from database:", dbError);
-    }
-  } catch (error) {
-    console.error("File deletion error:", error);
-    throw error;
+    throw new Error(errorMessage);
   }
 }
 
 /**
- * Get user's uploaded files
+ * Get user's uploaded files via the API
  */
 export async function getUserFiles(bucket?: StorageBucket): Promise<any[]> {
-  const {
-    data: { session },
-    error: sessionError,
-  } = await supabase.auth.getSession();
-  if (sessionError || !session?.user) {
-    throw new Error("User must be authenticated");
-  }
-  const authUid = session.user.id;
-
-  try {
-    // First get the user's Supabase UUID
-    const { data: userData, error: userError } = await supabase
-      .from("users")
-      .select("id")
-      .eq("auth_uid", authUid)
-      .maybeSingle();
-
-    if (userError || !userData) {
-      throw new Error("User profile not found");
-    }
-
-    let query = supabase
-      .from("file_uploads")
-      .select("*")
-      .eq("user_id", userData.id);
-
-    if (bucket) {
-      query = query.eq("bucket", bucket);
-    }
-
-    const { data, error } = await query.order("created_at", {
-      ascending: false,
-    });
-
-    if (error) throw error;
-    return data || [];
-  } catch (error) {
-    console.error("Error fetching user files:", error);
-    throw error;
-  }
-}
-
-/**
- * Get signed URL for private file access
- */
-export async function getSignedUrl(
-  bucket: StorageBucket,
-  filePath: string,
-  expiresIn: number = 3600,
-): Promise<string> {
-  const {
-    data: { session },
-    error: sessionError,
-  } = await supabase.auth.getSession();
-  if (sessionError || !session?.user) {
+  const token = localStorage.getItem("murekefu_auth_token");
+  if (!token) {
     throw new Error("User must be authenticated");
   }
 
-  try {
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .createSignedUrl(filePath, expiresIn);
+  const endpoint = bucket ? `/upload/${bucket}/files` : "/upload/files";
+  const url = buildApiUrl(endpoint);
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 
-    if (error) {
-      throw new Error(`Failed to get signed URL: ${error.message}`);
-    }
-
-    return data.signedUrl;
-  } catch (error) {
-    console.error("Error getting signed URL:", error);
-    throw error;
+  if (!response.ok) {
+    throw new Error(`Failed to fetch user files: ${response.status}`);
   }
+
+  const data = await response.json();
+  return Array.isArray(data) ? data : (data.items || data.files || []);
 }
 
+// Keep backward compatibility exports
 export default {
   uploadFile,
   uploadComposition,
@@ -278,5 +197,4 @@ export default {
   uploadAvatar,
   deleteFile,
   getUserFiles,
-  getSignedUrl,
 };

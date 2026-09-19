@@ -537,10 +537,11 @@ export const authService = {
 
   async logAudit(userId: string, action: string, payload: any) {
     try {
-      await supabase.from("audit_logs").insert({
-        user_id: userId,
-        action,
-        payload,
+      await apiRequest<any>("/admin/audit-log", {
+        method: "POST",
+        body: JSON.stringify({ user_id: userId, action, payload }),
+        requiresAuth: true,
+        timeoutMs: 10000,
       });
     } catch (error) {
       console.error("Error logging audit:", error);
@@ -986,35 +987,21 @@ export const reportService = {
     reason: string;
     details?: string;
   }) {
-    const { data, error } = await supabase
-      .from("reports")
-      .insert(reportData)
-      .select()
-      .maybeSingle();
-
-    if (error) throw error;
-    return data;
+    return await apiRequest<any>("/admin/reports", {
+      method: "POST",
+      body: JSON.stringify(reportData),
+      requiresAuth: true,
+      timeoutMs: 15000,
+    });
   },
 
   async getAll(status?: string) {
-    let query = supabase
-      .from("reports")
-      .select(
-        `
-          *,
-          users!reported_by(display_name, email),
-          compositions(title, composer_id)
-        `,
-      )
-      .order("created_at", { ascending: false });
-
-    if (status) {
-      query = query.eq("status", status);
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return data;
+    const params = status ? `?status=${encodeURIComponent(status)}` : "";
+    return await apiRequest<any[]>(`/admin/reports${params}`, {
+      method: "GET",
+      requiresAuth: true,
+      timeoutMs: 15000,
+    });
   },
 
   async resolve(
@@ -1022,28 +1009,12 @@ export const reportService = {
     adminNotes: string,
     deleteComposition: boolean = false,
   ) {
-    const { error: updateError } = await supabase
-      .from("reports")
-      .update({
-        status: "resolved",
-        admin_notes: adminNotes,
-        resolved_at: new Date().toISOString(),
-      })
-      .eq("id", reportId);
-
-    if (updateError) throw updateError;
-
-    if (deleteComposition) {
-      const { data: report } = await supabase
-        .from("reports")
-        .select("composition_id")
-        .eq("id", reportId)
-        .maybeSingle();
-
-      if (report) {
-        await compositionService.delete(report.composition_id);
-      }
-    }
+    return await apiRequest<any>(`/admin/reports/${reportId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ admin_notes: adminNotes, resolve_composition: deleteComposition }),
+      requiresAuth: true,
+      timeoutMs: 15000,
+    });
   },
 };
 
@@ -1293,42 +1264,36 @@ export const storageService = {
   },
 
   async deleteFile(bucket: string, path: string) {
-    const { error } = await supabase.storage.from(bucket).remove([path]);
-    if (error) throw error;
+    await apiRequest<any>(`/upload/${bucket}`, {
+      method: "DELETE",
+      body: JSON.stringify({ path }),
+      requiresAuth: true,
+      timeoutMs: 10000,
+    });
   },
 };
 
 export const analyticsService = {
   async getComposerStats(composerId: string) {
-    const { data: compositions, error: compError } = await supabase
-      .from("compositions")
-      .select(
-        `
-          id,
-          title,
-          price,
-          composition_stats(views, purchases)
-        `,
-      )
-      .eq("composer_id", composerId)
-      .eq("deleted", false);
-
-    if (compError) throw compError;
-
+    const payload = await apiRequest<any>(`/compositions/composer/${composerId}`, {
+      method: "GET",
+      requiresAuth: true,
+      timeoutMs: 15000,
+    });
+    const compositions = Array.isArray(payload) ? payload : [];
     const totalCompositions = compositions.length;
     const totalViews = compositions.reduce(
-      (sum, c) => sum + (c.composition_stats?.views || 0),
+      (sum, c) => sum + (c.views || 0),
       0,
     );
     const totalPurchases = compositions.reduce(
-      (sum, c) => sum + (c.composition_stats?.purchases || 0),
+      (sum, c) => sum + (c.purchases || 0),
       0,
     );
     const totalRevenue = compositions.reduce(
-      (sum, c) => sum + (c.composition_stats?.purchases || 0) * c.price,
+      (sum, c) => sum + (c.purchases || 0) * c.price,
       0,
     );
-
     return {
       totalCompositions,
       totalViews,
@@ -1339,33 +1304,28 @@ export const analyticsService = {
   },
 
   async getAdminStats() {
-    const [
-      { count: totalUsers },
-      { count: totalCompositions },
-      { count: totalPurchases },
-      { count: pendingReports },
-    ] = await Promise.all([
-      supabase.from("users").select("*", { count: "exact", head: true }),
-      supabase
-        .from("compositions")
-        .select("*", { count: "exact", head: true })
-        .eq("deleted", false),
-      supabase
-        .from("purchases")
-        .select("*", { count: "exact", head: true })
-        .eq("is_active", true),
-      supabase
-        .from("reports")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "pending"),
-    ]);
-
-    return {
-      totalUsers: totalUsers || 0,
-      totalCompositions: totalCompositions || 0,
-      totalPurchases: totalPurchases || 0,
-      pendingReports: pendingReports || 0,
-    };
+    try {
+      const [
+        usersRes,
+        compositionsRes,
+        purchasesRes,
+        reportsRes,
+      ] = await Promise.all([
+        apiRequest<any[]>("/admin/users", { method: "GET", requiresAuth: true, timeoutMs: 15000 }),
+        apiRequest<any[]>("/admin/compositions", { method: "GET", requiresAuth: true, timeoutMs: 15000 }),
+        apiRequest<any[]>("/admin/transactions", { method: "GET", requiresAuth: true, timeoutMs: 15000 }),
+        apiRequest<any[]>("/admin/reports?status=pending", { method: "GET", requiresAuth: true, timeoutMs: 15000 }),
+      ]);
+      return {
+        totalUsers: Array.isArray(usersRes) ? usersRes.length : 0,
+        totalCompositions: Array.isArray(compositionsRes) ? compositionsRes.filter((c: any) => !c.deleted).length : 0,
+        totalPurchases: Array.isArray(purchasesRes) ? purchasesRes.length : 0,
+        pendingReports: Array.isArray(reportsRes) ? reportsRes.length : 0,
+      };
+    } catch (error) {
+      console.error("Error fetching admin stats:", error);
+      return { totalUsers: 0, totalCompositions: 0, totalPurchases: 0, pendingReports: 0 };
+    }
   },
 };
 
