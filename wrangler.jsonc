@@ -17,4 +17,31 @@
       "database_id": "117b6082-cd56-40d8-8f77-85b8d4e8f19e"
     }
   ]
+
+  // ---------------------------------------------------------------------------
+  // R2 object storage — NOT YET ACTIVE.
+  //
+  // R2 is not enabled on this Cloudflare account. The API returns
+  //   {"success":false,"errors":[{"code":10042,
+  //     "message":"Please enable R2 through the Cloudflare Dashboard."}]}
+  // for both GET and PUT on /accounts/{id}/r2/buckets, so the bucket cannot be
+  // created programmatically — it needs a one-time Dashboard action:
+  //
+  //   1. https://dash.cloudflare.com -> R2 -> Enable R2 (accept terms, may ask
+  //      for a card; the free tier has a 10 GB / 1M-object allowance)
+  //   2. R2 -> Buckets -> Create bucket, name: murekefu-storage
+  //
+  // Then uncomment the block below and redeploy. No Worker code changes are
+  // needed: storeUpload() already prefers c.env.STORAGE and falls back to an
+  // inline data URL, and /api/media/thumbnail/* already serves from
+  // c.env.STORAGE when present.
+  //
+  // Until then uploads keep working via the inline fallback.
+  //
+  // "r2_buckets": [
+  //   {
+  //     "binding": "STORAGE",
+  //     "bucket_name": "murekefu-storage"
+  //   }
+  // ]
 }

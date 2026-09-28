@@ -139,6 +139,33 @@ export default function UploadWork({ onClose, type }: UploadWorkProps) {
         }
       }
 
+      // Step 2b: Upload thumbnail (optional)
+      // Must be uploaded to get a real URL. Previously the code sent
+      // `URL.createObjectURL(thumbnailFile)` — a blob: URL that is only valid
+      // for the current document. It was stored in the DB and rendered as a
+      // broken image after any reload, and it could never be fetched by another
+      // user or by the Worker.
+      let thumbnailUrl: string | null = null;
+      if (thumbnailFile) {
+        const thumbFormData = new FormData();
+        thumbFormData.append("file", thumbnailFile);
+        thumbFormData.append("type", "thumbnail");
+
+        const thumbRes = await fetch("/api/upload/thumbnails", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: thumbFormData,
+        });
+
+        if (thumbRes.ok) {
+          const thumbData = await thumbRes.json();
+          thumbnailUrl = thumbData.url || null;
+        } else {
+          // Non-fatal: still create the work, just without artwork.
+          console.warn("[UploadWork] thumbnail upload failed; continuing without it");
+        }
+      }
+
       // Step 3: Create the work record
       const endpoint = type === "arrangement" ? "/api/arrangements" : "/api/compositions";
       const res = await fetch(endpoint, {
@@ -153,7 +180,7 @@ export default function UploadWork({ onClose, type }: UploadWorkProps) {
           category_id: formData.categoryId ? parseInt(formData.categoryId) : null,
           price: isFree ? 0 : parseFloat(formData.price),
           file_url: fileUrl,
-          thumbnail_url: thumbnailFile ? URL.createObjectURL(thumbnailFile) : null,
+          thumbnail_url: thumbnailUrl,
           duration_seconds: formData.duration ? parseInt(formData.duration) : null,
           language: formData.language || null,
           accompaniment: formData.accompaniment || null,

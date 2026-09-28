@@ -265,17 +265,35 @@ app.post('/api/auth/oauth/google', async (c) => {
   }
 });
 
+// Shape the user record for API responses.
+//
+// NEVER spread the raw D1 row: it contains `password_hash`, and a bare
+// `{ ...user }` leaked the hash in the /api/auth/refresh response. Always
+// project the exact fields allowed out of the Worker.
+function publicUser(user, roles) {
+  return {
+    id: user.id,
+    email: user.email,
+    display_name: user.display_name,
+    avatar_url: user.avatar_url,
+    phone: user.phone,
+    roles: roles || user.roles || [],
+  };
+}
+
 app.get('/api/auth/me', async (c) => {
   const user = await requireAuth(c);
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
-  return c.json({ user: { id: user.id, email: user.email, display_name: user.display_name, avatar_url: user.avatar_url, phone: user.phone, roles: user.roles } });
+  const roles = await getUserRoles(c, user.id);
+  return c.json({ user: publicUser(user, roles) });
 });
 
 // Alias for backward compatibility (some cached frontends call /api/auth/verify)
 app.get('/api/auth/verify', async (c) => {
   const user = await requireAuth(c);
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
-  return c.json({ user: { id: user.id, email: user.email, display_name: user.display_name, avatar_url: user.avatar_url, phone: user.phone, roles: user.roles } });
+  const roles = await getUserRoles(c, user.id);
+  return c.json({ user: publicUser(user, roles) });
 });
 
 app.post('/api/auth/refresh', async (c) => {
@@ -283,7 +301,16 @@ app.post('/api/auth/refresh', async (c) => {
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
   const roles = await getUserRoles(c, user.id);
   const token = await createToken({ sub: user.id, email: user.email, roles }, c.env.JWT_SECRET);
-  return c.json({ token, user: { ...user, roles } });
+  // NOTE: never `{ ...user }` here — see publicUser() above.
+  return c.json({ token, user: publicUser(user, roles) });
+});
+
+// Stateless JWTs cannot be revoked server-side, so logout only acknowledges
+// and the client drops the token. It MUST exist: api-client.ts calls
+// /api/auth/logout on signOut, and a 404 there used to surface as a confusing
+// fetch failure instead of a clean sign-out.
+app.post('/api/auth/logout', async (c) => {
+  return c.json({ success: true });
 });
 
 // ========== ROLE REQUESTS ==========
@@ -981,36 +1008,108 @@ app.post('/api/upload/:bucket', async (c) => {
   return handleUpload(c, bucket);
 });
 
+// Upload a file to R2 when the bucket is bound, otherwise fall back to an
+// inline data URL.
+//
+// R2 is not yet enabled on this Cloudflare account (the R2 API returns
+// code 10042, "Please enable R2 through the Cloudflare Dashboard"), and enabling
+// it is a one-time dashboard action. Everything here is written so that simply
+// adding an `r2_buckets` binding to wrangler.jsonc switches storage over with
+// no further code change.
+//
+// Why the fallback exists at all: the previous implementation always built a
+// data URL, which (a) cannot serve a PDF from a URL, and (b) inflated every
+// upload by ~33% and forced the whole file through JSON.
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+
+// base64-encode an ArrayBuffer without spreading it into String.fromCharCode.
+// `String.fromCharCode(...new Uint8Array(buf))` passes one argument per byte
+// and blows the call stack (RangeError) for any real file — the existing D1
+// rows are 135 KB PDFs, well past the limit. Chunked conversion is required.
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const CHUNK = 0x8000; // 32 KB — safe for apply() argument limits
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+function extensionFor(file) {
+  const fromName = (file.name || '').split('.').pop();
+  if (fromName && fromName.length <= 5) return fromName.toLowerCase();
+  return (file.type || 'application/octet-stream').split('/')[1] || 'bin';
+}
+
+/**
+ * Persist one uploaded file.
+ *
+ * Returns `{ url, key, storage }` where `url` is an R2 object URL when the
+ * bucket is bound, and an inline data URL otherwise. The object key is always
+ * recorded in the `files` table so a later migration to R2 can find the
+ * metadata even for files uploaded while the fallback was in use.
+ */
+async function storeUpload(c, user, file, bucketLabel) {
+  if (!file) return { error: 'No file provided', status: 400 };
+
+  if (typeof file.size === 'number' && file.size > MAX_UPLOAD_BYTES) {
+    return {
+      error: `File too large (max ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)} MB)`,
+      status: 400,
+    };
+  }
+
+  const ext = extensionFor(file);
+  const key = `${user.id}/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
+  const fileId = generateId();
+  const contentType = file.type || 'application/octet-stream';
+  const arrayBuffer = await file.arrayBuffer();
+
+  await c.env.DB
+    .prepare(
+      'INSERT INTO files (id, user_id, file_name, file_type, file_size, bucket) VALUES (?, ?, ?, ?, ?, ?)'
+    )
+    .bind(fileId, user.id, key, contentType, file.size ?? arrayBuffer.byteLength, bucketLabel)
+    .run();
+
+  // Preferred path: R2.
+  if (c.env.STORAGE) {
+    try {
+      await c.env.STORAGE.put(key, arrayBuffer, {
+        httpMetadata: { contentType },
+      });
+      return {
+        url: `/api/media/thumbnail/${encodeURIComponent(key)}`,
+        fileId,
+        fileName: key,
+        storage: 'r2',
+      };
+    } catch (err) {
+      // Fall through to the inline fallback rather than losing the upload.
+      console.error('[upload] R2 put failed, falling back to inline:', err && err.message);
+    }
+  }
+
+  const dataUrl = `data:${contentType};base64,${arrayBufferToBase64(arrayBuffer)}`;
+  return { url: dataUrl, fileId, fileName: key, storage: 'inline' };
+}
+
 async function handleUpload(c, bucket) {
   const user = await requireAuth(c);
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
 
   try {
     const contentType = c.req.header('content-type') || '';
-    
-    if (contentType.includes('multipart/form-data')) {
-      const formData = await c.req.formData();
-      const file = formData.get('file');
-
-      if (!file) {
-        return c.json({ error: 'No file provided' }, 400);
-      }
-
-      const fileExt = file.name.split('.').pop() || 'bin';
-      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-      const fileId = generateId();
-      await c.env.DB.prepare(
-        'INSERT INTO files (id, user_id, file_name, file_type, file_size, bucket) VALUES (?, ?, ?, ?, ?, ?)'
-      ).bind(fileId, user.id, fileName, file.type || 'application/octet-stream', file.size, bucket).run();
-
-      const arrayBuffer = await file.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-      const dataUrl = `data:${file.type || 'application/octet-stream'};base64,${base64}`;
-
-      return c.json({ success: true, url: dataUrl, fileId, fileName });
+    if (!contentType.includes('multipart/form-data')) {
+      return c.json({ error: 'Invalid content type' }, 400);
     }
 
-    return c.json({ error: 'Invalid content type' }, 400);
+    const formData = await c.req.formData();
+    const result = await storeUpload(c, user, formData.get('file'), bucket);
+    if (result.error) return c.json({ error: result.error }, result.status || 400);
+
+    return c.json({ success: true, ...result });
   } catch (err) {
     return c.json({ error: 'Upload failed: ' + err.message }, 500);
   }
@@ -1022,32 +1121,21 @@ app.post('/api/upload/work', async (c) => {
 
   try {
     const contentType = c.req.header('content-type') || '';
-    
-    if (contentType.includes('multipart/form-data')) {
-      const formData = await c.req.formData();
-      const file = formData.get('file');
-      const type = formData.get('type') || 'composition';
-
-      if (!file) {
-        return c.json({ error: 'No file provided' }, 400);
-      }
-
-      const fileExt = file.name.split('.').pop() || 'bin';
-      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-
-      const fileId = generateId();
-      await c.env.DB.prepare(
-        'INSERT INTO files (id, user_id, file_name, file_type, file_size, bucket) VALUES (?, ?, ?, ?, ?, ?)'
-      ).bind(fileId, user.id, fileName, file.type || 'application/octet-stream', file.size, type === 'arrangement' ? 'arrangements' : 'compositions').run();
-
-      const arrayBuffer = await file.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-      const dataUrl = `data:${file.type || 'application/octet-stream'};base64,${base64}`;
-
-      return c.json({ success: true, url: dataUrl, fileId, fileName });
+    if (!contentType.includes('multipart/form-data')) {
+      return c.json({ error: 'Invalid content type' }, 400);
     }
 
-    return c.json({ error: 'Invalid content type' }, 400);
+    const formData = await c.req.formData();
+    const type = formData.get('type') || 'composition';
+    const result = await storeUpload(
+      c,
+      user,
+      formData.get('file'),
+      type === 'arrangement' ? 'arrangements' : 'compositions',
+    );
+    if (result.error) return c.json({ error: result.error }, result.status || 400);
+
+    return c.json({ success: true, ...result });
   } catch (err) {
     return c.json({ error: 'Upload failed: ' + err.message }, 500);
   }

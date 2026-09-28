@@ -38,6 +38,29 @@ async function withTimeout<T>(
   }
 }
 
+// Read the `roles` claim straight out of the stored JWT.
+//
+// The custom-JWT auth embeds roles at sign-in, so there is no need for a
+// network round-trip on the hot path. This is also what avoids building a URL
+// with an `undefined` path segment.
+function decodeTokenRoles(): string[] {
+  try {
+    const token = localStorage.getItem('murekefu_auth_token');
+    if (!token) return [];
+    const part = token.split('.')[1];
+    if (!part) return [];
+    const base64 = part.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    const json = typeof atob === 'function'
+      ? atob(padded)
+      : Buffer.from(padded, 'base64').toString('utf8');
+    const payload = JSON.parse(json);
+    return Array.isArray(payload?.roles) ? payload.roles : [];
+  } catch {
+    return [];
+  }
+}
+
 function isTransientAuthNetworkError(err: any): boolean {
   if (!err) return false;
   const name = String(err?.name || "");
@@ -517,9 +540,19 @@ export const authService = {
       }),
     });
 
-    const roles = await apiRequest<string[]>(`/user/roles/${authUser.id}`, {
-      method: "GET",
-    }).catch(() => []);
+    // Roles are already embedded in the JWT. Interpolating `authUser.id`
+    // directly produced the literal URL `/api/user/roles/undefined` (404)
+    // whenever the caller had no Supabase-style auth uid, which is always the
+    // case with the custom-JWT auth. Prefer the token's own roles and only
+    // fall back to the endpoint when a real id is available.
+    const tokenRoles = decodeTokenRoles();
+    const roles = tokenRoles.length
+      ? tokenRoles
+      : authUser?.id
+        ? await apiRequest<string[]>(`/user/roles/${authUser.id}`, {
+            method: "GET",
+          }).catch(() => [])
+        : [];
 
     return {
       ...ensured,
@@ -534,7 +567,6 @@ export const authService = {
     }).catch(() => []);
     return roles.length > 0 ? roles[0] : null;
   },
-
   async logAudit(userId: string, action: string, payload: any) {
     try {
       await apiRequest<any>("/admin/audit-log", {
