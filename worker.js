@@ -550,24 +550,59 @@ app.get('/api/user/roles/:userId', async (c) => {
 
 // ========== ACCOUNT ==========
 
+// Update account settings (theme, display name, phone).
 app.put('/api/account', async (c) => {
   const user = await requireAuth(c);
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
-  
-  const body = await c.req.json();
-  const { themeSettings, displayName, phone } = body;
-  
-  if (displayName !== undefined || phone !== undefined || themeSettings !== undefined) {
-    await c.env.DB.prepare(
-      'UPDATE users SET display_name = COALESCE(?, display_name), phone = COALESCE(?, phone), theme_settings = COALESCE(?, theme_settings) WHERE id = ?'
-    ).bind(displayName, phone, themeSettings ? JSON.stringify(themeSettings) : null, user.id).run();
+
+  let body;
+  try {
+    body = await c.req.json();
+  } catch (err) {
+    // An empty or malformed body is a client error, not a 500. The previous
+    // `const body = await c.req.json();` threw here and surfaced as
+    // "Internal Server Error" for a plain PUT with no payload.
+    return c.json({ error: 'Invalid JSON body' }, 400);
   }
-  
+
+  const { themeSettings, display_name, displayName, phone } = body || {};
+  const newDisplayName = display_name ?? displayName;
+
+  try {
+    // Build the SET list from only the fields actually provided, so an absent
+    // field can never be written as NULL. The previous fixed 3-column UPDATE
+    // bound `undefined` for every field the caller omitted, which D1 rejects.
+    const sets = [];
+    const binds = [];
+    if (newDisplayName !== undefined) { sets.push('display_name = ?'); binds.push(newDisplayName); }
+    if (phone !== undefined) { sets.push('phone = ?'); binds.push(phone); }
+    if (themeSettings !== undefined) {
+      // Accept an object OR an already-serialised string, and never write the
+      // literal string "undefined".
+      const value = typeof themeSettings === 'string' ? themeSettings : JSON.stringify(themeSettings);
+      sets.push('theme_settings = ?');
+      binds.push(value);
+    }
+
+    if (sets.length) {
+      binds.push(user.id);
+      await c.env.DB
+        .prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`)
+        .bind(...binds)
+        .run();
+    }
+  } catch (err) {
+    console.error('[account] update failed:', err && err.message);
+    return c.json({ error: 'Failed to update account settings' }, 500);
+  }
+
   const updated = await getUserFromDb(c, user.id);
-  
-  return c.json({ 
-    user: updated,
-    theme_settings: updated?.theme_settings ? JSON.parse(updated.theme_settings) : themeSettings 
+  const roles = await getUserRoles(c, user.id);
+
+  // safeParseJson: a malformed row must not 500 the response.
+  return c.json({
+    user: updated ? { ...publicUser(updated, roles), theme_settings: safeParseJson(updated.theme_settings) } : null,
+    theme_settings: updated?.theme_settings ? safeParseJson(updated.theme_settings) : (themeSettings ?? null),
   });
 });
 
