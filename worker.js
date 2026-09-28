@@ -1478,8 +1478,25 @@ app.get('/api/media/composition-background', async (c) => {
 app.get('/api/media/thumbnail/*', async (c) => {
   const bucket = c.env.STORAGE;
   if (!bucket) return c.json({ error: 'storage_not_configured' }, 404);
-  const key = decodeURIComponent(c.req.param('0') || '');
+
+  // Derive the object key from the path rather than relying on a named param.
+  // Hono exposes a `*` wildcard as `c.req.param('*')`; `c.req.param('0')` is
+  // null, which made every thumbnail request 400 "missing_key" even though the
+  // object was in the bucket. Parsing the pathname also handles the encoded
+  // slash in keys like `<userId>/<timestamp>-<rand>.pdf` (minted as %2F) in
+  // both the encoded and unencoded forms.
+  const prefix = '/api/media/thumbnail/';
+  const pathname = new URL(c.req.url).pathname;
+  let key = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : '';
+  if (!key) {
+    const wildcard = c.req.param('*') || '';
+    key = wildcard;
+  }
+  key = decodeURIComponent(key).replace(/^\/+/, '');
   if (!key) return c.json({ error: 'missing_key' }, 400);
+
+  // Reject traversal outside the bucket namespace.
+  if (key.includes('..')) return c.json({ error: 'invalid_key' }, 400);
   try {
     const object = await bucket.get(key);
     if (!object) return c.json({ error: 'not_found' }, 404);
