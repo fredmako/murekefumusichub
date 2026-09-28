@@ -573,29 +573,65 @@ app.put('/api/account', async (c) => {
 
 // ========== COMPOSITIONS ==========
 
+// Read helpers.
+//
+// The compositions table stores artefacts in `pdf_r2_key` / `thumbnail_r2_key`,
+// but the frontend types and reads `file_url` / `thumbnail_url` (and
+// `midi_url`). Rather than change every call site, expose BOTH names on read so
+// the DB stays the source of truth and the response contract is unchanged.
+function decorateComposition(row) {
+  if (!row) return row;
+  return {
+    ...row,
+    file_url: row.pdf_r2_key ?? null,
+    thumbnail_url: row.thumbnail_r2_key ?? null,
+    midi_url: row.midi_r2_key ?? row.midi_url ?? null,
+  };
+}
+
 app.get('/api/compositions', async (c) => {
   const { results } = await c.env.DB.prepare('SELECT * FROM compositions WHERE deleted = 0 ORDER BY created_at DESC LIMIT 100').all();
-  return c.json(results);
+  return c.json((results || []).map(decorateComposition));
 });
 
 app.get('/api/compositions/:id', async (c) => {
   const { results } = await c.env.DB.prepare('SELECT * FROM compositions WHERE id = ?').bind(c.req.param('id')).all();
-  return c.json(results[0] || {});
+  return c.json(results[0] ? decorateComposition(results[0]) : {});
 });
 
 app.get('/api/compositions/composer/:composerId', async (c) => {
   const { results } = await c.env.DB.prepare('SELECT * FROM compositions WHERE composer_id = ? AND deleted = 0 ORDER BY created_at DESC').bind(c.req.param('composerId')).all();
-  return c.json(results);
+  return c.json((results || []).map(decorateComposition));
 });
 
+// NOTE: the compositions table stores the uploaded artefact in
+// `pdf_r2_key` / `thumbnail_r2_key` — there are NO `file_url` / `thumbnail_url`
+// columns on this table (the `arrangements` table DOES have them, which is what
+// made this easy to get wrong). Writing the old names made every create/update
+// fail with a 500 from D1.
+//
+// The keys hold the R2 object key; until R2 is enabled the upload endpoint
+// returns an inline data URL, so store that verbatim in the key column. It is
+// text either way, and switching to real R2 later only changes the value.
 app.post('/api/compositions', async (c) => {
   const user = await requireAuth(c);
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
   const body = await c.req.json();
   const id = generateId();
   await c.env.DB.prepare(
-    'INSERT INTO compositions (id, composer_id, title, description, category_id, price, file_url, thumbnail_url, is_published) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).bind(id, user.id, body.title, body.description || null, body.category_id || null, body.price || 0, body.file_url || null, body.thumbnail_url || null, body.is_published ? 1 : 0).run();
+    'INSERT INTO compositions (id, composer_id, title, description, category_id, price, pdf_r2_key, thumbnail_r2_key, midi_r2_key, is_published) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(
+    id,
+    user.id,
+    body.title,
+    body.description || null,
+    body.category_id || null,
+    body.price || 0,
+    body.file_url || body.pdf_r2_key || null,
+    body.thumbnail_url || body.thumbnail_r2_key || null,
+    body.midi_url || body.midi_r2_key || null,
+    body.is_published ? 1 : 0,
+  ).run();
   return c.json({ success: true, id });
 });
 
@@ -604,8 +640,19 @@ app.put('/api/compositions/:id', async (c) => {
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
   const body = await c.req.json();
   await c.env.DB.prepare(
-    'UPDATE compositions SET title = ?, description = ?, category_id = ?, price = ?, file_url = ?, thumbnail_url = ?, is_published = ? WHERE id = ? AND composer_id = ?'
-  ).bind(body.title, body.description || null, body.category_id || null, body.price || 0, body.file_url || null, body.thumbnail_url || null, body.is_published ? 1 : 0, c.req.param('id'), user.id).run();
+    'UPDATE compositions SET title = ?, description = ?, category_id = ?, price = ?, pdf_r2_key = ?, thumbnail_r2_key = ?, midi_r2_key = ?, is_published = ? WHERE id = ? AND composer_id = ?'
+  ).bind(
+    body.title,
+    body.description || null,
+    body.category_id || null,
+    body.price || 0,
+    body.file_url || body.pdf_r2_key || null,
+    body.thumbnail_url || body.thumbnail_r2_key || null,
+    body.midi_url || body.midi_r2_key || null,
+    body.is_published ? 1 : 0,
+    c.req.param('id'),
+    user.id,
+  ).run();
   return c.json({ success: true });
 });
 
@@ -1106,6 +1153,52 @@ app.delete('/api/admin/users/:id', async (c) => {
 // Also handle /api/upload/:bucket for direct API access
 const UPLOAD_BUCKETS = new Set(['compositions', 'thumbnails', 'avatars', 'arrangements']);
 
+// NOTE: the generic `/:bucket` routes below are registered AFTER the dedicated
+// /api/upload/work and /api/upload/community handlers. Hono matches in
+// registration order, so when `/:bucket` came first it captured the literal
+// path "work", treated it as a bucket name and returned
+// `{"error":"Invalid bucket"}` — the dedicated handler never ran. Route ORDER is
+// the fix; `c.notFound()` is not, because it aborts matching instead of falling
+// through to the next candidate.
+
+// NOTE: these SPECIFIC routes are registered BEFORE the generic `/:bucket`
+// ones on purpose. Hono matches in registration order, so `/api/upload/:bucket`
+// used to capture the literal path `/api/upload/work`, treat "work" as a bucket
+// name, and return `{"error":"Invalid bucket"}` — the dedicated handler below
+// never ran. Order is the fix; `c.notFound()` is not, because it aborts
+// matching instead of falling through to the next candidate route.
+app.post('/api/upload/work', async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+  try {
+    const contentType = c.req.header('content-type') || '';
+    if (!contentType.includes('multipart/form-data')) {
+      return c.json({ error: 'Invalid content type' }, 400);
+    }
+
+    const formData = await c.req.formData();
+    const type = formData.get('type') || 'composition';
+    const result = await storeUpload(
+      c,
+      user,
+      formData.get('file'),
+      type === 'arrangement' ? 'arrangements' : 'compositions',
+    );
+    if (result.error) return c.json({ error: result.error }, result.status || 400);
+
+    return c.json({ success: true, ...result });
+  } catch (err) {
+    return c.json({ error: 'Upload failed: ' + err.message }, 500);
+  }
+});
+
+app.post('/api/upload/community', async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+  return c.json({ success: true, url: '', path: '' });
+});
+
 app.post('/upload/:bucket', async (c) => {
   const bucket = c.req.param('bucket');
   if (!UPLOAD_BUCKETS.has(bucket)) return c.json({ error: 'Invalid bucket' }, 400);
@@ -1225,31 +1318,10 @@ async function handleUpload(c, bucket) {
   }
 }
 
-app.post('/api/upload/work', async (c) => {
-  const user = await requireAuth(c);
-  if (!user) return c.json({ error: 'Unauthorized' }, 401);
-
-  try {
-    const contentType = c.req.header('content-type') || '';
-    if (!contentType.includes('multipart/form-data')) {
-      return c.json({ error: 'Invalid content type' }, 400);
-    }
-
-    const formData = await c.req.formData();
-    const type = formData.get('type') || 'composition';
-    const result = await storeUpload(
-      c,
-      user,
-      formData.get('file'),
-      type === 'arrangement' ? 'arrangements' : 'compositions',
-    );
-    if (result.error) return c.json({ error: result.error }, result.status || 400);
-
-    return c.json({ success: true, ...result });
-  } catch (err) {
-    return c.json({ error: 'Upload failed: ' + err.message }, 500);
-  }
-});
+// (The dedicated /api/upload/work and /api/upload/community handlers are
+// registered ABOVE, next to the generic upload routes, because Hono matches in
+// registration order and `/:bucket` would otherwise swallow the literal
+// segment "work" and reject it as an invalid bucket name.)
 
 // ========== MEDIA ==========
 //
@@ -1350,12 +1422,6 @@ app.get('/api/media/thumbnail/*', async (c) => {
     console.error('[media] thumbnail fetch failed:', err && err.message);
     return c.json({ error: 'thumbnail_unavailable' }, 500);
   }
-});
-
-app.post('/api/upload/community', async (c) => {
-  const user = await requireAuth(c);
-  if (!user) return c.json({ error: 'Unauthorized' }, 401);
-  return c.json({ success: true, url: '', path: '' });
 });
 
 // ========== ADMIN: PAYMENT SUBMISSIONS ==========
