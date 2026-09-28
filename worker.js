@@ -750,15 +750,85 @@ app.get('/api/enrollments/my', async (c) => {
   return c.json(results);
 });
 
+// Learner music-class enrollment application.
+//
+// SCHEMA NOTE: the live `enrollments` table is
+//   id, user_id, full_name, email, music_class, skill_level, notes, status,
+//   created_at, admitted_at
+// There is NO `composition_id` column — the previous handler still wrote that
+// Supabase-era column, so every application returned 500 from D1. Reads use
+// `SELECT *` so they kept working, which hid the break.
 app.post('/api/enrollments', async (c) => {
   const user = await requireAuth(c);
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
-  const body = await c.req.json();
+
+  let body;
+  try { body = await c.req.json(); } catch { body = {}; }
+
+  const fullName = String(body.full_name || '').trim();
+  const musicClass = String(body.music_class || '').trim();
+  const skillLevel = String(body.skill_level || '').trim();
+
+  if (!fullName) return c.json({ error: 'full_name is required' }, 400);
+  if (!musicClass) return c.json({ error: 'music_class is required' }, 400);
+  if (!skillLevel) return c.json({ error: 'skill_level is required' }, 400);
+
+  // Default the contact email to the signed-in account's, but let the applicant
+  // override it (a parent may apply on a child's behalf).
+  const email = String(body.email || user.email || '').trim().toLowerCase();
+  if (!email) return c.json({ error: 'email is required' }, 400);
+
+  // Reject a duplicate live application instead of silently stacking rows.
+  const { results: dupes } = await c.env.DB
+    .prepare(
+      `SELECT id FROM enrollments
+       WHERE user_id = ? AND music_class = ? AND status IN ('pending','approved')
+       LIMIT 1`
+    )
+    .bind(user.id, musicClass)
+    .all();
+  if (dupes && dupes.length) {
+    return c.json({ error: 'You already have an application for this class' }, 409);
+  }
+
   const id = generateId();
-  await c.env.DB.prepare(
-    'INSERT INTO enrollments (id, user_id, composition_id, status) VALUES (?, ?, ?, ?)'
-  ).bind(id, user.id, body.composition_id || null, 'pending').run();
-  return c.json({ success: true, id });
+  await c.env.DB
+    .prepare(
+      `INSERT INTO enrollments
+         (id, user_id, full_name, email, music_class, skill_level, notes, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))`
+    )
+    .bind(
+      id,
+      user.id,
+      fullName,
+      email,
+      musicClass,
+      skillLevel,
+      body.notes ? String(body.notes) : null,
+    )
+    .run();
+
+  const { results } = await c.env.DB
+    .prepare('SELECT * FROM enrollments WHERE id = ?')
+    .bind(id)
+    .all();
+
+  return c.json({
+    success: true,
+    message: 'Your application has been received and is awaiting review.',
+    enrollment: results[0] || { id, status: 'pending' },
+  });
+});
+
+// List every application (admin).
+app.get('/api/enrollments/all', async (c) => {
+  const admin = await requireAdmin(c);
+  if (admin.error) return c.json({ error: admin.error }, admin.status);
+  const { results } = await c.env.DB
+    .prepare('SELECT * FROM enrollments ORDER BY created_at DESC LIMIT 200')
+    .all();
+  return c.json({ enrollments: results || [] });
 });
 
 // ========== REGISTRATION ==========
