@@ -1,4 +1,8 @@
-import { api } from "@/lib/api-client";
+// Imported as `apiClient` because this file ALSO exports a local `api` object
+// at the bottom (`export const api = { auth: authService, ... }`). The local
+// declaration shadows the import, so `api.auth.*` inside this file silently
+// referred to the wrong object. Naming the import distinctly removes the trap.
+import { api as apiClient } from "@/lib/api-client";
 import { buildApiUrl } from "@/lib/apiBase";
 import { dispatchSessionExpired } from "@/lib/sessionEvents";
 import { dispatchAppError } from "@/lib/appErrorEvents";
@@ -147,6 +151,8 @@ function registerRefreshSuccess() {
   authRefreshCooldownUntil = 0;
 }
 
+const authClient = apiClient.auth;
+
 async function refreshSessionSafely(
   reason: string,
   timeoutMs: number = ACCESS_TOKEN_REFRESH_TIMEOUT_MS,
@@ -162,7 +168,7 @@ async function refreshSessionSafely(
 
   try {
     const { data, error } = await withTimeout(
-      api.auth.refreshSession(),
+      authClient.refreshSession(),
       timeoutMs,
       reason,
     );
@@ -207,10 +213,20 @@ async function refreshSessionSafely(
   }
 }
 
+// NOTE: the token helpers below must use the real auth shim from
+// `@/lib/api-client`. They previously called `api.auth.getSession()` on a
+// LOCAL `api` object (re-declared at the bottom of this file as
+// `export const api = { auth: authService, ... }`) whose `authService` has NO
+// getSession/refreshSession — only syncUser/getUserRole/logAudit. So
+// `api.auth.getSession()` was `undefined`, calling it threw a TypeError, and
+// every request fell into the catch that logs
+// `[auth-token] transient_failure (get_session_exception_transient)`.
+// `authClient` is captured at the top of this module, before both token
+// helpers, so they always resolve to the real shim.
 async function getAccessToken(): Promise<AccessTokenResolution> {
   try {
     const { data, error } = await withTimeout(
-      api.auth.getSession(),
+      authClient.getSession(),
       ACCESS_TOKEN_SESSION_TIMEOUT_MS,
       "Session lookup",
     );

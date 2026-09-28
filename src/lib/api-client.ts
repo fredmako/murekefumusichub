@@ -77,6 +77,72 @@ export const api = {
         return { data: { session: null }, error: { message: 'Refresh failed' } };
       }
     },
+    // AuthContext.syncUserProfile calls api.auth.getUser(). The shim did not
+    // implement it, so that call returned undefined and the destructuring
+    // `const { data: authUser, error: authErr } = await api.auth.getUser()`
+    // threw a TypeError, which was swallowed as a profile-sync failure.
+    // Resolve the user from the stored token, hitting /api/auth/me only when
+    // a token actually exists.
+    getUser: async () => {
+      const token = localStorage.getItem('murekefu_auth_token');
+      if (!token) return { data: { user: null }, error: null };
+      const payload = decodeJwtPayload(token);
+      if (!payload) return { data: { user: null }, error: null };
+      return {
+        data: {
+          user: {
+            id: payload.sub,
+            email: payload.email || null,
+            // user_metadata.name is read directly by AuthContext; provide it
+            // from the token/display name so that path never sees null.
+            user_metadata: { name: payload.name || payload.display_name || null, picture: payload.picture || null },
+          },
+        },
+        error: null,
+      };
+    },
+
+    // Password reset. The Worker has no mail relay wired up, so this reports a
+    // clear error instead of silently "succeeding" and leaving the user waiting
+    // for an email that will never arrive.
+    resetPasswordForEmail: async (email: string) => {
+      try {
+        const res = await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          return { data: null, error: { message: data.error || 'Password reset unavailable' } };
+        }
+        return { data: {}, error: null };
+      } catch (err: any) {
+        return { data: null, error: { message: err?.message || 'Password reset failed' } };
+      }
+    },
+
+    // Change password for the signed-in user.
+    updateUser: async (attrs: { password?: string } = {}) => {
+      const token = localStorage.getItem('murekefu_auth_token');
+      if (!token) return { data: null, error: { message: 'Not signed in' } };
+      if (!attrs.password) return { data: {}, error: null };
+      try {
+        const res = await fetch('/api/auth/update-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ password: attrs.password }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          return { data: null, error: { message: data.error || 'Password update failed' } };
+        }
+        return { data: {}, error: null };
+      } catch (err: any) {
+        return { data: null, error: { message: err?.message || 'Password update failed' } };
+      }
+    },
+
     onAuthStateChange: (_callback: any) => {
       return { data: { subscription: { unsubscribe: () => {} } }, error: null };
     },
@@ -86,10 +152,14 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      if (!res.ok) return { data: { session: null }, error: { message: 'Login failed' } };
+      if (!res.ok) return { data: { session: null, user: null }, error: { message: 'Login failed' } };
       const data = await res.json();
       if (data.token) localStorage.setItem('murekefu_auth_token', data.token);
-      return { data: { session: { user: data.user, access_token: data.token } }, error: null };
+      // NOTE: callers read `data.user` (AuthContext.signInWithEmail), not
+      // `data.session.user`. Returning only `session` made a SUCCESSFUL login
+      // throw "Cannot read properties of null (reading 'name')" and then be
+      // reported as "Login failed" even though the token was issued.
+      return { data: { session: { user: data.user, access_token: data.token }, user: data.user }, error: null };
     },
     signUp: async ({ email, password }: any) => {
       const res = await fetch('/api/auth/register', {
@@ -97,10 +167,10 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      if (!res.ok) return { data: { session: null }, error: { message: 'Signup failed' } };
+      if (!res.ok) return { data: { session: null, user: null }, error: { message: 'Signup failed' } };
       const data = await res.json();
       if (data.token) localStorage.setItem('murekefu_auth_token', data.token);
-      return { data: { session: { user: data.user, access_token: data.token } }, error: null };
+      return { data: { session: { user: data.user, access_token: data.token }, user: data.user }, error: null };
     },
     signInWithOAuth: async ({ provider, options }: { provider: string; options?: { redirectTo?: string } }) => {
       if (provider !== 'google') return { error: { message: 'Only Google OAuth is supported' } };

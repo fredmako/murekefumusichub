@@ -31,7 +31,7 @@ export interface AppUser {
   email: string | null;
   display_name: string | null;
   phone?: string | null;
-  avatar_url: string | null; // ✅ ADD THIS
+  avatar_url: string | null;
   theme_settings?: {
     preset?: ThemePreset;
     mode?: ThemeMode;
@@ -133,25 +133,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const hasActiveComposerProfile = async (userId: string): Promise<boolean> => {
-    const activeQuery = await supabase
-      .from("composers")
-      .select("id, is_active")
-      .eq("user_id", userId)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (activeQuery.error && isMissingComposerActivationColumnError(activeQuery.error)) {
-      const fallback = await supabase
-        .from("composers")
-        .select("id")
-        .eq("user_id", userId)
-        .maybeSingle();
-      if (fallback.error) throw fallback.error;
-      return Boolean(fallback.data);
+    // Check if user has any compositions (implies composer profile)
+    try {
+      const res = await fetch(`${API_BASE_URL}/compositions/composer/${encodeURIComponent(userId)}`, {
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        if (res.status === 404) return false;
+        console.warn("[hasActiveComposerProfile] fetch failed:", res.status);
+        return false;
+      }
+      const data = await res.json() as { results?: Array<{ id: string }> };
+      return Array.isArray(data.results) && data.results.length > 0;
+    } catch (err) {
+      console.warn("[hasActiveComposerProfile] error:", err);
+      return false;
     }
-
-    if (activeQuery.error) throw activeQuery.error;
-    return Boolean(activeQuery.data);
   };
 
   const withTimeout = async <T,>(
@@ -162,9 +159,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
     try {
       const timeoutPromise = new Promise<T>((_, reject) => {
-        timeoutHandle = setTimeout(() => {
-          reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-        }, timeoutMs);
+        timeoutHandle = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
       });
       return await Promise.race([promise, timeoutPromise]);
     } finally {
@@ -174,7 +169,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchServerRoles = async (authUid: string): Promise<string[]> => {
     try {
-      const res = await fetch(`${API_BASE_URL}/user/roles/${authUid}`, {
+      const res = await fetch(`${API_BASE_URL}/user/roles/${encodeURIComponent(authUid)}`, {
         headers: { "Content-Type": "application/json" },
       });
       if (!res.ok) return [];
@@ -192,22 +187,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   ): Promise<string[]> => {
     const roles = ["buyer"];
 
+    // Fetch roles from the Worker API (reads from D1 user_roles table)
     try {
-      // Check user_roles table
-      const { data: userRoleRows, error: userRolesErr } = await supabase
-        .from("user_roles")
-        .select("role_id, roles(name)")
-        .eq("user_id", userId);
-      if (!userRolesErr && userRoleRows) {
-        userRoleRows.forEach((row: any) => {
-          const roleName = row?.roles?.name;
-          if (roleName && !roles.includes(roleName)) roles.push(roleName);
-        });
+      const res = await fetch(`${API_BASE_URL}/user/roles/${encodeURIComponent(userId)}`, {
+        headers: { "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        const apiRoles = await res.json() as string[];
+        if (Array.isArray(apiRoles)) {
+          for (const r of apiRoles) {
+            if (r && !roles.includes(r)) roles.push(r);
+          }
+        }
       }
     } catch (err) {
-      console.warn("[resolveFallbackRoles] user_roles lookup failed:", err);
+      console.warn("[resolveFallbackRoles] roles API lookup failed:", err);
     }
 
+    // Check if user has composer profile
     try {
       const composerActive = await hasActiveComposerProfile(userId);
       if (composerActive && !roles.includes("composer")) roles.push("composer");
@@ -215,6 +212,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.warn("[resolveFallbackRoles] composer lookup failed:", err);
     }
 
+    // Check if user is an admin by email
     const normalizedEmail = (email || "").trim().toLowerCase();
     if (normalizedEmail && ADMIN_IDENTIFIERS.includes(normalizedEmail)) {
       if (!roles.includes("admin")) roles.push("admin");
@@ -223,25 +221,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     if (!normalizedEmail) return roles;
 
+    // Fallback admin check via API (if endpoint exists)
     try {
-      const { data: adminEmailRow, error: adminEmailErr } = await supabase
-        .from("admin_emails")
-        .select("id")
-        .eq("email", normalizedEmail)
-        .eq("is_active", true)
-        .maybeSingle();
-      if (adminEmailErr) throw adminEmailErr;
-      if (adminEmailRow && !roles.includes("admin")) roles.push("admin");
+      const res = await fetch(`${API_BASE_URL}/admin/emails/${encodeURIComponent(normalizedEmail)}`, {
+        headers: { "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        if (!roles.includes("admin")) roles.push("admin");
+      }
     } catch (err) {
-      console.warn("[resolveFallbackRoles] admin email lookup failed:", err);
+      // silently ignore
     }
 
     return roles;
   };
 
-  /**
-   * Sync user profile: fetch from Supabase users table and check roles
-   */
   const syncUserProfile = async (authUid: string) => {
     try {
       // Prefer backend profile endpoint so avatar URLs can be refreshed/signed server-side.
@@ -254,6 +248,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (resp.ok) {
           const serverUser = await resp.json();
           let roles = Array.isArray(serverUser?.roles) ? serverUser.roles : [];
+
           if (!roles.length) {
             roles = await resolveFallbackRoles(
               serverUser?.id || "",
@@ -278,19 +273,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.warn("[syncUserProfile] backend profile fetch failed:", serverFetchErr);
       }
 
-      // Try to fetch existing user row by auth_uid
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select("id, auth_uid, email, display_name, phone, avatar_url, theme_settings")
-        .eq("auth_uid", authUid)
-        .maybeSingle();
+      // Try to fetch existing user row by auth_uid via API
+      let finalUser: any = undefined;
+      try {
+        const res = await fetch(`${API_BASE_URL}/users/by-auth-uid/${encodeURIComponent(authUid)}`, {
+          headers: { "Content-Type": "application/json" },
+        });
+        if (res.ok) {
+          finalUser = await res.json();
+        } else {
+          console.warn("[syncUserProfile] backend profile fetch by auth_uid failed:", res.status);
+        }
+      } catch (fetchErr) {
+        console.warn("[syncUserProfile] backend profile fetch by auth_uid error:", fetchErr);
+      }
 
-      if (userError) throw userError;
-
-      let finalUser = userData;
-
-      // If no user row exists, ask the server to ensure the user (avoids client-side insert conflicts)
       if (!finalUser) {
+        // If no user row exists, ask the server to ensure the user
         try {
           const { data: authUser, error: authErr } =
             await api.auth.getUser();
@@ -302,7 +301,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const avatarUrl =
             (authUser?.user?.user_metadata as any)?.picture ?? null;
 
-          // Call server endpoint to ensure a users row exists (server uses service role key)
+          // Call server endpoint to ensure a users row exists
           try {
             const resp = await fetch(`${API_BASE_URL}/users/ensure`, {
               method: "POST",
@@ -316,7 +315,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             });
 
             if (!resp.ok) {
-              // log non-ok but continue to try to read existing row (handles 409 conflicts)
               console.warn(
                 "[syncUserProfile] ensure-user returned status:",
                 resp.status,
@@ -329,21 +327,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             );
           }
 
-          // Whether the ensure created a row or it already existed, fetch the user row by auth_uid
+          // Fetch the user row by auth_uid
           try {
-            const { data: createdUser, error: fetchUserErr } = await supabase
-              .from("users")
-              .select("id, auth_uid, email, display_name, phone, avatar_url, theme_settings")
-              .eq("auth_uid", authUid)
-              .maybeSingle();
-
-            if (fetchUserErr) {
-              console.warn(
-                "[syncUserProfile] failed to fetch user row after ensure:",
-                fetchUserErr,
-              );
+            const res = await fetch(`${API_BASE_URL}/users/by-auth-uid/${encodeURIComponent(authUid)}`, {
+              headers: { "Content-Type": "application/json" },
+            });
+            if (res.ok) {
+              finalUser = await res.json();
             } else {
-              finalUser = createdUser || undefined;
+              console.warn("[syncUserProfile] failed to fetch user row after ensure:", res.status);
             }
           } catch (e) {
             console.warn(
@@ -386,53 +378,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isComposer,
       });
     } catch (err) {
-      console.warn("[syncUserProfile] error:", err);
+      console.error("[syncUserProfile] unexpected error:", err);
     }
   };
 
-  /**
-   * Get current session token
-   */
-  const getAuthToken = async (): Promise<string | null> => {
-    try {
-      const { data, error } = await api.auth.getSession();
-      if (error || !data.session) return null;
-      return data.session.access_token;
-    } catch (err) {
-      console.error("[getAuthToken] error:", err);
-      return null;
-    }
-  };
-
-  /**
-   * Refresh roles from Supabase
-   */
-  const refreshRoles = async () => {
-    try {
-      if (!appUser) return;
-      let roles = await fetchServerRoles(appUser.auth_uid);
-      if (!Array.isArray(roles) || roles.length === 0) {
-        roles = await resolveFallbackRoles(appUser.id, appUser.email || null);
-      }
-      const isComposer = roles.includes("composer");
-
-      setAppUser((prev) =>
-        prev
-          ? {
-              ...prev,
-              roles,
-              isComposer,
-            }
-          : null,
-      );
-    } catch (err) {
-      console.warn("[refreshRoles] error:", err);
-    }
-  };
-
-  /**
-   * Sign in with email/password
-   */
+  // Sign in with email/password
   const signInWithEmail = async (email: string, password: string) => {
     try {
       const { data, error } = await api.auth.signInWithPassword({
@@ -442,11 +392,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (error || !data.user) throw error;
 
-      // Sync user profile from Supabase users table
+      // Sync user profile from backend
       await syncUserProfile(data.user.id);
     } catch (err: any) {
       console.error("[signInWithEmail] error:", err);
-      // handle unconfirmed email gracefully
       if (
         err.name === "AuthApiError" &&
         err.status === 400 &&
@@ -461,9 +410,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  /**
-   * Sign up with email/password
-   */
+  // Sign up with email/password
   const signUpWithEmail = async (email: string, password: string) => {
     try {
       const emailRedirectTo = buildAuthRedirectUrl("/login");
@@ -477,7 +424,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (error || !data.user) throw error;
 
-      // Keep signup flow on sign-in state; user should verify email then sign in.
       if (data.session) {
         await api.auth.signOut().catch(() => null);
       }
@@ -487,9 +433,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  /**
-   * Sign in with Google via Supabase OAuth
-   */
+  // Sign in with Google
   const signInWithGoogle = async (nextPath?: string | null) => {
     try {
       const sanitizedNextPath = sanitizeRedirectPath(nextPath);
@@ -511,181 +455,119 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  /**
-   * Send password reset email
-   */
-  const resetPassword = async (email: string) => {
+  // Sign out
+  const signOut = async (redirect?: boolean) => {
     try {
-      const { data, error } = await api.auth.resetPasswordForEmail(email, {
-        redirectTo: buildAuthRedirectUrl("/reset-password"),
-      });
-      if (error) throw error;
-      // data contains user info maybe
-    } catch (err: any) {
-      console.error("[resetPassword] error:", err);
-      throw err;
+      await api.auth.signOut();
+      setAppUser(null);
+      setIsLoading(false);
+      if (redirect) {
+        navigate("/login", { replace: true });
+      }
+    } catch (err) {
+      console.error("[signOut] error:", err);
     }
   };
 
+  // Get auth token
+  const getAuthToken = async (): Promise<string | null> => {
+    return localStorage.getItem("murekefu_auth_token");
+  };
+
+  // Refresh roles
+  const refreshRoles = async () => {
+    if (!appUser) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/user/roles/${encodeURIComponent(appUser.auth_uid)}`, {
+        headers: { "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        const roles = await res.json() as string[];
+        if (Array.isArray(roles) && roles.length > 0) {
+          setAppUser((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  roles,
+                  isComposer: roles.includes("composer"),
+                }
+              : null,
+          );
+        }
+      }
+    } catch (err) {
+      console.error("[refreshRoles] error:", err);
+    }
+  };
+
+  // Reset password
+  const resetPassword = async (email: string) => {
+    try {
+      const { error } = await api.auth.resetPasswordForEmail(email, {
+        redirectTo: buildAuthRedirectUrl("/reset-password"),
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("[resetPassword] error:", err);
+      throw mapAuthNetworkError(err);
+    }
+  };
+
+  // Update password
   const updatePassword = async (password: string) => {
     try {
       const { error } = await api.auth.updateUser({ password });
       if (error) throw error;
     } catch (err: any) {
       console.error("[updatePassword] error:", err);
-      throw err;
+      throw mapAuthNetworkError(err);
     }
   };
 
-  /**
-   * Sign out
-   */
-  const signOut = async (redirect = true) => {
-    try {
-      const { error } = await withTimeout(
-        api.auth.signOut(),
-        8000,
-        "Global sign out",
-      );
-      if (error) throw error;
-    } catch (err: any) {
-      console.warn(
-        "[signOut] global sign out failed; attempting local sign out:",
-        err,
-      );
-      try {
-        await withTimeout(
-          api.auth.signOut({ scope: "local" } as any),
-          4000,
-          "Local sign out",
-        );
-      } catch (localErr: any) {
-        console.warn("[signOut] local sign out fallback failed:", localErr);
-      }
-    } finally {
-      // Always clear local auth state to avoid UI flicker/redirect loops when
-      // network is unstable during sign-out.
-      setAppUser(null);
-      if (redirect) navigate("/login", { replace: true });
-    }
-  };
-
-  /**
-   * Initialize auth state on mount
-   */
+  // Initialize auth on mount
   useEffect(() => {
-    let mounted = true;
-    let subscriptionUnsubscribe: (() => void) | null = null;
-    let authInitWatchdog: ReturnType<typeof setTimeout> | null = null;
-
     const initAuth = async () => {
-      authInitWatchdog = setTimeout(() => {
-        if (!mounted) return;
-        console.warn(
-          `[initAuth] watchdog reached ${AUTH_INIT_WATCHDOG_MS}ms; forcing auth loading state to false.`,
-        );
-        setIsLoading(false);
-      }, AUTH_INIT_WATCHDOG_MS);
-
+      setIsLoading(true);
       try {
-        // Retry getSession with exponential backoff to handle navigator lock timeouts
-        let retries = 0;
-        const maxRetries = 3;
-        let lastError: any = null;
-
-        while (retries < maxRetries) {
-          try {
-            const { data, error } = await withTimeout(
-              api.auth.getSession(),
-              AUTH_SESSION_TIMEOUT_MS,
-              "Auth session lookup",
-            );
-
-            if (error) {
-              lastError = error;
-              retries++;
-              if (retries < maxRetries) {
-                await new Promise((resolve) =>
-                  setTimeout(resolve, Math.pow(2, retries) * 500),
-                );
-                continue;
-              }
-              throw error;
-            }
-
-            if (data.session && data.session.user) {
-              if (mounted) {
-                try {
-                  await withTimeout(
-                    syncUserProfile(data.session.user.id),
-                    AUTH_PROFILE_SYNC_TIMEOUT_MS,
-                    "Profile sync",
-                  );
-                } catch (profileErr: any) {
-                  console.warn("[initAuth] profile sync failed:", profileErr);
-                  setAppUser(null);
-                }
-              }
-            } else if (mounted) {
-              setAppUser(null);
-            }
-            break; // Success, exit retry loop
-          } catch (err: any) {
-            lastError = err;
-            // Check if it's a navigator lock timeout error
-            if (
-              err?.name === "NavigatorLockAcquireTimeoutError" &&
-              retries < maxRetries
-            ) {
-              retries++;
-              await new Promise((resolve) =>
-                setTimeout(resolve, Math.pow(2, retries) * 500),
-              );
-            } else {
-              throw err;
-            }
-          }
+        const token = await getAuthToken();
+        if (!token) {
+          setIsLoading(false);
+          return;
         }
-      } catch (err: any) {
-        if (err?.name === "NavigatorLockAcquireTimeoutError") {
-          console.warn(
-            "[initAuth] lock timeout; deferring to auth state listener:",
-            err,
-          );
-        } else {
-          console.error("[initAuth] error:", err);
+
+        // Verify the token with the backend and reuse that response as the
+        // profile source.
+        //
+        // NOTE: this used to pass `token` (the raw JWT) into syncUserProfile,
+        // which put a 300-character bearer token into the URL:
+        //   /api/users/by-auth-uid/eyJhbGciOi...
+        // That 404'd, so the profile never loaded and the app silently degraded
+        // to an empty user. The parameter is a USER ID — the token's `sub`.
+        // The previous code also called /auth/verify twice; it is called once
+        // here and the verified id is passed on.
+        const verified = await fetch(`${API_BASE_URL}/auth/verify`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null);
+
+        const verifiedId = verified?.user?.id;
+        if (!verifiedId) {
+          localStorage.removeItem("murekefu_auth_token");
+          setIsLoading(false);
+          return;
         }
-        if (mounted) setAppUser(null);
+
+        await syncUserProfile(verifiedId);
+      } catch (err) {
+        console.error("[initAuth] error:", err);
+        localStorage.removeItem("murekefu_auth_token");
       } finally {
-        if (authInitWatchdog) {
-          clearTimeout(authInitWatchdog);
-          authInitWatchdog = null;
-        }
-        if (mounted) setIsLoading(false);
+        setIsLoading(false);
       }
     };
 
-    const setupAuthListener = () => {
-      const { data } = api.auth.onAuthStateChange(async (_event, session) => {
-        if (!mounted) return;
-        if (session && session.user) {
-          await syncUserProfile(session.user.id);
-        } else {
-          setAppUser(null);
-        }
-      });
-
-      subscriptionUnsubscribe = data?.subscription?.unsubscribe ?? null;
-    };
-
-    // Register listener first, then initialize session read.
-    setupAuthListener();
-    initAuth().catch((err) => console.warn("[initAuth] setup error:", err));
-
-    return () => {
-      mounted = false;
-      subscriptionUnsubscribe?.();
-    };
+    initAuth();
   }, []);
 
   return (
@@ -709,10 +591,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 };
 
 export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
+  return ctx;
 };
-

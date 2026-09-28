@@ -265,6 +265,21 @@ app.post('/api/auth/oauth/google', async (c) => {
   }
 });
 
+// JSON.parse that never throws.
+//
+// Several tables store JSON as TEXT (users.theme_settings, and various
+// *_json columns). A single malformed row must not 500 the whole response —
+// return null and let the caller fall back.
+function safeParseJson(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 // Shape the user record for API responses.
 //
 // NEVER spread the raw D1 row: it contains `password_hash`, and a bare
@@ -303,6 +318,57 @@ app.post('/api/auth/refresh', async (c) => {
   const token = await createToken({ sub: user.id, email: user.email, roles }, c.env.JWT_SECRET);
   // NOTE: never `{ ...user }` here — see publicUser() above.
   return c.json({ token, user: publicUser(user, roles) });
+});
+
+// Change the signed-in user's password.
+app.post('/api/auth/update-password', async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+  let payload;
+  try { payload = await c.req.json(); } catch { payload = {}; }
+  const newPassword = String(payload.password || '');
+  if (newPassword.length < 6) {
+    return c.json({ error: 'Password must be at least 6 characters' }, 400);
+  }
+
+  const currentPassword = String(payload.current_password || payload.currentPassword || '');
+  if (currentPassword) {
+    const valid = await verifyPassword(currentPassword, user.password_hash);
+    if (!valid) return c.json({ error: 'Current password is incorrect' }, 403);
+  }
+
+  const hash = await hashPassword(newPassword);
+  await c.env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?').bind(hash, user.id).run();
+
+  return c.json({ success: true, user: publicUser(user, await getUserRoles(c, user.id)) });
+});
+
+// Password reset request.
+//
+// No mail relay is configured on this Worker, so the honest response is to say
+// so rather than return 200 and leave the user waiting for an email that will
+// never arrive. Wire an email provider (e.g. Resend) and add a reset_tokens
+// table, then replace this body with a real token-issuing flow.
+app.post('/api/auth/reset-password', async (c) => {
+  let payload;
+  try { payload = await c.req.json(); } catch { payload = {}; }
+  const email = String(payload.email || '').trim().toLowerCase();
+  if (!email) return c.json({ error: 'Email is required' }, 400);
+
+  const user = await getUserByEmail(c, email);
+  if (!user || !user.is_active) {
+    // Do not reveal whether the account exists.
+    return c.json({
+      success: false,
+      error: 'Password reset is not available yet. Please contact an administrator.',
+    }, 503);
+  }
+
+  return c.json({
+    success: false,
+    error: 'Password reset email delivery is not configured. Please contact an administrator.',
+  }, 503);
 });
 
 // Stateless JWTs cannot be revoked server-side, so logout only acknowledges
@@ -381,25 +447,105 @@ app.get('/api/request-role/invite-status', async (c) => {
 
 // ========== USERS ==========
 
+// Profile lookup by the token's `sub`.
+//
+// NOTE: AuthContext expects a BARE user object here (`finalUser.display_name`,
+// `finalUser.avatar_url`, `finalUser.theme_settings`), NOT a `{ user: ... }`
+// wrapper. Returning the wrapper left every field undefined, so the profile
+// sync silently produced an empty user. Project through publicUser() so
+// password_hash can never leak, and include the theme/phone fields the
+// frontend reads.
 app.get('/api/users/by-auth-uid/:authUid', async (c) => {
-  const user = await getUserFromDb(c, c.req.param('authUid'));
-  return c.json(user || {});
+  const authUid = c.req.param('authUid');
+  const row = await getUserFromDb(c, authUid);
+  if (!row) return c.json({}, 404);
+  const roles = await getUserRoles(c, row.id);
+  return c.json({
+    id: row.id,
+    auth_uid: row.id,
+    email: row.email,
+    display_name: row.display_name,
+    phone: row.phone ?? null,
+    avatar_url: row.avatar_url,
+    theme_settings: row.theme_settings ? safeParseJson(row.theme_settings) : null,
+    is_active: row.is_active,
+    created_at: row.created_at,
+    roles,
+  });
 });
 
+// Ensure a user row exists for the signed-in identity.
+//
+// Previously this returned `{ success: true }` without doing anything, so the
+// frontend's follow-up "fetch the row back" always 404'd. It now upserts on
+// the token's `sub`, which is the same id the users table is keyed by for this
+// auth model.
 app.post('/api/users/ensure', async (c) => {
   const user = await requireAuth(c);
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
-  return c.json({ success: true });
+
+  let payload;
+  try { payload = await c.req.json(); } catch { payload = {}; }
+
+  // Already present (requireAuth loaded it from D1) — just report it back.
+  const roles = await getUserRoles(c, user.id);
+
+  // Ensure the default buyer role exists for brand-new accounts.
+  const { results: existingRoles } = await c.env.DB
+    .prepare('SELECT role_id FROM user_roles WHERE user_id = ?')
+    .bind(user.id)
+    .all();
+  if (!existingRoles || existingRoles.length === 0) {
+    await c.env.DB
+      .prepare('INSERT OR IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)')
+      .bind(user.id, 'role_buyer')
+      .run();
+  }
+
+  if (payload.display_name && !user.display_name) {
+    await c.env.DB
+      .prepare('UPDATE users SET display_name = ? WHERE id = ?')
+      .bind(payload.display_name, user.id)
+      .run();
+  }
+  if (payload.avatar_url && !user.avatar_url) {
+    await c.env.DB
+      .prepare('UPDATE users SET avatar_url = ? WHERE id = ?')
+      .bind(payload.avatar_url, user.id)
+      .run();
+  }
+
+  return c.json({
+    success: true,
+    user: {
+      id: user.id,
+      auth_uid: user.id,
+      email: user.email,
+      display_name: user.display_name || payload.display_name || null,
+      phone: user.phone ?? null,
+      avatar_url: user.avatar_url || payload.avatar_url || null,
+      theme_settings: user.theme_settings ? safeParseJson(user.theme_settings) : null,
+      roles,
+    },
+  });
 });
 
 app.get('/api/users/:id', async (c) => {
-  const user = await getUserFromDb(c, c.req.param('id'));
-  return c.json(user || {});
+  const row = await getUserFromDb(c, c.req.param('id'));
+  if (!row) return c.json({}, 404);
+  const roles = await getUserRoles(c, row.id);
+  return c.json({ ...publicUser(row, roles), auth_uid: row.id, theme_settings: row.theme_settings ? safeParseJson(row.theme_settings) : null });
 });
 
+// Roles as a BARE array.
+//
+// AuthContext does `const res = await fetch(...); const roles = await res.json();
+// if (Array.isArray(roles))` — a `{ roles: [...] }` wrapper fails that
+// Array.isArray check and every user silently fell back to ['buyer'], which is
+// why admins saw the buyer dashboard. The value is an array, not an object.
 app.get('/api/user/roles/:userId', async (c) => {
   const roles = await getUserRoles(c, c.req.param('userId'));
-  return c.json({ roles });
+  return c.json(roles);
 });
 
 // ========== ACCOUNT ==========
@@ -851,47 +997,11 @@ app.get('/api/admin/composer-requests', async (c) => {
   return c.json({ requests: results || [] });
 });
 
-// POST /admin/users/:id/demote-composer — D1 implementation
-app.post('/api/admin/users/:id/demote-composer', async (c) => {
-  const auth = await requireAdmin(c);
-  if (auth.error) return c.json({ error: auth.error }, auth.status);
-  const userId = c.req.param('id');
-  await c.env.DB.prepare(
-    "DELETE FROM user_roles WHERE user_id = ? AND role_id = (SELECT id FROM roles WHERE name = 'composer')"
-  ).bind(userId).run();
-  return c.json({ success: true });
-});
-
-// POST /admin/users/:id/demote-admin — D1 implementation
-app.post('/api/admin/users/:id/demote-admin', async (c) => {
-  const auth = await requireAdmin(c);
-  if (auth.error) return c.json({ error: auth.error }, auth.status);
-  const userId = c.req.param('id');
-  if (userId === auth.user?.id) return c.json({ error: 'You cannot remove your own admin role' }, 400);
-  await c.env.DB.prepare(
-    "DELETE FROM user_roles WHERE user_id = ? AND role_id = (SELECT id FROM roles WHERE name = 'admin')"
-  ).bind(userId).run();
-  return c.json({ success: true });
-});
-
-// POST /admin/users/:id/unsuspend — D1 implementation
-app.post('/api/admin/users/:id/unsuspend', async (c) => {
-  const auth = await requireAdmin(c);
-  if (auth.error) return c.json({ error: auth.error }, auth.status);
-  const userId = c.req.param('id');
-  await c.env.DB.prepare('UPDATE users SET is_active = 1 WHERE id = ?').bind(userId).run();
-  return c.json({ success: true });
-});
-
-// POST /admin/role-requests/:userId/reject
-app.post('/api/admin/role-requests/:userId/reject', async (c) => {
-  const auth = await requireAdmin(c);
-  if (auth.error) return c.json({ error: auth.error }, auth.status);
-
-  const userId = c.req.param('userId');
-  await c.env.DB.prepare("UPDATE role_requests SET status = 'rejected' WHERE user_id = ? AND status = 'pending'").bind(userId).run();
-  return c.json({ success: true });
-});
+// NOTE: four admin routes (demote-composer, demote-admin, unsuspend,
+// role-requests/:userId/reject) were registered twice — an earlier Supabase-era
+// block and a later D1 block. Hono matches in registration order, so the FIRST
+// copy silently won and the D1 versions below were dead code. The duplicate
+// block has been removed so the D1 implementations are the ones that run.
 
 app.post('/api/admin/role-requests/:userId/accept', async (c) => {
   const admin = await requireAdmin(c);

@@ -15,9 +15,39 @@ function nowSecs(): number {
   return Math.floor(Date.now() / 1000);
 }
 
+// Decode the `exp` claim from our own JWT.
+//
+// The Worker returns `{ token, user }` — it does NOT return `expires_in`, and
+// nothing ever wrote the EXPIRY_KEY. So `isExpired()` saw no expiry key, parsed
+// it as 0, and returned TRUE — which made getAuthToken() DELETE the token and
+// return null on the very next read. That is why a successful login appeared to
+// work, then every subsequent request failed with an auth error. Fall back to
+// the token's own `exp` claim, which is always present.
+function tokenExpiry(token: string | null): number {
+  if (!token) return 0;
+  try {
+    const part = token.split(".")[1];
+    if (!part) return 0;
+    const base64 = part.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+    const json = typeof atob === "function"
+      ? atob(padded)
+      : Buffer.from(padded, "base64").toString("utf8");
+    const payload = JSON.parse(json);
+    return typeof payload.exp === "number" ? payload.exp : 0;
+  } catch {
+    return 0;
+  }
+}
+
 function isExpired(): boolean {
-  const exp = parseInt(localStorage.getItem(EXPIRY_KEY) || "0", 10);
-  return exp === 0 || nowSecs() >= exp;
+  const stored = parseInt(localStorage.getItem(EXPIRY_KEY) || "0", 10);
+  // Prefer the stored expiry; otherwise read it off the token itself.
+  const exp = stored > 0 ? stored : tokenExpiry(localStorage.getItem(TOKEN_KEY));
+  // An unparseable/absent expiry must NOT be treated as expired — that
+  // silently logs the user out. Only a real, passed expiry counts.
+  if (!exp) return false;
+  return nowSecs() >= exp;
 }
 
 export function getAuthToken(): string | null {
@@ -96,6 +126,19 @@ export interface SignInResult {
   user: MwUser;
 }
 
+// The Worker returns `{ token, user }`, NOT `{ access_token, refresh_token,
+// expires_in }`. Reading `data.access_token` yielded undefined, so the token was
+// never stored under TOKEN_KEY and the session appeared to log itself out.
+function persistSession(data: any) {
+  const token = data.token || data.access_token;
+  if (!token) return;
+  const expiresIn = Number(data.expires_in) > 0
+    ? Number(data.expires_in)
+    : Math.max(60, tokenExpiry(token) - nowSecs() || 86400);
+  setAuthTokens(token, data.refresh_token || "", expiresIn);
+  if (data.user) setUser(data.user);
+}
+
 export async function signInWithEmail(email: string, password: string): Promise<SignInResult> {
   const res = await apiFetch("/auth/login", {
     method: "POST",
@@ -106,8 +149,7 @@ export async function signInWithEmail(email: string, password: string): Promise<
     throw new Error(body.message || `Login failed (${res.status})`);
   }
   const data = await res.json();
-  setAuthTokens(data.access_token, data.refresh_token || "", data.expires_in || 86400);
-  if (data.user) setUser(data.user);
+  persistSession(data);
   return data;
 }
 
@@ -125,7 +167,11 @@ export async function registerUser(
     throw new Error(body.message || `Registration failed (${res.status})`);
   }
   const data = await res.json();
-  setAuthTokens(data.access_token, data.refresh_token || "", data.expires_in || 86400);
+  const regToken = data.token || data.access_token || "";
+  const regExp = Number(data.expires_in) > 0
+    ? Number(data.expires_in)
+    : Math.max(60, tokenExpiry(regToken) - nowSecs() || 86400);
+  setAuthTokens(regToken, data.refresh_token || "", regExp);
   if (data.user) setUser(data.user);
   return data;
 }
@@ -154,7 +200,11 @@ export async function refreshSession(): Promise<boolean> {
   });
   if (!res.ok) { clearAuth(); clearUser(); return false; }
   const data = await res.json();
-  setAuthTokens(data.access_token, data.refresh_token || refreshToken, data.expires_in || 86400);
+  const token = data.token || data.access_token || "";
+  const refExp = Number(data.expires_in) > 0
+    ? Number(data.expires_in)
+    : Math.max(60, tokenExpiry(token) - nowSecs() || 86400);
+  setAuthTokens(token, data.refresh_token || refreshToken, refExp);
   if (data.user) setUser(data.user);
   return true;
 }
@@ -175,12 +225,27 @@ export const supabase = {
   auth: {
     getSession: async () => {
       const token = getAuthToken();
-      if (!token || isExpired()) {
+      if (!token) return { data: { session: null }, error: null };
+      if (isExpired()) {
         const ok = await refreshSession();
         if (!ok) return { data: { session: null }, error: null };
       }
       const user = getUser();
-      return { data: { session: user ? { access_token: token!, user } : null }, error: null };
+      // expires_at is REQUIRED: api.ts computes
+      // `session.expires_at - now <= 30` to decide whether to refresh, and a
+      // missing value (undefined -> 0) makes that true on EVERY request.
+      const live = getAuthToken();
+      const exp = tokenExpiry(live);
+      return {
+        data: {
+          session: {
+            access_token: live ?? token,
+            user,
+            expires_at: exp || nowSecs() + 86400,
+          },
+        },
+        error: null,
+      };
     },
     getUser: async () => {
       const user = await getCurrentUser();
@@ -189,17 +254,49 @@ export const supabase = {
     },
     signInWithPassword: async (opts: { email: string; password: string }) => {
       const result = await signInWithEmail(opts.email, opts.password);
-      return { data: { session: result.user, user: result.user }, error: null };
+      // `session` must be a SESSION object, not the user — api.ts reads
+      // `data.session.access_token` and `data.session.expires_at`.
+      return {
+        data: {
+          session: {
+            access_token: getAuthToken() ?? "",
+            user: result.user,
+            expires_at: tokenExpiry(getAuthToken()) || nowSecs() + 86400,
+          },
+          user: result.user,
+        },
+        error: null,
+      };
     },
     signUp: async (opts: { email: string; password: string; options?: { data?: Record<string, unknown> } }) => {
       const result = await registerUser(opts.email, opts.password, opts.options?.data?.display_name as string || null);
-      return { data: { session: result.user, user: result.user }, error: null };
+      return {
+        data: {
+          session: {
+            access_token: getAuthToken() ?? "",
+            user: result.user,
+            expires_at: tokenExpiry(getAuthToken()) || nowSecs() + 86400,
+          },
+          user: result.user,
+        },
+        error: null,
+      };
     },
     refreshSession: async () => {
       const ok = await refreshSession();
       if (!ok) return { data: { session: null }, error: { message: "Refresh failed" } };
       const user = getUser();
-      return { data: { session: user ? { access_token: getAuthToken()!, user } : null }, error: null };
+      const live = getAuthToken();
+      return {
+        data: {
+          session: {
+            access_token: live ?? "",
+            user,
+            expires_at: tokenExpiry(live) || nowSecs() + 86400,
+          },
+        },
+        error: null,
+      };
     },
     onAuthStateChange: (callback: (event: string, session: any) => void) => {
       const unsub = onAuthStateChange((ev, sess) => {
