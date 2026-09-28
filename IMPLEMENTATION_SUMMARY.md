@@ -16,10 +16,10 @@ This document summarizes the complete backend logic and architecture that has be
   - Token management
   - Session persistence
 
-### Supabase User Sync
+### Cloudflare Worker / D1 User Sync
 - **File**: `/src/services/api.ts` - `authService`
 - **Features**:
-  - Automatic user synchronization between Firebase and Supabase
+  - Automatic user synchronization between Firebase and Cloudflare Worker / D1
   - Role assignment (buyer, composer, admin)
   - User profile management
   - Audit logging
@@ -38,8 +38,8 @@ This document summarizes the complete backend logic and architecture that has be
 
 ## 2. Database Architecture ✅
 
-### Supabase Client
-- **File**: `/src/lib/supabase.ts`
+### Cloudflare Worker / D1 Client
+- **File**: `/src/lib/Cloudflare Worker / D1.ts`
 - **Features**:
   - Type-safe database client
   - All table type definitions
@@ -86,12 +86,12 @@ This document summarizes the complete backend logic and architecture that has be
 All services include:
 - Error handling
 - Type safety
-- Supabase integration
+- Cloudflare Worker / D1 integration
 - Authentication token handling
 
 ### Auth Service (`authService`)
 ```typescript
-- syncUser() - Sync Firebase user to Supabase
+- syncUser() - Sync Firebase user to Cloudflare Worker / D1
 - logAudit() - Log user actions
 ```
 
@@ -133,7 +133,7 @@ All services include:
 
 ### Storage Service (`storageService`)
 ```typescript
-- uploadFile() - Upload files to Supabase Storage
+- uploadFile() - Upload files to Cloudflare Worker / D1 Storage
 - deleteFile() - Remove files
 ```
 
@@ -155,7 +155,7 @@ All services include:
 - Project ID and storage bucket
 - Messaging and analytics IDs
 
-**Supabase Config:**
+**Cloudflare Worker / D1 Config:**
 - Project URL
 - Anon key for client-side operations
 
@@ -223,7 +223,7 @@ createUserWithEmailAndPassword(auth, email, password)
 authService.syncUser(firebaseUser, role)
 ```
 
-**3. Supabase operations:**
+**3. Cloudflare Worker / D1 operations:**
 - Check if user exists by `firebase_uid`
 - Create user if new
 - Assign role
@@ -248,7 +248,7 @@ authService.syncUser(firebaseUser, role)
 - Secure session management
 - Auto token refresh
 
-**Supabase:**
+**Cloudflare Worker / D1:**
 - Row Level Security (RLS) ready
 - Service role key for server-side only
 - Anon key for client-side operations
@@ -297,7 +297,7 @@ auth/weak-password → Password requirements
 auth/invalid-email → Email format validation
 ```
 
-### Supabase Errors
+### Cloudflare Worker / D1 Errors
 ```typescript
 PGRST116 (not found) → Handled gracefully
 23505 (unique violation) → User-friendly message
@@ -321,7 +321,7 @@ All operations provide:
 /src
 ├── /lib
 │   ├── firebase.ts          # Firebase config & auth
-│   └── supabase.ts           # Supabase client & types
+│   └── Cloudflare Worker / D1.ts           # Cloudflare Worker / D1 client & types
 │
 ├── /services
 │   └── api.ts                # Complete API service layer
@@ -401,7 +401,7 @@ sms_logs → users
 - [x] Session persistence
 
 ### Database Operations
-- [x] Create user in Supabase
+- [x] Create user in Cloudflare Worker / D1
 - [x] Assign roles
 - [x] Create buyer/composer records
 - [x] Query compositions
@@ -423,13 +423,13 @@ sms_logs → users
 ### Required Before Production
 
 1. **Environment Setup**
-   - [ ] Create production Supabase project
+   - [ ] Create production Cloudflare Worker / D1 project
    - [ ] Set up production Firebase project
    - [ ] Configure production environment variables
    - [ ] Set up SSL certificates
 
 2. **Security Hardening**
-   - [ ] Enable Supabase RLS (Row Level Security)
+   - [ ] Enable Cloudflare Worker / D1 RLS (Row Level Security)
    - [ ] Configure CORS properly
    - [ ] Set up rate limiting
    - [ ] Add API authentication middleware
@@ -443,7 +443,7 @@ sms_logs → users
    - [ ] Set up refund system
 
 4. **Storage Setup**
-   - [ ] Create Supabase storage buckets
+   - [ ] Create Cloudflare Worker / D1 storage buckets
    - [ ] Configure file upload limits
    - [ ] Set up CDN (if needed)
    - [ ] Implement file validation
@@ -496,7 +496,7 @@ sms_logs → users
 ## 13. Key Features Summary
 
 ### ✅ Fully Implemented
-- Complete authentication flow (Firebase + Supabase)
+- Complete authentication flow (Firebase + Cloudflare Worker / D1)
 - User role management (buyer, composer, admin)
 - Database schema with all tables
 - Comprehensive API service layer
@@ -539,7 +539,7 @@ sms_logs → users
        │             │
        ▼             ▼
 ┌──────────┐  ┌──────────┐
-│ Firebase │  │ Supabase │
+│ Firebase │  │ Cloudflare Worker / D1 │
 │   Auth   │  │    DB    │
 └────┬─────┘  └────┬─────┘
      │             │
@@ -574,13 +574,13 @@ sms_logs → users
 1. **Setup Issues**: Refer to `/BACKEND_SETUP.md`
 2. **Architecture Questions**: See `/SYSTEM_DOCUMENTATION.md`
 3. **API Reference**: Check service comments in `/src/services/api.ts`
-4. **Database Schema**: Review SQL in `/src/lib/supabase.ts`
+4. **Database Schema**: Review SQL in `/src/lib/Cloudflare Worker / D1.ts`
 
 ### Common Issues
 
-**"Cannot connect to Supabase"**
-- Check `.env` file has correct `VITE_SUPABASE_URL`
-- Verify Supabase project is active
+**"Cannot connect to Cloudflare Worker / D1"**
+- Check `.env` file has correct `VITE_Cloudflare Worker / D1_URL`
+- Verify Cloudflare Worker / D1 project is active
 - Check network connectivity
 
 **"Firebase auth failed"**
@@ -589,7 +589,7 @@ sms_logs → users
 - Enable Email/Password auth provider
 
 **"Database query failed"**
-- Run database setup SQL in Supabase
+- Run database setup SQL in Cloudflare Worker / D1
 - Check table permissions
 - Verify foreign key relationships
 

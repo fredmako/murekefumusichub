@@ -54,7 +54,7 @@ Prime Media is a comprehensive choral music marketplace platform that connects c
 
 - **Authentication:** Firebase Authentication
 - **File Storage:** Firebase Cloud Storage
-- **Database:** Currently mock data (ready for Firebase Firestore or Supabase)
+- **Database:** Currently mock data (ready for Firebase Firestore or Cloudflare Worker API)
 
 ### Component Architecture
 
@@ -295,7 +295,7 @@ Prime Media is a comprehensive choral music marketplace platform that connects c
 
 ## Database Schema Design
 
-### Recommended Database: Firebase Firestore or Supabase
+### Recommended Database: Firebase Firestore or Cloudflare Worker API
 
 ### Collections/Tables
 
@@ -467,8 +467,8 @@ const q = query(
   limit(50),
 );
 
-// Supabase
-const { data } = await supabase
+// Cloudflare Worker API
+const { data } = await Cloudflare Worker API
   .from("compositions")
   .select("*")
   .eq("status", "active")
@@ -492,8 +492,8 @@ const q = query(
 
 // With search (requires full-text search index)
 // For Firestore, use Algolia or Typesense
-// For Supabase, use built-in full-text search:
-const { data } = await supabase
+// For Cloudflare Worker API, use built-in full-text search:
+const { data } = await Cloudflare Worker API
   .from("compositions")
   .select("*")
   .eq("status", "active")

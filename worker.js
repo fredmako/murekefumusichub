@@ -146,8 +146,8 @@ app.post('/api/auth/register', async (c) => {
 });
 
 app.post('/api/auth/login', async (c) => {
-  const body = await c.req.json();
-  const email = body.email?.trim().toLowerCase();
+  const body = await c.req.json().catch(() => ({}));
+  const email = (body.email || '').trim().toLowerCase();
   const password = body.password;
   if (!email || !password) return c.json({ error: 'Email and password required' }, 400);
   const user = await getUserByEmail(c, email);
@@ -157,6 +157,70 @@ app.post('/api/auth/login', async (c) => {
   const roles = await getUserRoles(c, user.id);
   const token = await createToken({ sub: user.id, email: user.email, roles }, c.env.JWT_SECRET);
   return c.json({ token, user: { id: user.id, email: user.email, display_name: user.display_name, avatar_url: user.avatar_url, roles } });
+});
+
+app.get('/api/auth/oauth/google', async (c) => {
+  const clientId = c.env.VITE_GOOGLE_CLIENT_ID || c.env.GOOGLE_CLIENT_ID;
+  // Always use canonical non-www domain for Google OAuth (must match Google Console exactly)
+  const redirectUri = 'https://murekefumusichub.studio/auth/callback';
+  if (!clientId) return c.json({ error: 'Google OAuth not configured' }, 500);
+  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid%20email%20profile&access_type=offline`;
+  return c.json({ url: authUrl });
+});
+
+app.post('/api/auth/oauth/google/callback', async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const { code, redirect_uri } = body;
+  if (!code) return c.json({ error: 'Authorization code required' }, 400);
+
+  try {
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: c.env.VITE_GOOGLE_CLIENT_ID || c.env.GOOGLE_CLIENT_ID || '',
+        client_secret: c.env.GOOGLE_CLIENT_SECRET || '',
+        redirect_uri: redirect_uri || 'https://murekefumusichub.studio/auth/callback',
+        grant_type: 'authorization_code',
+      }),
+    });
+    if (!tokenRes.ok) {
+      const errBody = await tokenRes.text();
+      console.error('[oauth/callback] token exchange failed:', errBody);
+      return c.json({ error: 'Google token exchange failed' }, 400);
+    }
+    const tokenData = await tokenRes.json();
+    const idToken = tokenData.id_token;
+    if (!idToken) return c.json({ error: 'No ID token from Google' }, 400);
+
+    const tokenInfoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+    if (!tokenInfoRes.ok) return c.json({ error: 'Google verification failed' }, 400);
+    const tokenInfo = await tokenInfoRes.json();
+
+    const expectedAud = c.env.VITE_GOOGLE_CLIENT_ID || c.env.GOOGLE_CLIENT_ID;
+    if (expectedAud && tokenInfo.aud !== expectedAud) return c.json({ error: 'Invalid audience' }, 401);
+    if (!tokenInfo.email_verified) return c.json({ error: 'Email not verified' }, 401);
+
+    const email = tokenInfo.email;
+    const displayName = tokenInfo.name || null;
+    const picture = tokenInfo.picture || null;
+
+    let user = await getUserByEmail(c, email);
+    if (!user) {
+      const id = generateId();
+      await c.env.DB.prepare('INSERT INTO users (id, email, display_name, avatar_url, email_verified) VALUES (?, ?, ?, ?, ?)')
+        .bind(id, email, displayName, picture, 1).run();
+      await c.env.DB.prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)').bind(id, 'role_buyer').run();
+      user = await getUserFromDb(c, id);
+    }
+
+    const roles = await getUserRoles(c, user.id);
+    const token = await createToken({ sub: user.id, email: user.email, roles }, c.env.JWT_SECRET);
+    return c.json({ token, user: { id: user.id, email: user.email, display_name: user.display_name, avatar_url: user.avatar_url, roles } });
+  } catch (e) {
+    return c.json({ error: 'Google verification failed' }, 400);
+  }
 });
 
 app.post('/api/auth/oauth/google', async (c) => {
@@ -202,6 +266,13 @@ app.post('/api/auth/oauth/google', async (c) => {
 });
 
 app.get('/api/auth/me', async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+  return c.json({ user: { id: user.id, email: user.email, display_name: user.display_name, avatar_url: user.avatar_url, phone: user.phone, roles: user.roles } });
+});
+
+// Alias for backward compatibility (some cached frontends call /api/auth/verify)
+app.get('/api/auth/verify', async (c) => {
   const user = await requireAuth(c);
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
   return c.json({ user: { id: user.id, email: user.email, display_name: user.display_name, avatar_url: user.avatar_url, phone: user.phone, roles: user.roles } });
@@ -894,7 +965,56 @@ app.delete('/api/admin/users/:id', async (c) => {
   return c.json({ success: true });
 });
 
-// ========== UPLOAD ==========
+// Generic upload endpoint - matches frontend calls to /upload/:bucket
+// Also handle /api/upload/:bucket for direct API access
+const UPLOAD_BUCKETS = new Set(['compositions', 'thumbnails', 'avatars', 'arrangements']);
+
+app.post('/upload/:bucket', async (c) => {
+  const bucket = c.req.param('bucket');
+  if (!UPLOAD_BUCKETS.has(bucket)) return c.json({ error: 'Invalid bucket' }, 400);
+  return handleUpload(c, bucket);
+});
+
+app.post('/api/upload/:bucket', async (c) => {
+  const bucket = c.req.param('bucket');
+  if (!UPLOAD_BUCKETS.has(bucket)) return c.json({ error: 'Invalid bucket' }, 400);
+  return handleUpload(c, bucket);
+});
+
+async function handleUpload(c, bucket) {
+  const user = await requireAuth(c);
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+  try {
+    const contentType = c.req.header('content-type') || '';
+    
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await c.req.formData();
+      const file = formData.get('file');
+
+      if (!file) {
+        return c.json({ error: 'No file provided' }, 400);
+      }
+
+      const fileExt = file.name.split('.').pop() || 'bin';
+      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+      const fileId = generateId();
+      await c.env.DB.prepare(
+        'INSERT INTO files (id, user_id, file_name, file_type, file_size, bucket) VALUES (?, ?, ?, ?, ?, ?)'
+      ).bind(fileId, user.id, fileName, file.type || 'application/octet-stream', file.size, bucket).run();
+
+      const arrayBuffer = await file.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      const dataUrl = `data:${file.type || 'application/octet-stream'};base64,${base64}`;
+
+      return c.json({ success: true, url: dataUrl, fileId, fileName });
+    }
+
+    return c.json({ error: 'Invalid content type' }, 400);
+  } catch (err) {
+    return c.json({ error: 'Upload failed: ' + err.message }, 500);
+  }
+}
 
 app.post('/api/upload/work', async (c) => {
   const user = await requireAuth(c);
@@ -934,20 +1054,104 @@ app.post('/api/upload/work', async (c) => {
 });
 
 // ========== MEDIA ==========
+//
+// Both routes below are shape-compatible with the Pexels response the frontend
+// expects (see src/services/api.ts): { items: [{ src: { large }, alt }] }.
+// They source imagery from published compositions rather than Pexels, so when
+// there is nothing published they return an EMPTY items array — which the UI
+// already treats as "no imagery" and falls back gracefully.
+
+const MEDIA_SELECT = `
+  SELECT id, title, thumbnail_r2_key
+  FROM compositions
+  WHERE is_published = 1 AND deleted = 0
+    AND thumbnail_r2_key IS NOT NULL AND thumbnail_r2_key != ''
+`;
+
+function toMediaItems(rows) {
+  return rows.map((r) => ({
+    id: r.id,
+    photographer: 'Mureke Fumusi Hub',
+    width: null,
+    height: null,
+    alt: r.title,
+    url: null,
+    src: {
+      large2x: null,
+      large: `/api/media/thumbnail/${encodeURIComponent(r.thumbnail_r2_key)}`,
+      landscape: null,
+      medium: null,
+    },
+  }));
+}
 
 app.get('/api/media/landing-images', async (c) => {
-  const { results } = await c.env.DB.prepare(
-    'SELECT * FROM compositions WHERE is_published = 1 AND deleted = 0 AND thumbnail_url IS NOT NULL ORDER BY created_at DESC LIMIT 12'
-  ).all();
-  return c.json({ items: results.map(r => ({ src: { large: r.thumbnail_url }, alt: r.title })) });
+  const limit = Math.min(parseInt(c.req.query('perPage') || '12', 10) || 12, 50);
+  try {
+    // NOTE: the column is `thumbnail_r2_key`, NOT `thumbnail_url`. Querying a
+    // non-existent column is what made this endpoint return a 500.
+    const { results } = await c.env.DB
+      .prepare(`${MEDIA_SELECT} ORDER BY created_at DESC LIMIT ?`)
+      .bind(limit)
+      .all();
+    return c.json({ source: 'compositions', items: toMediaItems(results || []) });
+  } catch (err) {
+    console.error('[media] landing-images failed:', err && err.message);
+    // Degrade to empty rather than 500 — a hero image failure must not take out
+    // the homepage.
+    return c.json({ source: 'compositions', items: [], warning: 'media_unavailable' });
+  }
 });
 
 app.get('/api/media/composition-background', async (c) => {
-  const title = c.req.query('title') || 'music';
-  const { results } = await c.env.DB.prepare(
-    'SELECT * FROM compositions WHERE is_published = 1 AND deleted = 0 AND thumbnail_url IS NOT NULL AND title LIKE ? ORDER BY created_at DESC LIMIT 1'
-  ).bind(`%${title}%`).all();
-  return c.json({ items: results.map(r => ({ src: { large: r.thumbnail_url }, alt: r.title })) });
+  const title = c.req.query('title') || '';
+  try {
+    // If no composition matches the title, fall back to any published
+    // thumbnail so a detail page still gets imagery instead of nothing.
+    let rows = [];
+    if (title) {
+      const match = await c.env.DB
+        .prepare(`${MEDIA_SELECT} AND title LIKE ? ORDER BY created_at DESC LIMIT 1`)
+        .bind(`%${title}%`)
+        .all();
+      rows = match.results || [];
+    }
+    if (rows.length === 0) {
+      const any = await c.env.DB
+        .prepare(`${MEDIA_SELECT} ORDER BY created_at DESC LIMIT 1`)
+        .all();
+      rows = any.results || [];
+    }
+    return c.json({ source: 'compositions', items: toMediaItems(rows) });
+  } catch (err) {
+    console.error('[media] composition-background failed:', err && err.message);
+    return c.json({ source: 'compositions', items: [], warning: 'media_unavailable' });
+  }
+});
+
+// Serve a composition thumbnail by its R2 object key.
+//
+// NOTE: no R2 bucket binding is configured in wrangler.jsonc today, so this
+// returns a JSON 404 rather than an object. The route exists so the URL emitted
+// by toMediaItems() is never a dangling 404-from-the-catch-all, and so adding an
+// `r2_buckets` binding later makes thumbnails work with no further code change.
+app.get('/api/media/thumbnail/*', async (c) => {
+  const bucket = c.env.STORAGE;
+  if (!bucket) return c.json({ error: 'storage_not_configured' }, 404);
+  const key = decodeURIComponent(c.req.param('0') || '');
+  if (!key) return c.json({ error: 'missing_key' }, 400);
+  try {
+    const object = await bucket.get(key);
+    if (!object) return c.json({ error: 'not_found' }, 404);
+    const headers = new Headers();
+    object.writeHttpMetadata(headers);
+    headers.set('etag', object.etag);
+    headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+    return new Response(object.body, { status: 200, headers });
+  } catch (err) {
+    console.error('[media] thumbnail fetch failed:', err && err.message);
+    return c.json({ error: 'thumbnail_unavailable' }, 500);
+  }
 });
 
 app.post('/api/upload/community', async (c) => {
@@ -1025,6 +1229,7 @@ app.patch('/api/admin/reports/:id', async (c) => {
 // ========== HEALTH & SEO ==========
 
 app.get('/api/health', (c) => c.json({ ok: true, service: 'murekefu-music-hub', backend: 'd1' }));
+app.get('/health', (c) => c.json({ ok: true, service: 'murekefu-music-hub', backend: 'd1' }));
 
 // ========== GOOGLE SEARCH ==========
 
@@ -1101,6 +1306,273 @@ app.post('/api/seo/submit-url', async (c) => {
   } catch (err) {
     return c.json({ error: err.message }, 500);
   }
+});
+
+// ========== CHECKOUT (manual M-Pesa) ==========
+//
+// The frontend calls these (src/services/api.ts checkoutService) but the Worker
+// had no route, so checkout 404'd. Payments are recorded as `pending` and
+// confirmed by an admin — no M-Pesa Daraja call is made here, because the
+// B2C/STK push flow needs a till/shortcode this deployment does not have.
+
+app.post('/api/checkout/submit', async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+  let payload;
+  try { payload = await c.req.json(); } catch { payload = {}; }
+  const mpesaCode = String(payload.mpesaCode || '').trim();
+  const items = Array.isArray(payload.items) ? payload.items : [];
+
+  if (!mpesaCode) return c.json({ error: 'mpesaCode is required' }, 400);
+  if (!items.length) return c.json({ error: 'No items provided' }, 400);
+
+  const ids = [...new Set(items.map((i) => i && i.composition_id).filter(Boolean))];
+  if (!ids.length) return c.json({ error: 'No composition ids provided' }, 400);
+
+  // Load the real prices from the DB rather than trusting client-sent amounts.
+  const placeholders = ids.map(() => '?').join(',');
+  const { results: comps } = await c.env.DB
+    .prepare(
+      `SELECT id, title, price, price_currency, is_published, deleted
+       FROM compositions WHERE id IN (${placeholders})`
+    )
+    .bind(...ids)
+    .all();
+  const compMap = new Map((comps || []).map((r) => [r.id, r]));
+
+  const unavailable = ids.filter((id) => {
+    const r = compMap.get(id);
+    return !r || r.deleted === 1 || r.is_published === 0;
+  });
+  if (unavailable.length) {
+    return c.json({ error: 'Not found or not published', composition_ids: unavailable }, 400);
+  }
+
+  // Skip what the buyer already owns or already has pending.
+  const { results: existing } = await c.env.DB
+    .prepare(
+      `SELECT composition_id, status FROM purchases
+       WHERE buyer_id = ? AND composition_id IN (${placeholders}) AND status IN ('pending','completed')`
+    )
+    .bind(user.id, ...ids)
+    .all();
+  const owned = new Set();
+  const pending = new Set();
+  for (const row of existing || []) {
+    if (row.status === 'completed') owned.add(row.composition_id);
+    else pending.add(row.composition_id);
+  }
+
+  const toInsert = ids.filter((id) => !owned.has(id) && !pending.has(id));
+  if (!toInsert.length) {
+    return c.json({
+      success: true,
+      checkoutBatchId: null,
+      totalAmount: 0,
+      submitted: [],
+      skipped: { alreadyPurchased: [...owned], alreadyPending: [...pending] },
+    });
+  }
+
+  const batchId = crypto.randomUUID();
+  const currency = 'KES';
+  const submitted = [];
+  let total = 0;
+
+  for (const compId of toInsert) {
+    const comp = compMap.get(compId);
+    const amount = Number(comp.price || 0);
+    total += amount;
+    const id = crypto.randomUUID();
+    const paymentRef = `${batchId}:${id}`;
+    await c.env.DB
+      .prepare(
+        `INSERT INTO purchases (id, buyer_id, composition_id, price_paid, payment_ref, status, created_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'))`
+      )
+      .bind(id, user.id, compId, amount, paymentRef)
+      .run();
+    submitted.push({ id, composition_id: compId, amount, status: 'pending' });
+  }
+
+  return c.json({
+    success: true,
+    checkoutBatchId: batchId,
+    totalAmount: total,
+    currency,
+    mpesa: {
+      businessName: 'Mureke Fumusi Hub',
+      businessNumber: null,
+      accountNo: null,
+      paymentUrl: null,
+      instructions:
+        'Send the total to the published M-Pesa number, then enter the confirmation code on the checkout page.',
+    },
+    submitted,
+    skipped: { alreadyPurchased: [...owned], alreadyPending: [...pending] },
+  });
+});
+
+app.get('/api/checkout/status', async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+  const { results } = await c.env.DB
+    .prepare(
+      `SELECT p.id, p.composition_id, p.price_paid, p.payment_ref, p.status, p.created_at,
+              c.title, c.price_currency
+       FROM purchases p
+       LEFT JOIN compositions c ON c.id = p.composition_id
+       WHERE p.buyer_id = ?
+       ORDER BY p.created_at DESC
+       LIMIT 100`
+    )
+    .bind(user.id)
+    .all();
+
+  return c.json(results || []);
+});
+
+// ========== BUYER PREFERENCES (For-You weighting) ==========
+
+app.put('/api/purchases/preferences', async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+  let payload;
+  try { payload = await c.req.json(); } catch { payload = {}; }
+  const categoryId = payload.category_id;
+  const weight = Number(payload.weight);
+
+  if (categoryId === undefined || categoryId === null) {
+    return c.json({ error: 'category_id is required' }, 400);
+  }
+  if (!Number.isFinite(weight)) return c.json({ error: 'weight must be a number' }, 400);
+
+  const { results: existing } = await c.env.DB
+    .prepare('SELECT id FROM buyer_preferences WHERE user_id = ? AND category_id = ?')
+    .bind(user.id, categoryId)
+    .all();
+
+  if (existing && existing.length) {
+    await c.env.DB
+      .prepare('UPDATE buyer_preferences SET weight = ? WHERE id = ?')
+      .bind(weight, existing[0].id)
+      .run();
+  } else {
+    await c.env.DB
+      .prepare('INSERT INTO buyer_preferences (id, user_id, category_id, weight) VALUES (?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), user.id, categoryId, weight)
+      .run();
+  }
+
+  return c.json({ success: true, category_id: categoryId, weight });
+});
+
+app.get('/api/purchases/preferences', async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+  const { results } = await c.env.DB
+    .prepare('SELECT * FROM buyer_preferences WHERE user_id = ?')
+    .bind(user.id)
+    .all();
+  return c.json(results || []);
+});
+
+// ========== REGISTRATION PAYMENT SUBMISSION ==========
+
+app.post('/api/registration/payments/submit', async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+  let payload;
+  try { payload = await c.req.json(); } catch { payload = {}; }
+  const type = String(payload.type || '').trim();
+  const paymentRef = String(payload.payment_ref || payload.paymentRef || '').trim();
+  const amount = Number(payload.amount);
+  const mpesaCode = String(payload.mpesa_code || payload.mpesaCode || '').trim();
+
+  if (!type) return c.json({ error: 'type is required' }, 400);
+  if (!paymentRef) return c.json({ error: 'payment_ref is required' }, 400);
+  if (!Number.isFinite(amount) || amount <= 0) return c.json({ error: 'amount must be greater than 0' }, 400);
+  if (!mpesaCode) return c.json({ error: 'mpesa_code is required' }, 400);
+
+  const id = crypto.randomUUID();
+  await c.env.DB
+    .prepare(
+      `INSERT INTO payment_submissions
+         (id, user_id, type, payment_ref, amount, mpesa_code, status, submitted_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'pending', datetime('now'))`
+    )
+    .bind(id, user.id, type, paymentRef, amount, mpesaCode)
+    .run();
+
+  const { results: regs } = await c.env.DB.prepare('SELECT * FROM registration_regulations LIMIT 1').all();
+
+  return c.json({
+    success: true,
+    message: 'Payment submitted for review.',
+    submission: { id, type, payment_ref: paymentRef, amount, mpesa_code: mpesaCode, status: 'pending' },
+    regulations: regs && regs[0] ? regs[0] : null,
+  });
+});
+
+// ========== ROLE INVITE ACCEPTANCE ==========
+
+app.post('/api/request-role/accept-invite', async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+  let payload;
+  try { payload = await c.req.json(); } catch { payload = {}; }
+  const requestedRole = String(payload.requestedRole || 'composer').trim();
+  if (!['composer', 'admin'].includes(requestedRole)) {
+    return c.json({ error: 'Invalid requestedRole' }, 400);
+  }
+
+  const { results: invites } = await c.env.DB
+    .prepare('SELECT * FROM invites WHERE email = ? AND used = 0 ORDER BY created_at DESC LIMIT 1')
+    .bind(user.email)
+    .all();
+
+  if (!invites || !invites.length) {
+    return c.json({ available: false, requestedRole, accepted: false, message: 'No invite available' });
+  }
+  const invite = invites[0];
+
+  // Claim the invite atomically: only the first request may flip used=0 -> 1.
+  const claim = await c.env.DB
+    .prepare('UPDATE invites SET used = 1, used_by = ?, used_at = datetime(\'now\') WHERE id = ? AND used = 0')
+    .bind(user.id, invite.id)
+    .run();
+
+  if (!claim.meta || claim.meta.changes !== 1) {
+    return c.json({ available: false, requestedRole, accepted: false, message: 'Invite already used' });
+  }
+
+  const roleId = requestedRole === 'admin' ? 'role_admin' : `role_${requestedRole}`;
+  await c.env.DB
+    .prepare('INSERT OR IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)')
+    .bind(user.id, roleId)
+    .run();
+
+  await c.env.DB
+    .prepare(
+      `INSERT INTO role_requests (id, user_id, requested_role, status, requested_at)
+       VALUES (?, ?, ?, 'approved', datetime('now'))`
+    )
+    .bind(crypto.randomUUID(), user.id, requestedRole)
+    .run();
+
+  return c.json({
+    available: true,
+    requestedRole,
+    canAccept: false,
+    accepted: true,
+    message: `Invite accepted. You now have the ${requestedRole} role.`,
+    invite: { id: invite.id, email: invite.email, used: true, usedBy: user.id, usedAt: new Date().toISOString() },
+  });
 });
 
 // Sitemap.xml - dynamic with all pages
@@ -1184,62 +1656,83 @@ Sitemap: https://murekefumusichub.fredrickmakori102.workers.dev/sitemap.xml`, {
 
 // ========== CATCH-ALL ==========
 
+app.get('/favicon.ico', (c) => {
+  return new Response('', { status: 204, headers: { 'Content-Type': 'image/x-icon' } });
+});
+
+// ========== CATCH-ALL ==========
+
 app.get('/', async (c) => {
   try {
     const url = new URL(c.req.url);
     url.searchParams.set('_v', Date.now().toString());
     const freshReq = new Request(url, { headers: c.req.headers, method: c.req.method });
-    const res = await c.env.ASSETS.fetch(freshReq);
-    let html = await res.text();
-    html = html.replace(/(src="[^"]*index-[A-Za-z0-9_]+\.js")/, (match) => match.replace('.js', '.js?v=' + Date.now()));
-    html = html.replace(/<link[^>]*rel=["']icon["'][^>]*href=["']\/favicon\.ico["'][^>]*\/?>/gi, '<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E🎵%3C/text%3E%3C/svg%3E" />');
-    return new Response(html, { status: res.status, headers: { 'Content-Type': 'text/html; charset=UTF-8', 'Cache-Control': 'no-cache, no-store, must-revalidate' } });
-  } catch { return c.env.ASSETS.fetch(c.req.raw); }
+    return await c.env.ASSETS.fetch(freshReq);
+  } catch { return new Response('<!doctype html><html><body><div id="root"></div></body></html>', { status: 500 }); }
 });
 
 app.get('/admin', async (c) => {
   try {
-    const res = await c.env.ASSETS.fetch(new Request('http://placeholder/index.html'));
-    let html = await res.text();
-    html = html.replace(/(src="[^"]*index-[A-Za-z0-9_]+\.js")/, (match) => match.replace('.js', '.js?v=' + Date.now()));
-    return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8', 'Cache-Control': 'no-cache, no-store, must-revalidate' } });
-  } catch { return new Response('<!doctype html><html><body><div id="root"></div></body></html>', { status: 200 }); }
+    return await c.env.ASSETS.fetch(new Request('http://placeholder/index.html'));
+  } catch { return new Response('<!doctype html><html><body><div id="root"></div></body></html>', { status: 500 }); }
 });
 
 app.get('/auth/callback', async (c) => {
   try {
-    const res = await c.env.ASSETS.fetch(new Request('http://placeholder/index.html'));
-    let html = await res.text();
-    html = html.replace(/(src="[^"]*index-[A-Za-z0-9_]+\.js")/, (match) => match.replace('.js', '.js?v=' + Date.now()));
-    return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8', 'Cache-Control': 'no-cache, no-store, must-revalidate' } });
-  } catch { return new Response('<!doctype html><html><body><div id="root"></div></body></html>', { status: 200 }); }
+    return await c.env.ASSETS.fetch(new Request('http://placeholder/index.html'));
+  } catch { return new Response('<!doctype html><html><body><div id="root"></div></body></html>', { status: 500 }); }
 });
 
 // Catch-all for SPA routing
-app.get('*', async (c) => {
-  if (c.req.url.includes('/favicon.ico')) {
-    const assetRes = await c.env.ASSETS.fetch(new Request('http://placeholder/assets/system-logo-cutout-BEqeFQzS.png'));
-    if (assetRes.status === 200) {
-      return new Response(assetRes.body, { status: 200, headers: { 'Content-Type': 'image/png' } });
-    }
-  }
-  if (c.req.path.startsWith('/api/')) return c.notFound();
-  
-  const assetRes = await c.env.ASSETS.fetch(c.req.raw);
-  if (assetRes.status === 200) {
-    const newHeaders = new Headers(assetRes.headers);
-    newHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-    return new Response(assetRes.body, { status: 200, headers: newHeaders });
-  }
-  
+const SPA_HTML_HEADERS = {
+  'Content-Type': 'text/html; charset=UTF-8',
+  // No-cache: the SPA shell must never be served from a stale edge cache, or a
+  // fixed client-side route keeps 404ing after the route is added.
+  'Cache-Control': 'no-cache, no-store, must-revalidate',
+  Pragma: 'no-cache',
+  Expires: '0',
+};
+
+const EMPTY_SPA = '<!doctype html><html><body><div id="root"></div></body></html>';
+
+/**
+ * Serve the SPA shell for a client-side route.
+ *
+ * NOTE: `ASSETS.fetch()` does NOT throw for a missing file — it RETURNS a 404
+ * response. A bare `try { return await ASSETS.fetch(req) } catch {}` therefore
+ * returns that 404 straight to the browser and the catch fallback is dead code,
+ * which is exactly why /login and /marketplace 404'd while the explicitly
+ * registered /admin and /auth/callback worked. The status must be checked.
+ */
+async function serveSpa(c) {
   try {
     const res = await c.env.ASSETS.fetch(new Request('http://placeholder/index.html'));
-    let html = await res.text();
-    html = html.replace(/(src="[^"]*index-[A-Za-z0-9_]+\.js")/, (match) => match.replace('.js', '.js?v=' + Date.now()));
-    return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8', 'Cache-Control': 'no-cache, no-store, must-revalidate' } });
-  } catch {
-    return new Response('<!doctype html><html><body><div id="root"></div></body></html>', { status: 200 });
-  }
+    if (res.status === 200) {
+      return new Response(res.body, { status: 200, headers: SPA_HTML_HEADERS });
+    }
+  } catch { /* fall through to the bare shell */ }
+  return new Response(EMPTY_SPA, { status: 200, headers: SPA_HTML_HEADERS });
+}
+
+// Catch-all for SPA routing
+app.get('*', async (c) => {
+  // Unmatched API paths must 404 as JSON, never as SPA HTML — the frontend
+  // calls res.json() on these and an HTML body is a confusing parse error.
+  if (c.req.path.startsWith('/api/')) return c.notFound();
+
+  // Real static assets (e.g. /assets/index-*.js) are served as-is, with the
+  // long-lived cache header they need.
+  try {
+    const asset = await c.env.ASSETS.fetch(c.req.raw);
+    if (asset.status === 200) {
+      const h = new Headers(asset.headers);
+      h.set('Cache-Control', 'public, max-age=31536000, immutable');
+      return new Response(asset.body, { status: 200, headers: h });
+    }
+  } catch { /* fall through to the SPA shell */ }
+
+  // Anything else is a client-side route: serve index.html.
+  return serveSpa(c);
 });
 
 export default { fetch: app.fetch };

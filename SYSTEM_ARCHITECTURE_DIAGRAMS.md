@@ -161,7 +161,7 @@
                │
                ▼
 ┌──────────────────────────────────────┐
-│ 2. Backend syncs user to Supabase   │
+│ 2. Backend syncs user to D1   │
 │    • Creates/updates users table    │
 │    • Returns Firebase UID + UUID    │
 └──────────────┬───────────────────────┘
@@ -170,7 +170,7 @@
 ┌──────────────────────────────────────────────────────────────┐
 │ 3. Frontend queries composers table                         │
 │    • SELECT 1 FROM composers                              │
-│    • WHERE user_id = <supabase-uuid>                     │
+│    • WHERE user_id = <user_id>                     │
 │                                                          │
 │    ✅ Found → isComposer = true                         │
 │    ❌ Not found → isComposer = false                    │
@@ -224,7 +224,7 @@
                   │
                   ▼
 ┌────────────────────────────────────────────────────┐
-│ 2. Upload PDF to Supabase Storage                │
+│ 2. Upload PDF to D1 Storage                │
 │    • Bucket: "compositions"                      │
 │    • Path: "userId/timestamp_filename.pdf"     │
 │    • Returns: public_url                        │
@@ -233,10 +233,10 @@
                   │
                   ▼
 ┌────────────────────────────────────────────────────┐
-│ 3. Get Supabase User ID                          │
+│ 3. Get D1 User ID                          │
 │    • Query users table:                          │
 │      SELECT id WHERE firebase_uid = <uid>      │
-│    • Returns: <supabase-uuid>                   │
+│    • Returns: <user_id>                   │
 └─────────────────┬────────────────────────────────┘
                   │
                   ▼
@@ -363,7 +363,7 @@ Data flow:
 ║                  COMPLETE APPLICATION FLOW                     ║
 ╚════════════════════════════════════════════════════════════════╝
 
-FIREBASE                    SUPABASE                   APPLICATION
+FIREBASE                    D1                   APPLICATION
 ─────────────────────────────────────────────────────────────────
 
 ┌──────────────┐
@@ -384,7 +384,7 @@ FIREBASE                    SUPABASE                   APPLICATION
      │ isComposer?  │               │ Create user
      ▼              ▼               │ if needed
    ┌──────────────────────────────────────────────────────┐
-   │          SUPABASE (PostgreSQL)                      │
+   │          Cloudflare D1 (SQLite)                      │
    │                                                     │
    │  users ◄─────── roles ◄─────── user_roles          │
    │    ▲                                                │
@@ -404,7 +404,7 @@ FIREBASE                    SUPABASE                   APPLICATION
         │                    │
         ▼                    ▼
    ┌─────────────┐      ┌───────────────┐
-   │Supabase     │      │Supabase       │
+   │D1     │      │D1       │
    │Storage      │      │SQL            │
    │(Buckets):  │      │(Queries)      │
    │• avatars    │      │               │
@@ -427,12 +427,12 @@ FIREBASE                    SUPABASE                   APPLICATION
 
 ```
 ╔════════════════════════════════════════════════════════════════╗
-║              FIREBASE UID → SUPABASE UUID CONVERSION           ║
+║              Firebase UID → D1 user_id CONVERSION           ║
 ╚════════════════════════════════════════════════════════════════╝
 
 PROBLEM:
   • Firebase UID: String like "OHRStIC16rW3jYkCbP2WYaptc2k2"
-  • Supabase columns: Expect UUID type
+  • D1 columns: Expect UUID type
   • Direct query fails: "invalid input syntax for type uuid"
 
 SOLUTION:
@@ -477,7 +477,7 @@ EXAMPLE QUERY:
 │              QUICK DEPLOYMENT CHECKLIST                      │
 ├───────────────────────────────────────────────────────────────┤
 │                                                               │
-│ DATABASE (Supabase):                                         │
+│ DATABASE (D1):                                         │
 │  ☐ Run Migration 005 (composers table)                      │
 │  ☐ Run Migration 006 (compositions table)                   │
 │  ☐ Run Migration 007 (composition_stats table)              │

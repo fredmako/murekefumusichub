@@ -23,7 +23,7 @@ import { Badge } from "@/app/components/ui/badge";
 import { toast } from "sonner";
 import { supportService } from "@/services/supportService";
 import { useAuth } from "@/context/AuthContext";
-import { supabase } from "@/lib/supabase";
+import { api } from "@/lib/api-client";
 
 interface SupportIssueButtonProps {
   context: string;
@@ -208,7 +208,7 @@ export function SupportIssueButton({
       .subscribe();
 
     return () => {
-      void supabase.removeChannel(threadChannel);
+      void api.removeChannel(threadChannel);
     };
   }, [open, appUser?.id, loadThreads]);
 
@@ -233,7 +233,7 @@ export function SupportIssueButton({
       .subscribe();
 
     return () => {
-      void supabase.removeChannel(messageChannel);
+      void api.removeChannel(messageChannel);
     };
   }, [open, selectedThreadId, loadMessages, loadThreads]);
 

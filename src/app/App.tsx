@@ -35,7 +35,7 @@ import { AppErrorDialog } from "@/app/components/AppErrorDialog";
 import { Button } from "@/app/components/ui/button";
 import { buildErrorReportMessage, shouldOfferReport, simplifyErrorMessage } from "@/lib/errorMessages";
 import { supportService } from "@/services/supportService";
-import { supabase } from "@/lib/supabase";
+import { api } from "@/lib/api-client";
 import { Guitar, Loader2 } from "lucide-react";
 import {
   buildLoginPath,
@@ -253,7 +253,7 @@ class AppErrorBoundary extends React.Component<
     this.setState({ reportStatus: "sending", reportMessage: undefined });
 
     try {
-      const session = await supabase.auth.getSession();
+      const session = await api.auth.getSession();
       if (!session?.data?.session) {
         this.setState({
           reportStatus: "failed",

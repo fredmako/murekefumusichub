@@ -6,7 +6,7 @@ A comprehensive platform connecting composers with choirs worldwide. Buy, sell, 
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![React](https://img.shields.io/badge/React-18.3.1-61DAFB?logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6?logo=typescript)
-![Supabase](https://img.shields.io/badge/Supabase-Latest-3ECF8E?logo=supabase)
+
 ![Firebase](https://img.shields.io/badge/Firebase-12.8.0-FFCA28?logo=firebase)
 
 ## 🌟 Features
@@ -256,8 +256,8 @@ Required variables in `.env`:
 
 ```env
 # Supabase (Required)
-VITE_SUPABASE_URL=https://xxxxx.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
+# VITE_SUPABASE_URL= (deprecated - Cloudflare Worker)
+# VITE_SUPABASE_ANON_KEY= (deprecated)
 
 # Firebase (Already configured)
 VITE_FIREBASE_API_KEY=...
@@ -347,7 +347,7 @@ cp .env.example .env
 # Edit .env with your credentials
 
 # 3. Run database setup
-# Copy SQL from /src/lib/supabase.ts
+# Copy SQL from supabase/migrations/024_d1_schema.sql
 # Run in Supabase SQL Editor
 
 # 4. Start development
@@ -364,7 +364,7 @@ pnpm run build
 **"Cannot connect to Supabase"**
 ```bash
 # Check .env file
-cat .env | grep SUPABASE
+# cat .env | grep SUPABASE  (deprecated)
 
 # Verify Supabase project is active
 # Check Supabase dashboard

@@ -18,7 +18,7 @@ Current deployment model:
 
 - Frontend: Vercel
 - Backend API: Railway
-- Database, Auth, and Storage: Supabase
+- Database, Auth, and Storage: Cloudflare Worker API
 
 ## 2. Problem Statement
 
@@ -92,9 +92,9 @@ Frontend on Vercel
     v
 Express API on Railway
     |
-    +--> Supabase Auth
-    +--> Supabase Postgres
-    +--> Supabase Storage
+    +--> Cloudflare Worker API Auth
+    +--> Cloudflare Worker API Postgres
+    +--> Cloudflare Worker API Storage
     +--> External payment and media integrations
 ```
 
@@ -130,7 +130,7 @@ Main backend stack:
 
 - Node.js
 - Express
-- Supabase service-role access for server operations
+- Cloudflare Worker API service-role access for server operations
 - Route-based feature modules
 
 API entry point:
@@ -185,7 +185,7 @@ Authenticated or role-sensitive routes:
 
 Primary behavior:
 
-- Supabase email/password sign-in
+- Cloudflare Worker API email/password sign-in
 - Google sign-in via callback flow
 - password reset and set-new-password flow
 - role synchronization after sign-in
@@ -547,10 +547,10 @@ Recent important migrations:
 
 The system currently relies on:
 
-- Supabase-backed authentication tokens
+- Cloudflare Worker API-backed authentication tokens
 - protected API routes using server token verification middleware
 - role checks for admin-only operations
-- server-side Supabase service-role operations for trusted backend workflows
+- server-side Cloudflare Worker API service-role operations for trusted backend workflows
 - protected download endpoints for owned purchases
 
 Security practices that matter in deployment:
@@ -571,12 +571,12 @@ Security practices that matter in deployment:
 ### Backend
 
 - Hosted on Railway
-- Requires `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
+- Requires `Cloudflare Worker API_URL` and `Cloudflare Worker API_SERVICE_ROLE_KEY`
 - Can optionally serve static frontend files when `SERVE_STATIC=true`, though the current production model separates frontend and backend hosting
 
 ### Database and Storage
 
-- Hosted in Supabase
+- Hosted in Cloudflare Worker API
 - Stores user, composition, purchase, support, enrollment, and notification data
 - Stores uploaded composition files and other assets
 
@@ -584,7 +584,7 @@ Security practices that matter in deployment:
 
 - Root-level older documentation still contains historical references that no longer describe the active architecture.
 - Some backend files are historical or partially superseded. For example, `server/routes/auth.js` exists in the repository but is not part of the active router mount set in `server/index.js`.
-- Some features depend on specific migrations being applied in Supabase before the UI behaves correctly.
+- Some features depend on specific migrations being applied in Cloudflare Worker API before the UI behaves correctly.
 - Messaging, announcements, notifications, purchases, and registration control are tightly connected to database state; missing migrations can produce degraded behavior.
 - Composer activation uses the `composers.is_active` column; if missing, run `027_add_composers_is_active.sql`.
 - Recommendation logic is intentionally designed to degrade safely for new buyers and partial data states.

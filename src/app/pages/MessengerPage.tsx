@@ -27,7 +27,7 @@ import {
 } from "@/services/supportService";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { supabase } from "@/lib/supabase";
+import { api } from "@/lib/api-client";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 import { emitMessengerInboxUpdated } from "@/lib/messengerEvents";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -391,7 +391,7 @@ export function MessengerPage() {
       .subscribe();
 
     return () => {
-      void supabase.removeChannel(threadChannel);
+      void api.removeChannel(threadChannel);
     };
   }, [activeWorkspace, appUser?.id, loadThreads]);
 
@@ -417,7 +417,7 @@ export function MessengerPage() {
       .subscribe();
 
     return () => {
-      void supabase.removeChannel(messageChannel);
+      void api.removeChannel(messageChannel);
     };
   }, [activeWorkspace, selectedThreadId, loadMessages, loadThreads]);
 

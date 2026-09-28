@@ -93,9 +93,9 @@ Backend:
 
 Platform Services:
 
-- Supabase Auth
-- Supabase Postgres
-- Supabase Storage
+- Cloudflare Worker / D1 Auth
+- Cloudflare Worker / D1 Postgres
+- Cloudflare Worker / D1 Storage
 
 ---
 
@@ -248,7 +248,7 @@ Commerce design includes:
 - keeping frontend and backend features aligned
 - handling session expiry cleanly
 - separating messenger from notifications
-- enforcing migration consistency in Supabase
+- enforcing migration consistency in Cloudflare Worker / D1
 - keeping recommendations useful during cold start
 - maintaining responsive UI across dashboards
 

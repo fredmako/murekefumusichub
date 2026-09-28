@@ -91,7 +91,7 @@ import { Link } from "react-router-dom";
 import { PdfFieldExportMenu } from "@/app/components/PdfFieldExportMenu";
 import { supportService, type AdminThreadType } from "@/services/supportService";
 import { getOptimizedProfileImageUrl } from "@/services/profileImageService";
-import { supabase } from "@/lib/supabase";
+import { api } from "@/lib/api-client";
 import { ensureArray } from "@/lib/ensureArray";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 import { formatKesAmount } from "@/lib/currency";
@@ -757,7 +757,7 @@ export function AdminPanel() {
       .subscribe();
 
     return () => {
-      void supabase.removeChannel(threadChannel);
+      void api.removeChannel(threadChannel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, supportStateFilter]);
@@ -783,7 +783,7 @@ export function AdminPanel() {
       .subscribe();
 
     return () => {
-      void supabase.removeChannel(messageChannel);
+      void api.removeChannel(messageChannel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, selectedSupportThreadId]);

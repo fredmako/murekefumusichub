@@ -21,7 +21,7 @@ cp .env.example .env
 ## Step 2: Set Up Supabase (3 minutes)
 
 1. **Create Supabase Project**
-   - Go to [supabase.com](https://supabase.com)
+   - Go to Cloudflare dashboard (https://dash.cloudflare.com)
    - Click "New Project"
    - Name it "prime-media"
    - Save your password
@@ -33,8 +33,8 @@ cp .env.example .env
 
 3. **Update `.env` file**
    ```env
-   VITE_SUPABASE_URL=https://xxxxx.supabase.co
-   VITE_SUPABASE_ANON_KEY=your-anon-key-here
+   # VITE_SUPABASE_URL= (deprecated)
+   # VITE_SUPABASE_ANON_KEY= (deprecated)
    ```
 
 4. **Run Database Setup**
@@ -126,7 +126,7 @@ ON CONFLICT (name) DO NOTHING;
 
 ### "Cannot find module '@supabase/supabase-js'"
 ```bash
-pnpm install @supabase/supabase-js
+# pnpm install @supabase/supabase-js  (NOT needed)
 ```
 
 ### "Supabase connection failed"
@@ -147,7 +147,7 @@ pnpm install @supabase/supabase-js
 
 ```env
 # Required for development
-VITE_SUPABASE_URL=https://xxxxx.supabase.co
+# VITE_SUPABASE_URL= (deprecated)
 VITE_SUPABASE_ANON_KEY=your-key-here
 
 # Already configured (Firebase)

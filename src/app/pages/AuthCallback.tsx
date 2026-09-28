@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { supabase } from "@/lib/supabase";
+import { api } from "@/lib/api-client";
 import { resolvePostLoginRedirect } from "@/lib/authRedirect";
 
 export default function AuthCallback() {
@@ -28,7 +28,7 @@ export default function AuthCallback() {
       try {
         // Avoid immediate lock contention with AuthContext startup.
         await new Promise((resolve) => setTimeout(resolve, 250));
-        const { data, error } = await supabase.auth.getSession();
+        const { data, error } = await api.auth.getSession();
 
         if (error) {
           console.error("OAuth callback error:", error);
@@ -50,7 +50,7 @@ export default function AuthCallback() {
       }
     };
 
-    const { data: authState } = supabase.auth.onAuthStateChange(
+    const { data: authState } = api.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
         const target = resolveTarget();

@@ -108,7 +108,7 @@ Frontend sends token to backend in Authorization header
   ↓
 Backend verifies token signature using Google's public keys
   ↓
-Backend extracts claims and syncs user to Supabase
+Backend extracts claims and syncs user to Cloudflare Worker
   ↓
 User is authenticated and can make API requests
 ```

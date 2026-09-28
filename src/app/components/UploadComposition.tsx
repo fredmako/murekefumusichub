@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/app/components/ui/select";
 import { Checkbox } from "@/app/components/ui/checkbox";
-import { supabase } from "@/lib/supabase";
+import { api } from "@/lib/api-client";
 import { API_BASE_URL } from "@/lib/apiBase";
 import { categoryService, mediaService } from "@/services/api";
 import {
@@ -361,7 +361,7 @@ export function UploadComposition({
   const getFreshAccessToken = async (): Promise<string | null> => {
     try {
       const { data: refreshData, error: refreshError } =
-        await supabase.auth.refreshSession();
+        await api.auth.refreshSession();
       if (!refreshError && refreshData?.session?.access_token) {
         return refreshData.session.access_token;
       }
@@ -369,7 +369,7 @@ export function UploadComposition({
       // Ignore refresh errors and fall back to current session.
     }
 
-    const { data: sessionData } = await supabase.auth.getSession();
+    const { data: sessionData } = await api.auth.getSession();
     return sessionData?.session?.access_token ?? null;
   };
 
@@ -571,7 +571,7 @@ export function UploadComposition({
         return;
       }
 
-      const { data: sessionData } = await supabase.auth.getSession();
+      const { data: sessionData } = await api.auth.getSession();
       const authUser = sessionData?.session?.user;
       if (!authUser) {
         toast.error("Not authenticated");

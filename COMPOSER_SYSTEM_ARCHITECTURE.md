@@ -17,7 +17,7 @@ This document describes the new composer registration, authentication, and dashb
   - `email` (VARCHAR) - Email address
   - `display_name` (VARCHAR) - User's display name
   - `phone` (VARCHAR) - Phone number
-  - `avatar_url` (TEXT) - URL to avatar in Supabase Storage
+  - `avatar_url` (TEXT) - URL to avatar in Cloudflare D1 Storage
   - `created_at` (TIMESTAMP) - Account creation date
   - `updated_at` (TIMESTAMP) - Last update date
 
@@ -54,7 +54,7 @@ This document describes the new composer registration, authentication, and dashb
   - `language` (VARCHAR) - e.g., "English", "Latin"
   - `accompaniment` (VARCHAR) - e.g., "Piano", "A cappella"
   - `voice_parts` (TEXT[]) - Array of voice parts ["Soprano", "Alto", etc.]
-  - `pdf_url` (TEXT) - URL to PDF in Supabase Storage
+  - `pdf_url` (TEXT) - URL to PDF in Cloudflare D1 Storage
   - `is_published` (BOOLEAN) - Publication status
   - `deleted` (BOOLEAN) - Soft delete flag
   - `created_at` (TIMESTAMP) - Upload date
@@ -127,7 +127,7 @@ Frontend sends token to backend in Authorization header
   ↓
 Server verifies token and extracts `sub` (Google user ID)
   ↓
-Backend syncs/creates user in Supabase using `google_sub` column
+Backend syncs/creates user in Cloudflare D1 using `google_sub` column
   ↓
 Frontend fetches roles/composer-status as before
   ↓
@@ -149,8 +149,8 @@ Upload form submitted with:
   - PDF file
   ↓
 Backend:
-  1. Upload PDF to Supabase Storage (compositions bucket)
-  2. Get Supabase user ID from Google `sub` / stored `google_sub`
+  1. Upload PDF to Cloudflare D1 Storage (compositions bucket)
+  2. Get Cloudflare D1 user ID from Google `sub` / stored `google_sub`
   3. Get composer ID from composers table
   4. Insert composition record with composer_id
   5. Create composition_stats entry
@@ -215,14 +215,14 @@ roles (1) ←─→ (N) user_roles
    - Frontend checks roles for UI rendering
 
 5. **Storage Separation**:
-   - PDFs stored in Supabase Storage (compositions bucket)
+   - PDFs stored in Cloudflare D1 Storage (compositions bucket)
    - URLs stored in compositions table for retrieval
 
 ---
 
 ## Migration Execution
 
-Run migrations in order in Supabase SQL Editor:
+Run migrations in order in Cloudflare D1 SQL Editor:
 
 1. `001_create_invites_table.sql`
 2. `002_create_role_requests_table.sql`
@@ -286,7 +286,7 @@ SELECT EXISTS (
 ### AuthContext (`src/context/AuthContext.tsx`)
 
 - Added `isComposer` field to AppUser
-- Added `supabaseId` (UUID) for database queries
+- Added `user_id` (UUID) for database queries
 - Added `checkComposerStatus()` function
 - Updated login/signup to check composer status
 - Removed automatic redirects (handled in ManageAccount)
@@ -306,7 +306,7 @@ SELECT EXISTS (
 
 ### UploadComposition (`src/app/components/UploadComposition.tsx`)
 
-- Uploads PDF to Supabase Storage (not Firebase)
+- Uploads PDF to Cloudflare D1 Storage (not Firebase)
 - Saves composition metadata to database
 - Properly links to composer record
 

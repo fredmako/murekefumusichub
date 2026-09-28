@@ -7,7 +7,7 @@ import React, {
   ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../lib/supabase";
+import { api } from "../lib/api-client";
 import { normalizeAvatarUrl } from "../lib/avatarUrl";
 import { API_BASE_URL } from "@/lib/apiBase";
 import type {
@@ -293,7 +293,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (!finalUser) {
         try {
           const { data: authUser, error: authErr } =
-            await supabase.auth.getUser();
+            await api.auth.getUser();
           if (authErr) throw authErr;
 
           const email = authUser?.user?.email ?? null;
@@ -395,7 +395,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
    */
   const getAuthToken = async (): Promise<string | null> => {
     try {
-      const { data, error } = await supabase.auth.getSession();
+      const { data, error } = await api.auth.getSession();
       if (error || !data.session) return null;
       return data.session.access_token;
     } catch (err) {
@@ -435,7 +435,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
    */
   const signInWithEmail = async (email: string, password: string) => {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await api.auth.signInWithPassword({
         email,
         password,
       });
@@ -467,7 +467,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signUpWithEmail = async (email: string, password: string) => {
     try {
       const emailRedirectTo = buildAuthRedirectUrl("/login");
-      const { data, error } = await supabase.auth.signUp({
+      const { data, error } = await api.auth.signUp({
         email,
         password,
         options: {
@@ -479,7 +479,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // Keep signup flow on sign-in state; user should verify email then sign in.
       if (data.session) {
-        await supabase.auth.signOut().catch(() => null);
+        await api.auth.signOut().catch(() => null);
       }
     } catch (err: any) {
       console.error("[signUpWithEmail] error:", err);
@@ -497,7 +497,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         ? `/auth/callback?next=${encodeURIComponent(sanitizedNextPath)}`
         : "/auth/callback";
       const redirectTo = buildAuthRedirectUrl(callbackPath);
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { error } = await api.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo,
@@ -516,7 +516,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
    */
   const resetPassword = async (email: string) => {
     try {
-      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+      const { data, error } = await api.auth.resetPasswordForEmail(email, {
         redirectTo: buildAuthRedirectUrl("/reset-password"),
       });
       if (error) throw error;
@@ -529,7 +529,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const updatePassword = async (password: string) => {
     try {
-      const { error } = await supabase.auth.updateUser({ password });
+      const { error } = await api.auth.updateUser({ password });
       if (error) throw error;
     } catch (err: any) {
       console.error("[updatePassword] error:", err);
@@ -543,7 +543,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signOut = async (redirect = true) => {
     try {
       const { error } = await withTimeout(
-        supabase.auth.signOut(),
+        api.auth.signOut(),
         8000,
         "Global sign out",
       );
@@ -555,7 +555,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       );
       try {
         await withTimeout(
-          supabase.auth.signOut({ scope: "local" } as any),
+          api.auth.signOut({ scope: "local" } as any),
           4000,
           "Local sign out",
         );
@@ -596,7 +596,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         while (retries < maxRetries) {
           try {
             const { data, error } = await withTimeout(
-              supabase.auth.getSession(),
+              api.auth.getSession(),
               AUTH_SESSION_TIMEOUT_MS,
               "Auth session lookup",
             );
@@ -666,7 +666,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const setupAuthListener = () => {
-      const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const { data } = api.auth.onAuthStateChange(async (_event, session) => {
         if (!mounted) return;
         if (session && session.user) {
           await syncUserProfile(session.user.id);

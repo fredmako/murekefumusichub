@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { api } from "@/lib/api-client";
 import { buildApiUrl } from "@/lib/apiBase";
 import { dispatchSessionExpired } from "@/lib/sessionEvents";
 import { dispatchAppError } from "@/lib/appErrorEvents";
@@ -139,7 +139,7 @@ async function refreshSessionSafely(
 
   try {
     const { data, error } = await withTimeout(
-      supabase.auth.refreshSession(),
+      api.auth.refreshSession(),
       timeoutMs,
       reason,
     );
@@ -187,7 +187,7 @@ async function refreshSessionSafely(
 async function getAccessToken(): Promise<AccessTokenResolution> {
   try {
     const { data, error } = await withTimeout(
-      supabase.auth.getSession(),
+      api.auth.getSession(),
       ACCESS_TOKEN_SESSION_TIMEOUT_MS,
       "Session lookup",
     );

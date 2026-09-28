@@ -20,7 +20,7 @@ Comprehensive composer registration, authentication, and dashboard system with p
 - Stores all uploaded compositions (sheet music)
 - **1:N relationship** with composers (each composer can have many compositions)
 - Stores metadata: title, price, difficulty, duration, language, accompaniment, voice_parts
-- PDF URL points to Supabase Storage
+- PDF URL points to Cloudflare D1 Storage
 - Soft delete flag for data retention
 
 ### Migration 007: `composition_stats` Table
@@ -74,8 +74,8 @@ ManageAccount component redirects:
 
 ```
 UploadComposition component:
-  1. Upload PDF to Supabase Storage (compositions bucket)
-  2. Get Supabase user ID from Firebase UID
+  1. Upload PDF to Cloudflare D1 Storage (compositions bucket)
+  2. Get Cloudflare D1 user ID from Firebase UID
   3. Query composers table for composer_id
   4. Insert composition record with all metadata
   5. Create composition_stats entry
@@ -90,7 +90,7 @@ Dashboard refetches and displays:
 
 ```
 Fetches:
-  ✓ User data (Firebase + Supabase profile)
+  ✓ User data (Firebase + Cloudflare D1 profile)
   ✓ Composer record from composers table
   ✓ All compositions for that composer
   ✓ Stats and purchase data
@@ -111,8 +111,8 @@ Displays:
 **Changes**:
 
 - ✅ Added `isComposer` field to AppUser interface
-- ✅ Added `supabaseId` (UUID) for database queries
-- ✅ Imported Supabase client
+- ✅ Added `user_id` (UUID) for database queries
+- ✅ Imported Cloudflare D1 client
 - ✅ Added `checkComposerStatus()` function to query composers table
 - ✅ Updated login/signup/Google sign-in to check composer status
 - ✅ Removed automatic redirects (handled in ManageAccount)
@@ -121,12 +121,12 @@ Displays:
 
 ```tsx
 const checkComposerStatus = async (
-  supabaseUserId: string,
+  Cloudflare D1UserId: string,
 ): Promise<boolean> => {
-  const { data } = await supabase
+  const { data } = await Cloudflare D1
     .from("composers")
     .select("id")
-    .eq("user_id", supabaseUserId)
+    .eq("user_id", Cloudflare D1UserId)
     .maybeSingle();
   return !!data;
 };
@@ -154,14 +154,14 @@ const checkComposerStatus = async (
 
 **Changes**:
 
-- ✅ Added Supabase import
-- ✅ Uploads PDF to Supabase Storage (not Firebase)
+- ✅ Added Cloudflare D1 import
+- ✅ Uploads PDF to Cloudflare D1 Storage (not Firebase)
 - ✅ Gets user UUID from Firebase UID lookup
 - ✅ Queries composers table for composer_id
 - ✅ Saves complete composition metadata to database
 - ✅ Creates composition_stats entry
 
-### 5. supabaseStorage.ts (`src/services/supabaseStorage.ts`)
+### 5. Cloudflare D1Storage.ts (`src/services/Cloudflare D1Storage.ts`)
 
 **Changes**:
 
@@ -244,13 +244,13 @@ migrations/
 
 - ✅ Firebase auth checks composer status on login
 - ✅ Role-based redirects (composer → /composer, admin → /admin)
-- ✅ Proper UUID conversion (Firebase UID → Supabase UUID)
+- ✅ Proper UUID conversion (Firebase UID → Cloudflare D1 UUID)
 
 ---
 
 ## 🚀 Deployment Steps
 
-### 1. Run Migrations (Supabase SQL Editor)
+### 1. Run Migrations (Cloudflare D1 SQL Editor)
 
 ```
 Order: 005, 006, 007, 008, 009
@@ -296,11 +296,11 @@ git push
    - Based on user role/composer status
    - No hardcoded routes
 
-5. **Firebase/Supabase Integration**
+5. **Firebase/Cloudflare D1 Integration**
    - Firebase handles authentication
-   - Supabase handles data storage
-   - Backend syncs users from Firebase to Supabase
-   - Frontend queries Supabase for relationships
+   - Cloudflare D1 handles data storage
+   - Backend syncs users from Firebase to Cloudflare D1
+   - Frontend queries Cloudflare D1 for relationships
 
 ---
 
