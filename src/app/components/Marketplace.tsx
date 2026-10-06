@@ -325,34 +325,6 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
     searchTerm,
   ]);
 
-  const displayItems = useMemo(() => {
-    if (forcedCategoryName === "arrangements") {
-      return arrangements.map((arr: any) => ({
-        id: arr.id,
-        title: arr.title || "Untitled",
-        composerName: "Arranger",
-        price: Number(arr.price || 0),
-        priceCurrency: "KES",
-        description: arr.description || "",
-        difficulty: "",
-        duration: "",
-        language: "",
-        accompaniment: [],
-        voiceParts: [],
-        pdfUrl: arr.file_url || undefined,
-        midiUrl: undefined,
-        thumbnailUrl: arr.thumbnail_url || undefined,
-        createdAt: arr.created_at || "",
-        categoryId: typeof arr.category_id === "number" ? arr.category_id : null,
-        categoryName: "arrangements",
-        stats: { views: 0, purchases: 0 },
-      }));
-    }
-    return sortedFilteredCompositions;
-  }, [forcedCategoryName, arrangements, sortedFilteredCompositions]);
-
-  const displayCount = forcedCategoryName === "arrangements" ? arrangements.length : sortedFilteredCompositions.length;
-
   const sortedFilteredCompositions = useMemo(() => {
     const rows = [...filteredCompositions];
     switch (sortMode) {
@@ -381,6 +353,34 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         );
     }
   }, [filteredCompositions, sortMode]);
+
+  const displayItems = useMemo(() => {
+    if (forcedCategoryName === "arrangements") {
+      return arrangements.map((arr: any) => ({
+        id: arr.id,
+        title: arr.title || "Untitled",
+        composerName: "Arranger",
+        price: Number(arr.price || 0),
+        priceCurrency: "KES",
+        description: arr.description || "",
+        difficulty: "",
+        duration: "",
+        language: "",
+        accompaniment: [],
+        voiceParts: [],
+        pdfUrl: arr.file_url || undefined,
+        midiUrl: undefined,
+        thumbnailUrl: arr.thumbnail_url || undefined,
+        createdAt: arr.created_at || "",
+        categoryId: typeof arr.category_id === "number" ? arr.category_id : null,
+        categoryName: "arrangements",
+        stats: { views: 0, purchases: 0 },
+      }));
+    }
+    return sortedFilteredCompositions;
+  }, [forcedCategoryName, arrangements, sortedFilteredCompositions]);
+
+  const displayCount = forcedCategoryName === "arrangements" ? arrangements.length : sortedFilteredCompositions.length;
 
   const availableInitials = useMemo(() => {
     const initials = new Set<string>();
