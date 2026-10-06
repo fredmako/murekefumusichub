@@ -119,6 +119,18 @@ const Marketplace = React.lazy(() =>
   })),
 );
 
+const MyArrangements = React.lazy(() =>
+  import("./pages/MyArrangements").then((m) => ({
+    default: (m as any).MyArrangements ?? (m as any).default,
+  })),
+);
+
+const MyCompositions = React.lazy(() =>
+  import("./pages/MyCompositions").then((m) => ({
+    default: (m as any).MyCompositions ?? (m as any).default,
+  })),
+);
+
 const AboutPage = React.lazy(() =>
   import("./pages/AboutPage").then((m) => ({
     default: (m as any).AboutPage ?? (m as any).default,
@@ -796,6 +808,8 @@ export default function App() {
                   path="/marketplace/compositions"
                   element={<Marketplace onAddToCart={handleAddToCart} />}
                 />
+                <Route path="/my-arrangements" element={<MyArrangements />} />
+                <Route path="/my-compositions" element={<MyCompositions />} />
                 <Route path="/about" element={<AboutPage />} />
                 <Route path="/help" element={<HelpCenterPage />} />
                 <Route path="/messenger" element={<MessengerPage />} />

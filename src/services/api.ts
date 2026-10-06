@@ -702,6 +702,63 @@ export const compositionService = {
   },
 };
 
+export const arrangementService = {
+  async getAll() {
+    const payload = await apiRequest<any>("/arrangements", {
+      method: "GET",
+      timeoutMs: 45000,
+    });
+    return ensureArray<any>(payload, ["arrangements"]);
+  },
+
+  async getById(id: string) {
+    return await apiRequest(`/arrangements/${id}`, { method: "GET" });
+  },
+
+  async getByArranger(arrangerId: string) {
+    return await apiRequest(`/arrangements/arranger/${arrangerId}`, {
+      method: "GET",
+    });
+  },
+
+  async create(arrangementData: {
+    title: string;
+    description: string;
+    category_id?: number;
+    price: number;
+    file_url?: string;
+    thumbnail_url?: string;
+    is_published?: boolean;
+  }) {
+    return await apiRequest("/arrangements", {
+      method: "POST",
+      body: JSON.stringify(arrangementData),
+    });
+  },
+
+  async update(
+    id: string,
+    updates: Partial<{
+      title: string;
+      description: string;
+      category_id: number;
+      price: number;
+      file_url: string;
+      thumbnail_url: string;
+      is_published: boolean;
+    }>,
+  ) {
+    return await apiRequest(`/arrangements/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(updates),
+    });
+  },
+
+  async delete(id: string) {
+    await apiRequest(`/arrangements/${id}`, { method: "DELETE" });
+  },
+};
+
 export const purchaseService = {
   async create(purchaseData: {
     buyer_id: string;
@@ -1382,6 +1439,7 @@ export { getAccessToken };
 export const api = {
   auth: authService,
   compositions: compositionService,
+  arrangements: arrangementService,
   purchases: purchaseService,
   checkout: checkoutService,
   fyp: fypService,

@@ -55,7 +55,7 @@ import { Textarea } from "@/app/components/ui/textarea";
 import UploadWork from "@/app/components/UploadWork";
 import { DashboardShell } from "@/app/components/DashboardShell";
 import { PdfFieldExportMenu } from "@/app/components/PdfFieldExportMenu";
-import { compositionService } from "@/services/api";
+import { compositionService, arrangementService } from "@/services/api";
 import { toast } from "sonner";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 import { formatKesAmount } from "@/lib/currency";
@@ -171,8 +171,28 @@ export function ComposerDashboard() {
       const compositions = await compositionService.getByComposer(appUser.id);
       const compList = Array.isArray(compositions) ? compositions : [];
 
+      // Fetch arrangements via the API
+      let arrList: any[] = [];
+      try {
+        const arrangements = await arrangementService.getByArranger(appUser.id);
+        arrList = Array.isArray(arrangements) ? arrangements : [];
+      } catch (err) {
+        console.error("Error fetching arrangements:", err);
+      }
+
+      // Merge arrangements into the compositions list for unified display
+      const allWorks = [
+        ...compList,
+        ...arrList.map((arr: any) => ({
+          ...arr,
+          composition_id: arr.id,
+          category_name: "arrangements",
+          categories: { name: "arrangements" },
+        })),
+      ];
+
       // Fetch purchases for these compositions via the worker
-      const compIds = compList.map((c: any) => c.id).filter(Boolean);
+      const compIds = allWorks.map((c: any) => c.id).filter(Boolean);
       let purchases: Array<{ composition_id?: string | null; price_paid?: number | null }> = [];
       if (compIds.length > 0) {
         try {
@@ -255,7 +275,7 @@ export function ComposerDashboard() {
         }
       });
 
-      const enrichedCompositions = compList.map((c: any) => ({
+      const enrichedCompositions = allWorks.map((c: any) => ({
         ...c,
         composition_stats: [
           {

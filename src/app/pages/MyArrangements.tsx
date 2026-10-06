@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/ca
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/app/components/ui/dialog";
 import { toast } from "sonner";
 import { Music, Plus, Trash2, Edit } from "lucide-react";
+import { arrangementService } from "@/services/api";
 
 interface Arrangement {
   id: string;
@@ -32,8 +33,7 @@ export default function MyArrangements() {
 
   useEffect(() => {
     if (!appUser) return;
-    fetch("/api/arrangements")
-      .then(r => r.json())
+    arrangementService.getByArranger(appUser.id)
       .then(data => {
         setArrangements(data || []);
         setLoading(false);
@@ -43,40 +43,36 @@ export default function MyArrangements() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const url = editing ? `/api/arrangements/${editing.id}` : "/api/arrangements";
-    const method = editing ? "PUT" : "POST";
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await getAuth()}` },
-      body: JSON.stringify({ ...form, price: parseFloat(form.price) }),
-    });
-    if (res.ok) {
-      toast.success(editing ? "Updated!" : "Created!");
+    try {
+      if (editing) {
+        await arrangementService.update(editing.id, { ...form, price: parseFloat(form.price) });
+        toast.success("Updated!");
+      } else {
+        await arrangementService.create({ ...form, price: parseFloat(form.price) });
+        toast.success("Created!");
+      }
       setDialogOpen(false);
       setEditing(null);
       setForm({ title: "", description: "", price: "0" });
       refresh();
+    } catch (err: any) {
+      toast.error(err.message || "Save failed");
     }
   };
 
   const handleDelete = async (id: string) => {
-    const res = await fetch(`/api/arrangements/${id}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${await getAuth()}` },
-    });
-    if (res.ok) {
+    try {
+      await arrangementService.delete(id);
       toast.success("Deleted!");
       refresh();
+    } catch (err: any) {
+      toast.error(err.message || "Delete failed");
     }
   };
 
-  const getAuth = async () => {
-    return localStorage.getItem("murekefu_auth_token");
-  };
-
   const refresh = () => {
-    fetch("/api/arrangements")
-      .then(r => r.json())
+    if (!appUser) return;
+    arrangementService.getByArranger(appUser.id)
       .then(data => setArrangements(data || []));
   };
 

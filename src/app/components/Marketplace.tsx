@@ -41,6 +41,7 @@ import { DashboardShell } from "@/app/components/DashboardShell";
 import {
   categoryService,
   compositionService,
+  arrangementService,
   fypService,
 } from "@/services/api";
 import { toast } from "sonner";
@@ -147,6 +148,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
   const [accompanimentFilter, setAccompanimentFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [compositions, setCompositions] = useState<Composition[]>([]);
+  const [arrangements, setArrangements] = useState<any[]>([]);
   const [recommendedCompositions, setRecommendedCompositions] = useState<
     Composition[]
   >([]);
@@ -197,6 +199,17 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
 
         setCompositions(mapped);
         setCategories(normalizedCategories);
+
+        // Fetch arrangements when on the arrangements route
+        if (forcedCategoryName === "arrangements") {
+          try {
+            const arrangementsPayload = await arrangementService.getAll();
+            const arrangementsData = ensureArray<any>(arrangementsPayload, ["arrangements"]);
+            setArrangements(arrangementsData);
+          } catch (err) {
+            console.error("Error fetching arrangements:", err);
+          }
+        }
       } catch (error) {
         console.error("Error fetching compositions:", error);
         toast.error("Failed to load compositions");
@@ -311,6 +324,34 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
     initialFilters,
     searchTerm,
   ]);
+
+  const displayItems = useMemo(() => {
+    if (forcedCategoryName === "arrangements") {
+      return arrangements.map((arr: any) => ({
+        id: arr.id,
+        title: arr.title || "Untitled",
+        composerName: "Arranger",
+        price: Number(arr.price || 0),
+        priceCurrency: "KES",
+        description: arr.description || "",
+        difficulty: "",
+        duration: "",
+        language: "",
+        accompaniment: [],
+        voiceParts: [],
+        pdfUrl: arr.file_url || undefined,
+        midiUrl: undefined,
+        thumbnailUrl: arr.thumbnail_url || undefined,
+        createdAt: arr.created_at || "",
+        categoryId: typeof arr.category_id === "number" ? arr.category_id : null,
+        categoryName: "arrangements",
+        stats: { views: 0, purchases: 0 },
+      }));
+    }
+    return sortedFilteredCompositions;
+  }, [forcedCategoryName, arrangements, sortedFilteredCompositions]);
+
+  const displayCount = forcedCategoryName === "arrangements" ? arrangements.length : sortedFilteredCompositions.length;
 
   const sortedFilteredCompositions = useMemo(() => {
     const rows = [...filteredCompositions];
@@ -770,7 +811,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
         <p className="text-sm font-medium text-muted-foreground">
           {loading
             ? `Loading ${marketplaceItemLabelPlural}...`
-            : `${sortedFilteredCompositions.length} ${marketplaceItemLabelSingular}${sortedFilteredCompositions.length !== 1 ? "s" : ""} found`}
+            : `${displayCount} ${marketplaceItemLabelSingular}${displayCount !== 1 ? "s" : ""} found`}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Select value={sortMode} onValueChange={(value) => setSortMode(value as typeof sortMode)}>
@@ -859,10 +900,10 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
             </div>
           )}
 
-          {!loading && sortedFilteredCompositions.length > 0 && (
+          {!loading && displayItems.length > 0 && (
             layoutMode === "list" ? (
               <div className="space-y-2">
-                {sortedFilteredCompositions.map((composition) => (
+                {displayItems.map((composition) => (
                   <div
                     key={composition.id}
                     className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 transition-all hover:bg-white/10 sm:p-4"
@@ -944,7 +985,7 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
                       : "lg:grid-cols-3 xl:grid-cols-4"
                 }`}
               >
-                {sortedFilteredCompositions.map((composition) => (
+                {displayItems.map((composition) => (
                   <div
                     key={composition.id}
                     onClick={() => handlePreviewSelect(composition)}
@@ -956,10 +997,10 @@ export function Marketplace({ onAddToCart }: MarketplaceProps) {
             )
           )}
 
-          {!loading && sortedFilteredCompositions.length === 0 && (
+          {!loading && displayItems.length === 0 && (
             <div className="py-12 text-center">
               <p className="text-gray-500">
-                {compositions.length === 0
+                {compositions.length === 0 && arrangements.length === 0
                   ? `No ${marketplaceItemLabelPlural} available yet. Check back soon.`
                   : `No ${marketplaceItemLabelPlural} found matching your criteria.`}
               </p>

@@ -705,6 +705,11 @@ app.get('/api/arrangements', async (c) => {
   return c.json(results);
 });
 
+app.get('/api/arrangements/arranger/:arrangerId', async (c) => {
+  const { results } = await c.env.DB.prepare('SELECT * FROM arrangements WHERE arranger_id = ? AND deleted = 0 ORDER BY created_at DESC').bind(c.req.param('arrangerId')).all();
+  return c.json(results);
+});
+
 app.get('/api/arrangements/:id', async (c) => {
   const { results } = await c.env.DB.prepare('SELECT * FROM arrangements WHERE id = ?').bind(c.req.param('id')).all();
   return c.json(results[0] || {});
