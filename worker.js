@@ -1309,6 +1309,32 @@ app.post('/api/upload/community', async (c) => {
   return c.json({ success: true, url: '', path: '' });
 });
 
+app.post('/api/upload/thumbnails', async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+  try {
+    const contentType = c.req.header('content-type') || '';
+    if (!contentType.includes('multipart/form-data')) {
+      return c.json({ error: 'Invalid content type' }, 400);
+    }
+
+    const formData = await c.req.formData();
+    const file = formData.get('file');
+
+    if (!file) {
+      return c.json({ error: 'No file provided' }, 400);
+    }
+
+    const result = await storeUpload(c, user, file, 'thumbnails');
+    if (result.error) return c.json({ error: result.error }, result.status || 400);
+
+    return c.json({ success: true, ...result });
+  } catch (err) {
+    return c.json({ error: 'Upload failed: ' + err.message }, 500);
+  }
+});
+
 app.post('/upload/:bucket', async (c) => {
   const bucket = c.req.param('bucket');
   if (!UPLOAD_BUCKETS.has(bucket)) return c.json({ error: 'Invalid bucket' }, 400);

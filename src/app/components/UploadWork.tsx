@@ -15,6 +15,7 @@ import {
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
+import { extractPdfFirstPage } from "@/lib/pdfCover";
 
 interface UploadWorkProps {
   onClose: () => void;
@@ -120,6 +121,36 @@ export default function UploadWork({ onClose, type }: UploadWorkProps) {
       const uploadData = await uploadRes.json();
       const fileUrl = uploadData.url || "";
 
+      // Step 1b: Auto-extract first page of PDF as cover image
+      let autoCoverUrl: string | null = null;
+      try {
+        autoCoverUrl = await extractPdfFirstPage(pdfFile);
+        if (autoCoverUrl) {
+          // Upload the extracted cover to get a real URL
+          const coverBlob = await fetch(autoCoverUrl).then(r => r.blob());
+          const coverFile = new File([coverBlob], "cover.jpg", { type: "image/jpeg" });
+          const coverFormData = new FormData();
+          coverFormData.append("file", coverFile);
+          coverFormData.append("type", "thumbnail");
+
+          const coverRes = await fetch("/api/upload/thumbnails", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: coverFormData,
+          });
+
+          if (coverRes.ok) {
+            const coverData = await coverRes.json();
+            autoCoverUrl = coverData.url || null;
+          } else {
+            autoCoverUrl = null;
+          }
+        }
+      } catch (err) {
+        console.warn("[UploadWork] PDF cover extraction failed:", err);
+        autoCoverUrl = null;
+      }
+
       // Step 2: Upload MIDI (optional)
       let midiUrl = "";
       if (midiFile) {
@@ -139,13 +170,8 @@ export default function UploadWork({ onClose, type }: UploadWorkProps) {
         }
       }
 
-      // Step 2b: Upload thumbnail (optional)
-      // Must be uploaded to get a real URL. Previously the code sent
-      // `URL.createObjectURL(thumbnailFile)` — a blob: URL that is only valid
-      // for the current document. It was stored in the DB and rendered as a
-      // broken image after any reload, and it could never be fetched by another
-      // user or by the Worker.
-      let thumbnailUrl: string | null = null;
+      // Step 2b: Upload thumbnail (optional) — auto-extracted cover is the fallback
+      let thumbnailUrl: string | null = autoCoverUrl;
       if (thumbnailFile) {
         const thumbFormData = new FormData();
         thumbFormData.append("file", thumbnailFile);
@@ -159,10 +185,9 @@ export default function UploadWork({ onClose, type }: UploadWorkProps) {
 
         if (thumbRes.ok) {
           const thumbData = await thumbRes.json();
-          thumbnailUrl = thumbData.url || null;
+          thumbnailUrl = thumbData.url || autoCoverUrl;
         } else {
-          // Non-fatal: still create the work, just without artwork.
-          console.warn("[UploadWork] thumbnail upload failed; continuing without it");
+          console.warn("[UploadWork] thumbnail upload failed; using auto-extracted cover");
         }
       }
 
