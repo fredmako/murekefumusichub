@@ -119,6 +119,12 @@ const Marketplace = React.lazy(() =>
   })),
 );
 
+const MarketplaceV2 = React.lazy(() =>
+  import("./components/MarketplaceV2").then((m) => ({
+    default: (m as any).MarketplaceV2 ?? (m as any).default,
+  })),
+);
+
 const MyArrangements = React.lazy(() =>
   import("./pages/MyArrangements").then((m) => ({
     default: (m as any).MyArrangements ?? (m as any).default,
@@ -798,15 +804,15 @@ export default function App() {
                 <Route path="/reset-password" element={<SetNewPassword />} />
                 <Route
                   path="/marketplace"
-                  element={<Marketplace onAddToCart={handleAddToCart} />}
+                  element={<MarketplaceV2 onAddToCart={handleAddToCart} />}
                 />
                 <Route
                   path="/marketplace/arrangements"
-                  element={<Marketplace onAddToCart={handleAddToCart} />}
+                  element={<MarketplaceV2 onAddToCart={handleAddToCart} />}
                 />
                 <Route
                   path="/marketplace/compositions"
-                  element={<Marketplace onAddToCart={handleAddToCart} />}
+                  element={<MarketplaceV2 onAddToCart={handleAddToCart} />}
                 />
                 <Route path="/my-arrangements" element={<MyArrangements />} />
                 <Route path="/my-compositions" element={<MyCompositions />} />

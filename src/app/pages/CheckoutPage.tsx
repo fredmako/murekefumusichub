@@ -7,10 +7,11 @@ import {
   Loader2,
   Smartphone,
   XCircle,
+  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
-import { checkoutService } from "@/services/api";
+import { payheroService } from "@/services/api";
 import { Button } from "@/app/components/ui/button";
 import {
   Card,
@@ -26,16 +27,19 @@ import { CartItem } from "../types";
 import { buildLoginPath, persistPostLoginRedirect } from "@/lib/authRedirect";
 import { formatKesAmount } from "@/lib/currency";
 
-const MPESA_BUSINESS_NUMBER = "400200";
-const MPESA_ACCOUNT_NUMBER = "1131723";
-const MPESA_BUSINESS_NAME = "Murekefu Music Hub";
-const MPESA_PAYMENT_URL = "https://paynecta.co.ke/pay/music-hub";
-
 interface CheckoutPageProps {
   cart: CartItem[];
   onClearCart: () => void;
   onRemoveFromCart: (compositionId: string) => void;
 }
+
+type PaymentPhase =
+  | "idle"
+  | "initiating"
+  | "waiting"
+  | "checking"
+  | "success"
+  | "failed";
 
 export function CheckoutPage({
   cart,
@@ -44,10 +48,11 @@ export function CheckoutPage({
 }: CheckoutPageProps) {
   const navigate = useNavigate();
   const { appUser, isLoading } = useAuth();
-  const [mpesaCode, setMpesaCode] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [statusLoading, setStatusLoading] = useState(false);
-  const [pendingSubmissions, setPendingSubmissions] = useState<any[]>([]);
+  const [phone, setPhone] = useState("");
+  const [phase, setPhase] = useState<PaymentPhase>("idle");
+  const [payheroReference, setPayheroReference] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [pollInterval, setPollInterval] = useState<ReturnType<typeof setInterval> | null>(null);
 
   const totalAmount = useMemo(
     () =>
@@ -66,29 +71,46 @@ export function CheckoutPage({
     });
   }, [appUser, isLoading, navigate]);
 
-  const loadCheckoutStatus = useCallback(async () => {
-    if (!appUser) {
-      setPendingSubmissions([]);
-      return;
-    }
-
-    setStatusLoading(true);
-    try {
-      const payload = await checkoutService.getMyCheckoutStatus();
-      setPendingSubmissions(Array.isArray(payload) ? payload : []);
-    } catch (err: any) {
-      console.error("[checkout-status] error:", err);
-    } finally {
-      setStatusLoading(false);
-    }
-  }, [appUser]);
-
+  // Cleanup poll on unmount
   useEffect(() => {
-    if (!appUser) return;
-    void loadCheckoutStatus();
-  }, [appUser, loadCheckoutStatus]);
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [pollInterval]);
 
-  const handleSubmit = async () => {
+  const stopPolling = () => {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      setPollInterval(null);
+    }
+  };
+
+  const startPolling = useCallback((reference: string) => {
+    stopPolling();
+    const interval = setInterval(async () => {
+      try {
+        const status = await payheroService.checkStatus(reference);
+        const state = String(status?.status || status?.Status || "").toLowerCase();
+
+        if (state === "success" || state === "completed" || state === "paid") {
+          stopPolling();
+          setPhase("success");
+          setStatusMessage("Payment successful! Your arrangements are now available.");
+          onClearCart();
+        } else if (state === "failed" || state === "cancelled" || state === "declined") {
+          stopPolling();
+          setPhase("failed");
+          setStatusMessage("Payment failed or was cancelled. Please try again.");
+        }
+        // else still waiting — keep polling
+      } catch {
+        // Network error — keep polling, don't break the flow
+      }
+    }, 5000);
+    setPollInterval(interval);
+  }, [onClearCart]);
+
+  const handlePay = async () => {
     if (!appUser) {
       toast.error("Please sign in to continue");
       persistPostLoginRedirect("/checkout");
@@ -96,51 +118,67 @@ export function CheckoutPage({
       return;
     }
 
-    const normalizedCode = mpesaCode.trim().toUpperCase().replace(/\s+/g, "");
-    if (!normalizedCode) {
-      toast.error("Enter your M-Pesa transaction code");
+    const normalizedPhone = phone.replace(/[\s-]/g, "");
+    if (!/^0[17]\d{8}$/.test(normalizedPhone)) {
+      toast.error("Enter a valid Kenyan phone number (07XX XXX XXX or 01XX XXX XXX)");
       return;
     }
+
     if (cart.length === 0) {
       toast.error("Your cart is empty");
       return;
     }
 
-    setSubmitting(true);
+    setPhase("initiating");
+    setStatusMessage("Initiating payment...");
+
     try {
-      const payload = {
-        mpesaCode: normalizedCode,
+      const result = await payheroService.initiatePayment({
+        phone: normalizedPhone,
         items: cart.map((item) => ({
           composition_id: item.composition.id,
         })),
-      };
+      });
 
-      const result = await checkoutService.submitManualPayment(payload);
-      const submittedCount = result?.submitted?.length || 0;
-
-      if (submittedCount === 0) {
-        toast.info(
-          "No new checkout items were submitted. They may already be purchased or pending approval.",
-        );
-      } else {
-        toast.success(
-          `Payment code submitted for ${submittedCount} item(s). Waiting for admin approval.`,
-        );
-      }
-
-      onClearCart();
-      await loadCheckoutStatus();
-      navigate("/buyer", { replace: true });
-    } catch (err: any) {
-      console.error("[checkout] submit error:", err);
-      if (err?.status === 401) {
-        // Global session-expired handler in App.tsx shows toast + redirects to login.
+      if (!result.success) {
+        setPhase("failed");
+        setStatusMessage(result?.error || "Payment initiation failed.");
         return;
       }
-      toast.error(err?.message || "Failed to submit payment code");
-    } finally {
-      setSubmitting(false);
+
+      const ref = result.payheroReference || result.checkoutBatchId;
+      if (ref) {
+        setPayheroReference(ref);
+      }
+
+      const submittedCount = result.submitted?.length || 0;
+      if (submittedCount === 0) {
+        setPhase("failed");
+        setStatusMessage("No new items to purchase. They may already be owned or pending.");
+        return;
+      }
+
+      setPhase("waiting");
+      setStatusMessage(
+        `Check your phone — a payment prompt has been sent to ${result.phone}. Enter your M-Pesa PIN to complete.`,
+      );
+
+      // Start polling for status
+      if (ref) {
+        startPolling(ref);
+      }
+    } catch (err: any) {
+      console.error("[checkout] payhero error:", err);
+      setPhase("failed");
+      setStatusMessage(err?.message || "Payment failed. Please try again.");
     }
+  };
+
+  const handleRetry = () => {
+    setPhase("idle");
+    setStatusMessage("");
+    setPayheroReference(null);
+    stopPolling();
   };
 
   if (isLoading) {
@@ -156,14 +194,14 @@ export function CheckoutPage({
 
   const statusTone = (status: string) => {
     const normalized = String(status || "").toLowerCase();
-    if (normalized === "approved") {
+    if (normalized === "approved" || normalized === "completed") {
       return {
         className:
           "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200",
         Icon: CheckCircle2,
       };
     }
-    if (normalized === "rejected") {
+    if (normalized === "rejected" || normalized === "failed") {
       return {
         className:
           "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200",
@@ -178,218 +216,222 @@ export function CheckoutPage({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#f6fbff] via-white to-[#f5f1ff] p-6 dark:from-[#060f1f] dark:via-[#0a1830] dark:to-[#1b1232]">
-      <div className="mx-auto max-w-5xl space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-[#f6fbff] via-white to-[#f5f1ff] p-4 dark:from-[#060f1f] dark:via-[#0a1830] dark:to-[#1b1232] sm:p-6">
+      <div className="mx-auto max-w-3xl space-y-6">
         <Button variant="ghost" onClick={() => navigate(-1)}>
           <ArrowLeft className="mr-2 size-4" />
           Back
         </Button>
 
         <div>
-          <h1 className="text-3xl font-bold">Manual M-Pesa Checkout</h1>
+          <h1 className="text-2xl font-bold sm:text-3xl">Checkout</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Complete payment on M-Pesa, then submit the transaction code for
-            admin approval.
+            Pay securely with PayHero — M-Pesa STK push to your phone.
           </p>
         </div>
 
+        {/* Payment Status Banner */}
+        {phase !== "idle" && (
+          <Card
+            className={
+              phase === "success"
+                ? "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30"
+                : phase === "failed"
+                  ? "border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/30"
+                  : "border-blue-300 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30"
+            }
+          >
+            <CardContent className="flex items-start gap-3 p-4">
+              {phase === "initiating" || phase === "checking" ? (
+                <Loader2 className="mt-0.5 size-5 shrink-0 animate-spin text-blue-600" />
+              ) : phase === "waiting" ? (
+                <Smartphone className="mt-0.5 size-5 shrink-0 text-blue-600" />
+              ) : phase === "success" ? (
+                <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-600" />
+              ) : (
+                <XCircle className="mt-0.5 size-5 shrink-0 text-rose-600" />
+              )}
+              <div>
+                <p className="font-medium">
+                  {phase === "initiating" && "Initiating payment..."}
+                  {phase === "waiting" && "Waiting for payment..."}
+                  {phase === "checking" && "Checking payment status..."}
+                  {phase === "success" && "Payment successful!"}
+                  {phase === "failed" && "Payment failed"}
+                </p>
+                {statusMessage && (
+                  <p className="mt-1 text-sm opacity-80">{statusMessage}</p>
+                )}
+                {phase === "waiting" && payheroReference && (
+                  <p className="mt-1 text-xs opacity-60">
+                    Reference: {payheroReference}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Phone Input + Pay Button */}
         <Card>
           <CardHeader>
-            <CardTitle>Current Checkout Status</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Smartphone className="size-5 text-emerald-600" />
+              Pay with PayHero
+            </CardTitle>
             <CardDescription>
-              Backend payment submissions are tracked here so buyers can see what
-              is still pending admin review.
+              Enter your M-Pesa phone number. You'll receive a payment prompt on your phone.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {statusLoading ? (
+          <CardContent className="space-y-4">
+            <div className="rounded-lg border border-border/70 bg-muted/30 p-4">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" />
-                Loading your checkout submissions...
+                <ShieldCheck className="size-4 text-emerald-600" />
+                <span>Secure payment powered by PayHero</span>
               </div>
-            ) : pendingSubmissions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No checkout submissions yet.
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="phone">M-Pesa Phone Number</Label>
+              <Input
+                id="phone"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="07XX XXX XXX or 01XX XXX XXX"
+                disabled={phase === "initiating" || phase === "waiting"}
+                inputMode="tel"
+                className="text-lg"
+              />
+              <p className="text-xs text-muted-foreground">
+                You'll receive an STK push prompt on this number. Enter your M-Pesa PIN to authorize.
               </p>
+            </div>
+
+            {phase === "success" ? (
+              <div className="space-y-3">
+                <Button
+                  className="w-full"
+                  onClick={() => navigate("/buyer", { replace: true })}
+                >
+                  Go to My Library
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => navigate("/marketplace")}
+                >
+                  Browse More
+                </Button>
+              </div>
+            ) : phase === "failed" ? (
+              <Button className="w-full" onClick={handleRetry}>
+                Try Again
+              </Button>
             ) : (
-              pendingSubmissions.slice(0, 5).map((submission) => {
-                const tone = statusTone(submission?.status);
-                const Icon = tone.Icon;
-                return (
-                  <div
-                    key={submission?.id}
-                    className={`rounded-xl border px-4 py-3 ${tone.className}`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3">
-                        <Icon className="mt-0.5 size-4 shrink-0" />
-                        <div>
-                          <p className="font-medium">
-                            {submission?.compositions?.title || "Composition payment"}
-                          </p>
-                          <p className="text-xs opacity-80">
-                            Ref: {submission?.mpesa_code || "N/A"}
-                          </p>
-                          {submission?.admin_notes ? (
-                            <p className="mt-1 text-xs opacity-80">
-                              Admin notes: {submission.admin_notes}
-                            </p>
-                          ) : null}
-                        </div>
-                      </div>
-                      <div className="text-right text-xs opacity-80">
-                        <p className="font-semibold uppercase">
-                          {submission?.status || "pending"}
-                        </p>
-                        <p>
-                          {submission?.submitted_at
-                            ? new Date(submission.submitted_at).toLocaleString()
-                            : ""}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
+              <Button
+                onClick={handlePay}
+                disabled={
+                  phase === "initiating" ||
+                  phase === "waiting" ||
+                  cart.length === 0
+                }
+                className="w-full"
+                size="lg"
+              >
+                {phase === "initiating" ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                    Initiating...
+                  </>
+                ) : phase === "waiting" ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                    Waiting for payment...
+                  </>
+                ) : (
+                  <>
+                    <Smartphone className="mr-2 size-4" />
+                    Pay {formatKesAmount(totalAmount)}
+                  </>
+                )}
+              </Button>
+            )}
+
+            {phase === "waiting" && (
+              <Button
+                variant="ghost"
+                className="w-full text-sm"
+                onClick={() => {
+                  stopPolling();
+                  setPhase("idle");
+                  setStatusMessage("");
+                }}
+              >
+                Cancel Payment
+              </Button>
             )}
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Smartphone className="size-5 text-emerald-600" />
-                Payment Instructions
-              </CardTitle>
-              <CardDescription>
-                Use the details below in your M-Pesa app.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="rounded-lg border border-border/70 bg-emerald-50/80 p-4 dark:bg-[#12253f]/92">
-                <p className="text-sm text-muted-foreground">Business Name</p>
-                <p className="text-lg font-semibold">{MPESA_BUSINESS_NAME}</p>
-                <p className="mt-3 text-sm text-muted-foreground">Business Number</p>
-                <p className="text-2xl font-bold tracking-wide">
-                  {MPESA_BUSINESS_NUMBER}
-                </p>
-                <p className="mt-3 text-sm text-muted-foreground">Account Number</p>
-                <p className="text-xl font-bold tracking-wide">
-                  {MPESA_ACCOUNT_NUMBER}
-                </p>
-                <p className="mt-3 text-sm text-muted-foreground">Paynecta Link</p>
-                <a
-                  href={MPESA_PAYMENT_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-sm font-medium text-primary underline break-all"
+        {/* Order Summary */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Order Summary</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {cart.length === 0 ? (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">Your cart is empty.</p>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => navigate("/marketplace")}
                 >
-                  {MPESA_PAYMENT_URL}
-                </a>
+                  Browse Music Hub
+                </Button>
               </div>
-
-              <ol className="list-decimal pl-5 space-y-2 text-sm text-muted-foreground">
-                <li>Open the Paynecta payment link shown above.</li>
-                <li>
-                  Complete the payment to business number {MPESA_BUSINESS_NUMBER} for
-                  your cart total.
-                </li>
-                <li>Use account number {MPESA_ACCOUNT_NUMBER} when prompted.</li>
-                <li>
-                  Copy the transaction code from the M-Pesa confirmation SMS.
-                </li>
-                <li>Paste it below and submit for admin confirmation.</li>
-              </ol>
-
-              <Separator />
-
-              <div className="space-y-2">
-                <Label htmlFor="mpesa-code">M-Pesa Transaction Code</Label>
-                <Input
-                  id="mpesa-code"
-                  value={mpesaCode}
-                  onChange={(e) => setMpesaCode(e.target.value)}
-                  placeholder="e.g. QGH7XK9P2L"
-                  disabled={submitting}
-                />
-              </div>
-
-              <Button
-                onClick={handleSubmit}
-                disabled={submitting || cart.length === 0}
-                className="w-full"
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                    Submitting...
-                  </>
-                ) : (
-                  "Submit For Admin Approval"
-                )}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Order Summary</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {cart.length === 0 ? (
-                <div className="space-y-3">
-                  <p className="text-sm text-muted-foreground">Your cart is empty.</p>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => navigate("/marketplace")}
+            ) : (
+              <>
+                {cart.map((item) => (
+                  <div
+                    key={item.composition.id}
+                    className="flex items-start justify-between gap-3 border-b pb-2"
                   >
-                    Browse Music Hub
-                  </Button>
-                </div>
-              ) : (
-                <>
-                  {cart.map((item) => (
-                    <div
-                      key={item.composition.id}
-                      className="flex items-start justify-between gap-3 border-b pb-2"
-                    >
-                      <div>
-                        <p className="font-medium text-sm">
-                          {item.composition.title}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {item.composition.composerName}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold">
-                          {formatKesAmount(item.composition.price * item.quantity)}
-                        </p>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-1 text-xs text-destructive"
-                          onClick={() => onRemoveFromCart(item.composition.id)}
-                        >
-                          Remove
-                        </Button>
-                      </div>
+                    <div>
+                      <p className="font-medium text-sm">
+                        {item.composition.title}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {item.composition.composerName}
+                      </p>
                     </div>
-                  ))}
-                  <Separator />
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold">Total</span>
-                    <span className="text-lg font-bold">
-                      {formatKesAmount(totalAmount)}
-                    </span>
+                    <div className="text-right">
+                      <p className="font-semibold">
+                        {formatKesAmount(item.composition.price * item.quantity)}
+                      </p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-1 text-xs text-destructive"
+                        onClick={() => onRemoveFromCart(item.composition.id)}
+                        disabled={phase === "initiating" || phase === "waiting"}
+                      >
+                        Remove
+                      </Button>
+                    </div>
                   </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                ))}
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold">Total</span>
+                  <span className="text-lg font-bold">
+                    {formatKesAmount(totalAmount)}
+                  </span>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

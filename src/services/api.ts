@@ -847,6 +847,44 @@ export const checkoutService = {
   },
 };
 
+export const payheroService = {
+  async initiatePayment(payload: {
+    phone: string;
+    items: Array<{ composition_id: string }>;
+  }) {
+    return await apiRequest<{
+      success: boolean;
+      payheroReference?: string;
+      checkoutBatchId?: string;
+      totalAmount: number;
+      currency: string;
+      phone: string;
+      submitted: Array<{
+        id: string;
+        composition_id: string;
+        amount: number;
+        status: string;
+      }>;
+      skipped?: {
+        alreadyPurchased?: string[];
+        alreadyPending?: string[];
+      };
+    }>(`/payhero/initiate`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      timeoutMs: 30000,
+      requiresAuth: true,
+    });
+  },
+
+  async checkStatus(reference: string) {
+    return await apiRequest<any>(`/payhero/status?reference=${encodeURIComponent(reference)}`, {
+      method: "GET",
+      requiresAuth: true,
+    });
+  },
+};
+
 export const fypService = {
   async getRecommendations(_buyerId: string, limit: number = 20) {
     return await apiRequest(`/purchases/recommendations?limit=${limit}`, {
@@ -1442,6 +1480,7 @@ export const api = {
   arrangements: arrangementService,
   purchases: purchaseService,
   checkout: checkoutService,
+  payhero: payheroService,
   fyp: fypService,
   categories: categoryService,
   enrollments: enrollmentService,

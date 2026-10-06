@@ -1825,6 +1825,205 @@ app.get('/api/checkout/status', async (c) => {
   return c.json(results || []);
 });
 
+// ========== PAYHERO PAYMENT ==========
+// PayHero is a Kenyan payment gateway (Safaricom STK push / card payments).
+// Credentials are stored as worker secrets: PAYHERO_USERNAME, PAYHERO_PASSWORD.
+// The API uses Basic Auth (base64 of username:password).
+
+app.post('/api/payhero/initiate', async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+  let payload;
+  try { payload = await c.req.json(); } catch { payload = {}; }
+
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  const phone = String(payload.phone || '').trim();
+
+  if (!items.length) return c.json({ error: 'No items provided' }, 400);
+  if (!phone) return c.json({ error: 'Phone number is required' }, 400);
+
+  // Validate phone format (Kenyan: 07XX XXX XXX or 01XX XXX XXX)
+  const phoneClean = phone.replace(/[\s-]/g, '');
+  if (!/^0[17]\d{8}$/.test(phoneClean)) {
+    return c.json({ error: 'Invalid Kenyan phone number. Use format 07XX XXX XXX' }, 400);
+  }
+
+  // Load real prices from DB
+  const ids = [...new Set(items.map((i) => i && i.composition_id).filter(Boolean))];
+  if (!ids.length) return c.json({ error: 'No composition ids provided' }, 400);
+
+  const placeholders = ids.map(() => '?').join(',');
+  const { results: comps } = await c.env.DB
+    .prepare(
+      `SELECT id, title, price, is_published, deleted
+       FROM compositions WHERE id IN (${placeholders})`
+    )
+    .bind(...ids)
+    .all();
+  const compMap = new Map((comps || []).map((r) => [r.id, r]));
+
+  const unavailable = ids.filter((id) => {
+    const r = compMap.get(id);
+    return !r || r.deleted === 1 || r.is_published === 0;
+  });
+  if (unavailable.length) {
+    return c.json({ error: 'Not found or not published', composition_ids: unavailable }, 400);
+  }
+
+  // Skip already owned or pending
+  const { results: existing } = await c.env.DB
+    .prepare(
+      `SELECT composition_id, status FROM purchases
+       WHERE buyer_id = ? AND composition_id IN (${placeholders}) AND status IN ('pending','completed')`
+    )
+    .bind(user.id, ...ids)
+    .all();
+  const owned = new Set();
+  const pending = new Set();
+  for (const row of existing || []) {
+    if (row.status === 'completed') owned.add(row.composition_id);
+    else pending.add(row.composition_id);
+  }
+
+  const toInsert = ids.filter((id) => !owned.has(id) && !pending.has(id));
+  if (!toInsert.length) {
+    return c.json({
+      success: true,
+      payheroReference: null,
+      totalAmount: 0,
+      submitted: [],
+      skipped: { alreadyPurchased: [...owned], alreadyPending: [...pending] },
+    });
+  }
+
+  const total = toInsert.reduce((sum, id) => sum + Number(compMap.get(id).price || 0), 0);
+  const batchId = crypto.randomUUID();
+
+  // Create pending purchase records
+  const submitted = [];
+  for (const compId of toInsert) {
+    const comp = compMap.get(compId);
+    const amount = Number(comp.price || 0);
+    const id = crypto.randomUUID();
+    const paymentRef = `${batchId}:${id}`;
+    await c.env.DB
+      .prepare(
+        `INSERT INTO purchases (id, buyer_id, composition_id, price_paid, payment_ref, status, created_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'))`
+      )
+      .bind(id, user.id, compId, amount, paymentRef)
+      .run();
+    submitted.push({ id, composition_id: compId, amount, status: 'pending' });
+  }
+
+  // Call PayHero API to initiate payment
+  const username = c.env.PAYHERO_USERNAME;
+  const password = c.env.PAYHERO_PASSWORD;
+  if (!username || !password) {
+    return c.json({ error: 'PayHero not configured' }, 500);
+  }
+
+  const authHeader = 'Basic ' + btoa(`${username}:${password}`);
+
+  try {
+    const payheroRes = await fetch('https://api.payhero.co.ke/api/v1/payments', {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        amount: total,
+        phone: phoneClean,
+        reference: batchId,
+        description: `Murekefu Music Hub - ${toInsert.length} item(s)`,
+        callback_url: 'https://murekefumusichub.fredrickmakori102.workers.dev/api/payhero/callback',
+      }),
+    });
+
+    if (!payheroRes.ok) {
+      const errBody = await payheroRes.text().catch(() => '');
+      console.error('[payhero] initiation failed:', payheroRes.status, errBody);
+      return c.json({ error: 'Payment initiation failed. Please try again.' }, 400);
+    }
+
+    const payheroData = await payheroRes.json();
+
+    return c.json({
+      success: true,
+      payheroReference: payheroData.reference || batchId,
+      checkoutBatchId: batchId,
+      totalAmount: total,
+      currency: 'KES',
+      phone: phoneClean,
+      submitted,
+      skipped: { alreadyPurchased: [...owned], alreadyPending: [...pending] },
+    });
+  } catch (err) {
+    console.error('[payhero] error:', err);
+    return c.json({ error: 'Payment service unavailable. Please try again.' }, 503);
+  }
+});
+
+app.get('/api/payhero/status', async (c) => {
+  const user = await requireAuth(c);
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+  const reference = c.req.query('reference');
+  if (!reference) return c.json({ error: 'Reference is required' }, 400);
+
+  const username = c.env.PAYHERO_USERNAME;
+  const password = c.env.PAYHERO_PASSWORD;
+  if (!username || !password) {
+    return c.json({ error: 'PayHero not configured' }, 500);
+  }
+
+  const authHeader = 'Basic ' + btoa(`${username}:${password}`);
+
+  try {
+    const res = await fetch(`https://api.payhero.co.ke/api/v1/payments/${encodeURIComponent(reference)}`, {
+      headers: { 'Authorization': authHeader },
+    });
+
+    if (!res.ok) {
+      return c.json({ error: 'Failed to check payment status' }, 400);
+    }
+
+    const data = await res.json();
+    return c.json(data);
+  } catch (err) {
+    console.error('[payhero] status error:', err);
+    return c.json({ error: 'Payment service unavailable' }, 503);
+  }
+});
+
+// PayHero callback webhook
+app.post('/api/payhero/callback', async (c) => {
+  let payload;
+  try { payload = await c.req.json(); } catch { payload = {}; }
+
+  const reference = payload.reference || payload.Reference;
+  const status = payload.status || payload.Status;
+
+  if (!reference) return c.json({ error: 'Reference required' }, 400);
+
+  // Update purchase statuses based on callback
+  if (status === 'success' || status === 'Success' || status === 'completed') {
+    await c.env.DB
+      .prepare(`UPDATE purchases SET status = 'completed' WHERE payment_ref LIKE ?`)
+      .bind(`${reference}%`)
+      .run();
+  } else if (status === 'failed' || status === 'Failed') {
+    await c.env.DB
+      .prepare(`UPDATE purchases SET status = 'rejected' WHERE payment_ref LIKE ?`)
+      .bind(`${reference}%`)
+      .run();
+  }
+
+  return c.json({ success: true });
+});
+
 // ========== BUYER PREFERENCES (For-You weighting) ==========
 
 app.put('/api/purchases/preferences', async (c) => {
