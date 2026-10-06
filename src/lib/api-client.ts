@@ -41,6 +41,22 @@ function sessionFromToken(token: string | null, user: any = null) {
   };
 }
 
+// Simple event emitter for auth state changes.
+// The shim's onAuthStateChange was a no-op, so after Google OAuth stored the
+// token, AuthContext never knew and kept appUser=null, causing a redirect to
+// /login (the "double sign in" bug).
+const authListeners = new Set();
+
+function notifyAuthListeners(event: string, session: any) {
+  authListeners.forEach((callback) => {
+    try {
+      callback(event, session);
+    } catch (err) {
+      console.error('[auth] listener error:', err);
+    }
+  });
+}
+
 export const api = {
   auth: {
     getSession: async () => {
@@ -143,8 +159,18 @@ export const api = {
       }
     },
 
-    onAuthStateChange: (_callback: any) => {
-      return { data: { subscription: { unsubscribe: () => {} } }, error: null };
+    onAuthStateChange: (callback: (event: string, session: any) => void) => {
+      authListeners.add(callback);
+      return {
+        data: {
+          subscription: {
+            unsubscribe: () => {
+              authListeners.delete(callback);
+            },
+          },
+        },
+        error: null,
+      };
     },
     signInWithPassword: async ({ email, password }: any) => {
       const res = await fetch('/api/auth/login', {
@@ -154,7 +180,11 @@ export const api = {
       });
       if (!res.ok) return { data: { session: null, user: null }, error: { message: 'Login failed' } };
       const data = await res.json();
-      if (data.token) localStorage.setItem('murekefu_auth_token', data.token);
+      if (data.token) {
+        localStorage.setItem('murekefu_auth_token', data.token);
+        const session = sessionFromToken(data.token, data.user);
+        notifyAuthListeners('SIGNED_IN', session);
+      }
       // NOTE: callers read `data.user` (AuthContext.signInWithEmail), not
       // `data.session.user`. Returning only `session` made a SUCCESSFUL login
       // throw "Cannot read properties of null (reading 'name')" and then be
@@ -169,7 +199,11 @@ export const api = {
       });
       if (!res.ok) return { data: { session: null, user: null }, error: { message: 'Signup failed' } };
       const data = await res.json();
-      if (data.token) localStorage.setItem('murekefu_auth_token', data.token);
+      if (data.token) {
+        localStorage.setItem('murekefu_auth_token', data.token);
+        const session = sessionFromToken(data.token, data.user);
+        notifyAuthListeners('SIGNED_IN', session);
+      }
       return { data: { session: { user: data.user, access_token: data.token }, user: data.user }, error: null };
     },
     signInWithOAuth: async ({ provider, options }: { provider: string; options?: { redirectTo?: string } }) => {
@@ -211,7 +245,11 @@ export const api = {
           return { data: null, error: { message: data.error || 'Code exchange failed' } };
         }
         const data = await res.json();
-        if (data.token) localStorage.setItem('murekefu_auth_token', data.token);
+        if (data.token) {
+          localStorage.setItem('murekefu_auth_token', data.token);
+          const session = sessionFromToken(data.token, data.user);
+          notifyAuthListeners('SIGNED_IN', session);
+        }
         return { data: { session: { user: data.user, access_token: data.token } }, error: null };
       } catch (err: any) {
         return { data: null, error: { message: err.message || 'Code exchange failed' } };
