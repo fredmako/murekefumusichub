@@ -127,7 +127,7 @@ type SortMode =
 
 type ViewMode = "grid" | "list";
 type ViewSize = "compact" | "comfortable" | "large";
-type ChipId = "all" | "gospel" | "worship" | "popular" | "new" | "my-music";
+type ChipId = "all" | "arrangements" | "compositions";
 
 interface MarketplaceV2Props {
   onAddToCart?: (composition: MarketplaceItem) => void;
@@ -181,11 +181,8 @@ const SAVED_STORAGE_KEY = "murekefu_marketplace_saved";
 
 const CHIPS: Array<{ id: ChipId; label: string }> = [
   { id: "all", label: "All" },
-  { id: "gospel", label: "Gospel" },
-  { id: "worship", label: "Worship" },
-  { id: "popular", label: "Popular" },
-  { id: "new", label: "New" },
-  { id: "my-music", label: "My Music" },
+  { id: "arrangements", label: "Arrangements" },
+  { id: "compositions", label: "Compositions" },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -434,7 +431,7 @@ function ItemCard({
             {item.title}
           </h3>
           <p className="truncate text-xs text-muted-foreground">
-            {item.composerName}
+            {item.isArrangement ? "Choral Arrangement" : "Choral Composition"}
           </p>
         </div>
 
@@ -512,7 +509,8 @@ function FeaturedCard({
               {item.title}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              {item.composerName}
+              {item.isArrangement ? "Choral Arrangement" : "Choral Composition"}
+              {item.composerName && item.composerName !== "Arranger" && item.composerName !== "Unknown Composer" ? ` • ${item.composerName}` : ""}
             </p>
           </div>
 
@@ -627,9 +625,6 @@ export function MarketplaceV2({ onAddToCart }: MarketplaceV2Props) {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [activeChip, setActiveChip] = useState<ChipId>("all");
-  // Gospel / Worship chips map onto a free-text category hint so they work
-  // without depending on a fixed category id from the database.
-  const [chipCategory, setChipCategory] = useState<string | null>(null);
   const [languageFilter, setLanguageFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -642,7 +637,7 @@ export function MarketplaceV2({ onAddToCart }: MarketplaceV2Props) {
   const [detailItem, setDetailItem] = useState<MarketplaceItem | null>(null);
   const [detailFocus, setDetailFocus] = useState<"preview" | "detail">("detail");
 
-  const itemLabelPlural = forcedCategoryName ?? "arrangements";
+  const itemLabelPlural = forcedCategoryName ?? "choral works";
 
   /* -------------------- data fetching -------------------- */
 
@@ -840,19 +835,15 @@ export function MarketplaceV2({ onAddToCart }: MarketplaceV2Props) {
     typeFilter !== "all" ||
     categoryFilter !== "all";
 
-  // Gospel / Worship chips narrow the pool without touching the search box.
+  // Product type chips (Arrangements / Compositions) filter the pool.
   const chipItems = useMemo(() => {
-    if (!chipCategory) return sortedItems;
-    const term = chipCategory.toLowerCase();
-    return sortedItems.filter((item) => {
-      const haystack = `${item.categoryName || ""} ${item.title} ${
-        item.description || ""
-      }`.toLowerCase();
-      return haystack.includes(term);
-    });
-  }, [sortedItems, chipCategory]);
+    if (activeChip === "all") return sortedItems;
+    if (activeChip === "arrangements") return sortedItems.filter((item) => item.isArrangement);
+    if (activeChip === "compositions") return sortedItems.filter((item) => !item.isArrangement);
+    return sortedItems;
+  }, [sortedItems, activeChip]);
 
-  const showCuratedSections = !hasActiveFilters && !chipCategory;
+  const showCuratedSections = !hasActiveFilters && activeChip === "all";
 
   /* -------------------- curated sections -------------------- */
 
@@ -910,27 +901,6 @@ export function MarketplaceV2({ onAddToCart }: MarketplaceV2Props) {
 
   const handleChipSelect = (chip: ChipId) => {
     setActiveChip(chip);
-    if (chip === "my-music") {
-      navigate("/my-arrangements");
-      return;
-    }
-    if (chip === "popular") {
-      setChipCategory(null);
-      setSortMode("popular");
-      return;
-    }
-    if (chip === "new") {
-      setChipCategory(null);
-      setSortMode("newest");
-      return;
-    }
-    if (chip === "gospel" || chip === "worship") {
-      setCategoryFilter("all");
-      setChipCategory(chip);
-      return;
-    }
-    // "all"
-    setChipCategory(null);
     setSortMode("popular");
   };
 
@@ -959,7 +929,6 @@ export function MarketplaceV2({ onAddToCart }: MarketplaceV2Props) {
     setLanguageFilter("all");
     setTypeFilter("all");
     setCategoryFilter("all");
-    setChipCategory(null);
     setActiveChip("all");
   };
 
@@ -1172,7 +1141,7 @@ export function MarketplaceV2({ onAddToCart }: MarketplaceV2Props) {
               {/* Popular */}
               {popularItems.length > 0 ? (
                 <Section
-                  title="Popular Arrangements"
+                  title="Choral Arrangements"
                   icon={<TrendingUp className="size-5 text-emerald-400" />}
                   count={popularItems.length}
                 >
@@ -1205,7 +1174,7 @@ export function MarketplaceV2({ onAddToCart }: MarketplaceV2Props) {
           ) : (
             <>
               <Section
-                title={chipCategory ? `${chipCategory} arrangements` : "Results"}
+                title="Search Results"
                 icon={<Filter className="size-5 text-primary" />}
                 count={chipItems.length}
               >
@@ -1541,7 +1510,7 @@ export function MarketplaceV2({ onAddToCart }: MarketplaceV2Props) {
                   ) : null}
 
                   <Badge variant="secondary" className="capitalize">
-                    {detailItem.isArrangement ? "Arrangement" : "Composition"}
+                    {detailItem.isArrangement ? "Choral Arrangement" : "Choral Composition"}
                   </Badge>
                 </div>
               </div>
